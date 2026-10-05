@@ -1,0 +1,8 @@
+{
+  // Tests run in Node (they read vectors.json from disk), so they get Node types.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["src", "test", "vitest.config.ts"]
+}

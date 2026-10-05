@@ -103,8 +103,9 @@ python -m mutual_protocol.vectors --out packages/protocol-spec/vectors.json
 # Node setup (once, from repo root)
 npm install
 
-# TypeScript protocol tests
+# TypeScript protocol tests and strict typecheck
 npm test -w packages/protocol-ts
+npm run typecheck -w packages/protocol-ts
 
 # Server (dev mode: OTP codes printed to console, dev routes enabled)
 $env:MUTUAL_ENV="dev"; uvicorn mutual_server.main:app --reload --app-dir server

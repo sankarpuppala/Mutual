@@ -17,4 +17,12 @@ repos:
         pass_filenames: false
         always_run: true
 
+      # Cross-language guard: any change to the protocol or its vectors re-runs the TS suite.
+      - id: protocol-ts
+        name: npm test -w packages/protocol-ts (vectors + properties)
+        entry: npm test -w packages/protocol-ts
+        language: system
+        pass_filenames: false
+        files: ^packages/(protocol-ts|protocol-spec|protocol_py)/
+
       # App hooks (lint, check:privacy, check:contrast) are added in Phase 8.

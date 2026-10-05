@@ -806,3 +806,56 @@ Add an entry at the end of every session. Newest at the bottom.
     session. Its ⚠ verify items are the `@noble/curves` and `@noble/hashes`
     versions and import paths, and whether noble's x25519 rejects low-order
     points.
+
+### 2026-10-05 — Phase 2 — done (awaiting human review; nothing committed)
+- Done:
+  - Phase 1 committed by the human (`39e7d21`, not yet merged into `main`).
+    Branch `phase-2-protocol-ts` was created from `phase-1-protocol-py`.
+  - `@mutual/protocol`: `src/{constants,encoding,random,keys,tokens,eid,
+    encounter,index}.ts`, `test/{vectors,properties}.test.ts`, and
+    `tsconfig.json`, `tsconfig.test.json`, `vitest.config.ts`.
+  - New pre-commit hook `protocol-ts`.
+  - DECISIONS_LOG entry 11.
+- Tests:
+  - `npm test -w packages/protocol-ts` → 2 files, 29 tests passed (~10 s).
+    This covers all 135 vectors, from both sides where applicable, and the
+    error cases.
+  - `npm run typecheck -w packages/protocol-ts` → exit 0 (strict,
+    `noUncheckedIndexedAccess`).
+  - `pre-commit run --all-files` → ruff check, ruff format, pytest and
+    protocol-ts all Passed.
+  - `pytest packages/protocol_py server sim -q` → 130 passed.
+- ⚠ verify results:
+  - Import paths are `@noble/curves/ed25519.js` (`x25519`),
+    `@noble/hashes/blake2.js` (`blake2b`) and `@noble/hashes/utils.js`. Both
+    packages are ESM-only.
+  - noble `getSharedSecret` throws on all 5 low-order points and on u = p,
+    p+1 and 2^255.
+  - noble **accepts** non-canonical 2^256−1 and top-bit aliases (Python
+    refuses). Our `isValidPublicKey` therefore runs before every exchange.
+  - noble **rejects** a personalization that is not exactly 16 bytes (Python
+    zero-pads).
+  - `getPublicKey` clamps identically to Python, matching the EID vectors.
+  - `crypto.getRandomValues` exists in Node 24. React Native needs the
+    polyfill (Phase 8).
+- Version pins chosen: @noble/curves 2.4.0, @noble/hashes 2.4.0, vitest
+  5.0.3, typescript 7.0.2, @types/node 24.19.1.
+- Spec changes: none. CLAUDE.md §4 gained the typecheck command.
+- Deviations from this plan and why:
+  - The package exports TypeScript source instead of an "ESM build". Metro
+    compiles workspace TypeScript, so a build step adds nothing; revisit in
+    Phase 8 if Metro disagrees.
+  - Hermes-safety checks live inside `properties.test.ts`, so no new test
+    file was needed.
+  - Phase 2 ran in the same session as Phases 0–1, at the human's request.
+- Human review checklist (Phase 2):
+  - No `Buffer`, `fs`, Node `crypto` or other Node-only import in `src/`
+    (enforced by a test).
+  - Byte comparisons and sorting use `Uint8Array` (`compareBytes`), never
+    strings.
+  - Every vector passes; none are skipped.
+- Next session starts with:
+  - the human reviews and commits Phase 2, then merges phases 1 and 2 into
+    `main`;
+  - then Phase 3 (server core). Phase 3 **needs Q1** (college email domain)
+    and **Q2** (confirm Asia/Kolkata) answered first.

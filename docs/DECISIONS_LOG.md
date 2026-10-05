@@ -129,3 +129,23 @@ An independent reviewer saw only the protocol sections and attacked them.
 - Test vectors are written as hex, with 135 cases.
 - `cryptography` is pinned to 50.0.2. It already refuses low-order keys, and
   we check anyway.
+
+### 11. Phase 2 (TypeScript protocol) choices — Adopted
+- **Human:** "continue phase 2". Phase 1 was committed (`39e7d21`) but not
+  merged into `main`, so the Phase 2 branch starts from the Phase 1 branch.
+  Merging is left to the human.
+- **Libraries, pinned:** `@noble/curves` 2.4.0 and `@noble/hashes` 2.4.0
+  (audited, free); `vitest` 5.0.3; TypeScript 7.0.2; `@types/node` 24.19.1
+  for tests only.
+- **Issue found while verifying:** noble accepts *non-canonical* public keys,
+  such as one with the top bit set, and returns a secret where Python
+  refuses. **Decision:** the TypeScript code runs our own key-validity check
+  before every exchange, so both languages always agree. The shared
+  `public_key_validity` vectors catch any drift.
+- **Package shape:** ships its TypeScript source (no build step). The Expo
+  app's bundler compiles it in Phase 8.
+- **Hermes safety:** `src/` has no Node types, and a test scans `src/` for
+  `Buffer`, Node modules, `require`, `Math.random` and `fetch`.
+- **New guard:** a pre-commit hook re-runs the TypeScript suite whenever the
+  protocol or its vectors change, so the two languages cannot silently
+  drift apart.
