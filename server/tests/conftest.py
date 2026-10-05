@@ -176,3 +176,44 @@ def make_shared_token(day: str, interval: int = 40) -> bytes:
 def padded(real: list[bytes]) -> list[str]:
     """Base64url-encode a padded encounter set, ready for POST /presence/{day}."""
     return [b64url_encode(t) for t in padded_encounter_set(real)]
+
+
+def make_match(
+    h: Harness, a: Account, b: Account, day: str, intents: list[str] | None = None
+) -> str:
+    """Drive a real mutual match to completion: both sides signal, the nightly batch
+    runs, and the release step runs past that epoch's notify_after. Returns match_id.
+
+    Uses the real mutual_protocol to build each side's tokens (CLAUDE.md §7).
+    """
+    from mutual_protocol.keys import pair_key
+    from mutual_protocol.tokens import interest_token, padded_set
+
+    from mutual_server.clock import add_days, at_local
+    from mutual_server.models import Match
+    from mutual_server.services.matching import release_due_tokens, run_match_batch
+
+    intents = intents or ["date"]
+    k_ab = pair_key(a.sk, a.pk, a.user_id, b.pk, b.user_id)
+    k_ba = pair_key(b.sk, b.pk, b.user_id, a.pk, a.user_id)
+    real_a = [interest_token(k_ab, day, i) for i in intents]
+    real_b = [interest_token(k_ba, day, i) for i in intents]
+
+    h.clock.set(at_local(day, h.settings.signals.upload_window_start, h.settings.tz))
+    for acct, real in ((a, real_a), (b, real_b)):
+        tokens = [b64url_encode(t) for t in padded_set(real)]
+        r = h.client.put(f"/v1/signals/{day}", json={"tokens": tokens}, headers=auth(acct.token))
+        assert r.status_code == 201, r.text
+
+    h.clock.set(at_local(day, h.settings.signals.match_batch_time, h.settings.tz))
+    with h.db() as db:
+        run_match_batch(db, h.clock, h.settings, h.client.app.state.ctx.ids)
+
+    h.clock.set(at_local(add_days(day, 1), h.settings.digest.release_time, h.settings.tz))
+    with h.db() as db:
+        release_due_tokens(db, h.clock)
+        lo, hi = sorted((a.user_id, b.user_id))
+        match = db.execute(
+            select(Match).where(Match.user_lo == lo, Match.user_hi == hi)
+        ).scalar_one()
+        return match.id

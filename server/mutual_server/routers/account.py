@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from mutual_server.clock import local_now
 from mutual_server.deps import AppContext, current_session, current_user, get_ctx, get_db
 from mutual_server.errors import ApiError
-from mutual_server.models import Campus, Media, Profile, SessionRow, User
+from mutual_server.models import Campus, Match, MatchToken, Media, Profile, SessionRow, User
 from mutual_server.schemas import (
     AccountMeOut,
     CampusOut,
@@ -26,6 +26,8 @@ from mutual_server.schemas import (
     OwnProfileOut,
     PromptAnswer,
 )
+from mutual_server.services import media as media_service
+from mutual_server.services.matching import end_match, sync_matches
 
 router = APIRouter(prefix="/account", tags=["account"])
 
@@ -42,7 +44,7 @@ def parse_identity_key(value: str, db: Session, exclude_user: str | None = None)
         raise ApiError(422, "invalid_identity_key", "Invalid identity key.") from exc
     if not is_valid_public_key(pk):
         raise ApiError(422, "invalid_identity_key", "Invalid identity key.")
-    query = select(User.id).where(User.identity_pk == pk, User.deleted_at.is_(None))
+    query = select(User.id).where(User.identity_pk == pk)
     if exclude_user is not None:
         query = query.where(User.id != exclude_user)
     if db.scalar(query) is not None:
@@ -168,8 +170,31 @@ def delete_account(
     db: Session = Depends(get_db),
     ctx: AppContext = Depends(get_ctx),
 ) -> Response:
-    """S11: sessions revoked now; the full cascade (rows, media, ended matches) is Phase 5."""
-    user.deleted_at = ctx.clock.now()
+    """S11: sessions revoked immediately; every row and media file hard-deleted now (within
+    the 24-hour bound the spec allows). Active matches end first, each leaving the other
+    party "This person has left" (§6.9's frozen-card mechanism) — a pending (not yet
+    notified) match's tokens are untouched here and are dropped later by the ordinary
+    release step, which treats this account's absence exactly like a block (§6.9)."""
+    sync_matches(db, ctx.clock, ctx.settings, ctx.ids)
+
+    active = db.scalars(
+        select(Match).where(
+            Match.ended_at.is_(None), (Match.user_lo == user.id) | (Match.user_hi == user.id)
+        )
+    ).all()
+    for match in active:
+        has_notified = db.execute(
+            select(MatchToken.token).where(
+                MatchToken.match_id == match.id, MatchToken.notified.is_(True)
+            )
+        ).first()
+        if has_notified is not None:
+            end_match(db, ctx.clock, match, ended_by=user)
+
+    for item in db.scalars(select(Media).where(Media.user_id == user.id)):
+        media_service.remove(ctx.media_dir, item.path)
+
     db.execute(delete(SessionRow).where(SessionRow.user_id == user.id))
+    db.delete(user)  # cascades profile/media rows/presence/crossings/blocks; Match FKs SET NULL
     db.commit()
     return Response(status_code=202)

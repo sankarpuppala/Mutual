@@ -15,41 +15,12 @@ from sqlalchemy.orm import Session
 
 from mutual_server.deps import AppContext, current_user, get_ctx, get_db
 from mutual_server.errors import ApiError
-from mutual_server.models import Media, Profile, User
-from mutual_server.schemas import (
-    DigestMediaOut,
-    DigestOut,
-    DigestPeerOut,
-    PeerCardOut,
-    PromptAnswer,
-)
+from mutual_server.models import Media, User
+from mutual_server.schemas import DigestMediaOut, DigestOut, DigestPeerOut
+from mutual_server.services.cards import build_peer_card
 from mutual_server.services.digest import visible_peers
 
 router = APIRouter(tags=["digest"])
-
-
-def _peer_card(db: Session, peer: User) -> PeerCardOut:
-    profile = db.get(Profile, peer.id)
-    prompts = profile.prompts if profile is not None else []
-    voice = {
-        m.prompt_id: m
-        for m in db.scalars(select(Media).where(Media.user_id == peer.id, Media.kind == "voice"))
-    }
-    return PeerCardOut(
-        peer_id=peer.id,
-        first_name=peer.first_name,
-        year_of_study=peer.year_of_study,
-        identity_pk=b64url_encode(peer.identity_pk),
-        prompts=[
-            PromptAnswer(
-                prompt_id=p["prompt_id"],
-                text=p["text"],
-                voice_media_id=voice[p["prompt_id"]].id if p["prompt_id"] in voice else None,
-                waveform=voice[p["prompt_id"]].waveform if p["prompt_id"] in voice else None,
-            )
-            for p in prompts
-        ],
-    )
 
 
 @router.get("/digest", response_model=DigestOut)
@@ -65,7 +36,7 @@ def get_digest(
         peer = db.get(User, entry["peer_id"])
         if peer is None:
             continue
-        card = _peer_card(db, peer)
+        card = build_peer_card(db, peer)
         media_ids.update(p.voice_media_id for p in card.prompts if p.voice_media_id)
         peers.append(
             DigestPeerOut(

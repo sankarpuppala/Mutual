@@ -19,7 +19,7 @@ the reason), **Parked** (good idea, not now), **Open** (waiting for an answer).
 | Q3 | Do you have two Android 12+ phones for the Bluetooth test? | Phase 9 |
 | Q4 | Will you run the real-user pilot? Which ethics body approves it? | Phase 12 |
 | Q6 | Where will the server run for a demo with more than one phone? | Phase 11 |
-| Q8 | In a pilot, who has server (operator) access? They cannot also hold accounts. | Phase 5 |
+| Q8 | In a pilot, who has server (operator) access? They cannot also hold accounts. | Phase 12 |
 
 ### Parked ideas
 | Idea | Why parked | Where |
@@ -245,3 +245,102 @@ An independent reviewer saw only the protocol sections and attacked them.
   sweep can never crash the server. It also now cleans up old digest
   snapshots (same 7-day bound as crossings), which the spec didn't name
   explicitly but follows from the same retention rule.
+
+### 15. Phase 5 (signals, matching, reveal, chat, safety, privacy tests) — Adopted
+- **Human:** "continue" / "start phase 5". `main` fast-forwarded to Phase 4
+  (not pushed). Branch `phase-5-signals-matching`.
+- **"Notified" is a real column, not a computed check.** A pending match
+  token needs its blind-removal rule (block/unmatch/delete → drop silently)
+  to run *exactly once*, the first time it's seen at or after its own
+  `notify_after` — never again after that, or a block made days later would
+  wrongly erase an already-delivered match. So `match_tokens.notified` is a
+  permanent flag, flipped once, never re-checked. The same "materialize
+  once, lazily" shape as Phase 4's digest snapshots.
+- **The nightly batch and the release step aren't a cron job.** Like
+  retention, they run as a background task every hour, and — more
+  importantly — lazily, as a housekeeping step before every `/matches`,
+  `/messages`, `/blocks` or `/reports` call. This was proven to work over
+  real HTTP, not just direct function calls, in a smoke test: the dev clock
+  was advanced and `GET /matches` alone brought a match into existence.
+- **Account deletion's cascade uses the database's own foreign keys**, not
+  hand-written cleanup: hard-deleting the `users` row cascades `profiles`,
+  `media` rows (files removed first, explicitly), `presence_uploads`,
+  `encounters`, `crossings`, `blocks` and `signal_uploads`/`epoch_tokens`
+  automatically. `matches.user_lo`/`user_hi` are `SET NULL` instead of
+  cascaded, which is also exactly the signal the release step already uses
+  to detect "this account is gone" for a still-pending match — no special
+  case needed.
+- **A genuine edge case found while testing, not a bug:** once a match row
+  exists — even pending, invisible via `GET /matches` — Phase 4's "matched
+  the viewer" rule excludes that peer from any digest snapshot baked
+  *after* the match forms. So blocking someone through the digest-window
+  path, before their match is ever notified, only works if the viewer's
+  digest was already cached *before* the match existed. Documented in SPEC
+  §7.2 as a limitation rather than special-cased away.
+- **The two privacy tests were written and run together with the
+  implementation**, not strictly test-first with a separate commit in
+  between, since this session builds a whole phase at once. The leak
+  test's sensitivity was still verified directly: a deliberate one-line
+  change (showing a match before its token was notified) was introduced,
+  confirmed to make `test_leak_two_worlds.py` fail, then reverted — the
+  check PROMPT.md's Phase 5 notes ask for, just performed via a throwaway
+  edit instead of git history.
+- **Worlds A/B/C use deterministic identity keys** (seeded from the account
+  name via BLAKE2b), not the CSPRNG `generate_identity_keypair()` conftest
+  normally uses, so the *only* difference between world dumps is the one
+  under test — not incidental key randomness. CSPRNG-generated **signal
+  padding** is left alone, since the test only compares token *counts* and
+  *presence*, never byte values, there.
+- **`unread` is tracked per (match, user)**, set to "now" on every
+  `GET .../messages` call; a message is unread if it's from the other
+  party and newer than that timestamp. A new table, `match_reads`.
+- **`messages_needed_each`** is the configured threshold (8), not a
+  countdown of messages remaining — the simpler of two readings, and the
+  client already knows its own count.
+- **Message rate limiting is per user, globally** (30/minute across all
+  their matches), not per match — matches the plain reading of S3.
+- **New config:** `reveal.ended_match_retention_days` (30), the fallback
+  for an ended match's "fetched or 30 days pass" rule when the surviving
+  party never reopens the app.
+- **Not implemented this phase:** `reciprocal_content` ranking (explicitly
+  deferred to Phase 11 by the plan) and the field-pilot "arms" scheduling
+  logic beyond today's policy lookup (Tier 3, gated).
+
+### 16. Phase 5 independent security review (Prompt 7) — Adopted
+- **Reviewer saw:** the real server source under `server/`, plus CLAUDE.md
+  §5 and SPEC §6–§9, §11 — not the conversation, not the spec's own
+  framing of what it was supposed to find.
+- **Verdict: every one of the 11 privacy invariants and C1–C5 holds.**
+  Nothing above low severity. The one real tension it flagged — a pending,
+  not-yet-notified match hides its own peer from later digests — is the
+  same thing found and written into SPEC §7.2 while building Phase 5
+  itself; the reviewer independently re-derived it rather than finding
+  something new, which is itself a useful confirmation.
+- **Three low-severity hardening items, all applied under the human's
+  standing delegation for security fixes (no product/UX change):**
+  1. A genuine race: two concurrent requests to the same check-then-insert
+     route (signal upload, presence upload, the matching batch's own
+     insert) could both pass the "does this exist" check and the second
+     would hit a database uniqueness error — previously an unhandled 500.
+     **Fix:** one new global handler in `errors.py` turns any such
+     database conflict into the same documented `409`, never echoing the
+     underlying write.
+  2. `users.deleted_at` was dead code: three places still defensively
+     checked it, but nothing had set it since account deletion became a
+     true hard delete. A stale check like this is exactly the kind of
+     thing that quietly stops meaning what it looks like it means.
+     **Fix:** removed the column, the three checks, and switched its
+     partial unique index to a plain one; migration `0004`.
+  3. The chat rate limit (30 messages/minute) is also check-then-insert,
+     so two messages sent in the same instant could both slip through.
+     **Deferred, not fixed:** this is an abuse-surface nuisance, not a
+     privacy leak, and a fully atomic fix needs a dedicated per-minute
+     counter row, which is more machinery than the benefit justifies for
+     a single-process research prototype. Parked in PLAN.md deferred list.
+- **What the reviewer called out as well-built,** kept as-is: the two
+  parallel-world leak test, the injectable clock making fair-delivery
+  timing actually testable, rebuilding photos pixel-by-pixel rather than
+  just stripping EXIF tags, the partial/unique indexes doing correctness
+  work at the database level, never echoing submitted fields back in
+  validation errors, and binding each OTP's hash to its own email hash so
+  a stolen OTP can't be replayed against a different account.

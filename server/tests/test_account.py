@@ -110,3 +110,74 @@ def test_delete_account_revokes_sessions(h: Harness) -> None:
     acct = signup(h)
     assert h.client.delete("/v1/account", headers=auth(acct.token)).status_code == 202
     assert h.client.get("/v1/account/me", headers=auth(acct.token)).status_code == 401
+
+
+def test_delete_account_cascades_rows_and_media_files(h: Harness) -> None:
+    from pathlib import Path
+
+    from conftest import make_shared_token, padded
+
+    from mutual_server.models import Crossing, Encounter, Media, Profile, User
+
+    a = signup(h, email="a@example.ac.in")
+    b = signup(h, email="b@example.ac.in")
+    h.client.put(
+        "/v1/profile",
+        json={
+            "first_name": "Ananya",
+            "prompts": [
+                {"prompt_id": "looking_for", "text": "x"},
+                {"prompt_id": "simple_pleasures", "text": "y"},
+                {"prompt_id": "ask_me_about", "text": "z"},
+            ],
+        },
+        headers=auth(a.token),
+    )
+    import io
+
+    from PIL import Image
+
+    img = Image.new("RGB", (40, 30), (1, 2, 3))
+    buf = io.BytesIO()
+    img.save(buf, "JPEG")
+    photo = h.client.post(
+        "/v1/profile/photos",
+        files={"image": ("p.jpg", buf.getvalue(), "image/jpeg")},
+        headers=auth(a.token),
+    ).json()
+    stored_path = Path(h.settings.media.storage_dir) / f"{photo['media_id']}.jpg"
+    assert stored_path.exists()
+
+    day = "2026-10-04"
+    shared = make_shared_token(day)
+    for acct in (a, b):
+        h.client.post(
+            f"/v1/presence/{day}", json={"encounters": padded([shared])}, headers=auth(acct.token)
+        )
+    with h.db() as db:
+        assert db.query(Crossing).count() == 1
+
+    assert h.client.delete("/v1/account", headers=auth(a.token)).status_code == 202
+
+    assert not stored_path.exists()
+    with h.db() as db:
+        assert db.get(User, a.user_id) is None
+        assert db.get(Profile, a.user_id) is None
+        assert db.query(Media).filter_by(user_id=a.user_id).count() == 0
+        assert db.query(Crossing).count() == 0
+        assert db.query(Encounter).filter_by(user_id=a.user_id).count() == 0
+
+
+def test_delete_account_ends_active_matches_for_the_other_side(h: Harness) -> None:
+    from conftest import make_match
+
+    a = signup(h, email="a@example.ac.in")
+    b = signup(h, email="b@example.ac.in")
+    match_id = make_match(h, a, b, "2026-10-05", ["date"])
+
+    assert h.client.delete("/v1/account", headers=auth(a.token)).status_code == 202
+
+    rb = h.client.get("/v1/matches", headers=auth(b.token)).json()
+    assert len(rb) == 1 and rb[0]["match_id"] == match_id
+    assert rb[0]["state"] == "ended"
+    assert rb[0]["peer"]["peer_id"] == a.user_id  # frozen card survives the deleted account

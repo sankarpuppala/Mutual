@@ -87,3 +87,31 @@ def test_no_client_address_is_read() -> None:
     assert [
         p.name for p in root.rglob("*.py") if "client.host" in p.read_text(encoding="utf-8")
     ] == []
+
+
+def test_integrity_error_becomes_a_uniform_409_not_a_500() -> None:
+    """Phase 5 security review (low, finding 1): a duplicate-write race (two concurrent
+    requests both passing a route's own "does it exist" check) hits a unique constraint
+    instead; it must surface as the documented 409, never an unhandled 500."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from sqlalchemy.exc import IntegrityError
+
+    from mutual_server.errors import install_error_handlers
+
+    app = FastAPI()
+    install_error_handlers(app)
+
+    @app.get("/boom")
+    def boom() -> None:
+        raise IntegrityError(
+            "INSERT INTO x ...",
+            {"secret": "should-not-appear"},
+            Exception("UNIQUE constraint failed"),
+        )
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        r = client.get("/boom")
+    assert r.status_code == 409
+    assert r.json() == {"error": "conflict", "message": "That already exists."}
+    assert "should-not-appear" not in r.text  # never echoes the underlying SQL/params

@@ -16,6 +16,7 @@ from mutual_server.ids import IdFactory
 from mutual_server.models import SessionRow, User
 from mutual_server.security import session_hash
 from mutual_server.services.email import EmailSender
+from mutual_server.services.matching import sync_matches
 
 
 @dataclass
@@ -73,8 +74,14 @@ def current_user(
     if session.user_id is None:
         raise ApiError(403, "no_account", "Create your account first.")
     user = db.get(User, session.user_id)
-    if user is None or user.deleted_at is not None:
+    if user is None:  # a deleted account's row no longer exists at all (S11, hard delete)
         raise ApiError(401, "unauthorized", "Sign in again.")
     if user.suspended_at is not None:
         raise ApiError(403, "account_suspended", "This account is suspended.")
     return user
+
+
+def synced_matches(db: Session = Depends(get_db), ctx: AppContext = Depends(get_ctx)) -> None:
+    """Finish any due nightly batch and release step before a /matches or /blocks route
+    reads or acts on state (SPEC §6.9). Never triggered by the request's own action."""
+    sync_matches(db, ctx.clock, ctx.settings, ctx.ids)

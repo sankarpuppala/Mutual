@@ -49,6 +49,7 @@ reveal:
   default_policy: M
   policy_schedule: []                    # [{start: YYYY-MM-DD, end: YYYY-MM-DD, policy: M|C}]
   conversation_messages_each: 8
+  ended_match_retention_days: 30         # SPEC §6.9: "until... fetched or 30 days pass"
 messages:
   max_length: 1000
   rate_limit_per_minute: 30

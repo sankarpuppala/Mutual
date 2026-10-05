@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -175,6 +176,58 @@ class DigestOut(_Out):
     release_day: str
     peers: list[DigestPeerOut]
     media: list[DigestMediaOut]
+
+
+# --- signals / matches / messages / safety -----------------------------------
+class SignalsUploadIn(_In):
+    tokens: list[str]  # base64url, exactly signal_set_size entries of 32 bytes (§6.7)
+
+
+class MatchedTokenOut(_Out):
+    epoch: str
+    token: str  # base64url
+
+
+class RevealOut(_Out):
+    state: str  # pending | revealed
+    policy: str  # M | C
+    messages_needed_each: int | None = None  # set only for policy C while still pending
+
+
+class MatchOut(_Out):
+    match_id: str
+    state: str  # active | ended
+    peer: PeerCardOut  # a minimal frozen card (empty prompts) once state == "ended"
+    matched: list[MatchedTokenOut]
+    created_epoch: str
+    reveal: RevealOut
+    unread: bool
+
+
+class MessageIn(_In):
+    body: str = Field(min_length=1)
+
+
+class MessageOut(_Out):
+    message_id: str
+    sender_id: str
+    body: str
+    created_at: datetime
+
+
+class BlockIn(_In):
+    peer_id: str
+
+
+ReportReason = Literal[
+    "harassment", "fake_profile", "inappropriate_content", "underage", "safety_concern", "other"
+]
+
+
+class ReportIn(_In):
+    peer_id: str
+    reason: ReportReason
+    message_ids: list[str] = Field(default_factory=list)
 
 
 class DevSeededUser(_Out):

@@ -629,6 +629,13 @@ approved yet; each needs a spec change when picked up.
    simply left out of the nightly upload, and the server cannot tell them
    from decoys. Open questions: whether the 7-day expiry pauses while held,
    and what happens when two date matches arrive on the same night.
+8. **A fully atomic message rate limit.** Phase 5's security review found
+   the 30/minute check is check-then-insert, so a true race could let a
+   couple of extra messages through. Not a privacy issue (S3 is an
+   abuse-surface limit), and fixing it needs a dedicated per-minute counter
+   row with its own unique constraint — more machinery than the benefit
+   justifies for a single-process research prototype. Revisit only if
+   chat abuse is ever actually observed.
 
 ---
 
@@ -996,3 +1003,84 @@ Add an entry at the end of every session. Newest at the bottom.
     privacy tests (`test_leak_two_worlds.py`, `test_route_audit.py`),
     written first. No open questions block it, but Q8 (who holds operator
     access in a pilot) should be answered before any real deployment.
+
+### 2026-10-05/06 — Phase 5 — done (awaiting human review; nothing committed)
+- Done:
+  - Phase 4 committed by the human (`a2d9157`); `main` fast-forwarded to it
+    by Claude (not pushed). Branch `phase-5-signals-matching`.
+  - `routers/{signals,matches,messages,safety}.py`;
+    `services/{matching,arms,cards}.py`; `admin.py` completed (reports
+    list/view/resolve); model additions `MatchToken.notified`,
+    `MatchRead`; config addition `reveal.ended_match_retention_days`.
+  - Migration `0003_match_reads_and_notified_tokens.py`.
+  - Tests (written together with the implementation, not strictly
+    test-first — see DECISIONS_LOG 15): `test_leak_two_worlds.py`,
+    `test_route_audit.py`, `test_signals.py`, `test_matches.py`,
+    `test_reveal.py`, `test_messages.py`, `test_safety.py`; extended
+    `test_account.py` (deletion cascade) and `test_retention.py`
+    (30-day ended-match fallback).
+- Tests:
+  - `pytest server -q` → 122 passed (~38 s, the slowest suite so far due
+    to multi-day clock-advance tests).
+  - `pytest packages/protocol_py server sim -q` → 252 passed.
+  - `pre-commit run --all-files` → all five hooks Passed.
+  - `alembic upgrade head` on a fresh DB, `alembic check` (no drift),
+    `downgrade base` → `upgrade head` round trip: all exit 0.
+  - Leak-test sensitivity demonstrated directly (throwaway, reverted): a
+    one-line change that showed a match before its token was notified made
+    `test_worlds_a_and_b_are_indistinguishable_and_c_is_not_vacuous` fail;
+    reverting it restored the pass.
+  - Live smoke test over real HTTP, dev server, `--no-access-log`: signup
+    → real signal upload for both sides → dev-clock-advance past
+    `match_batch_time` (pre-release `GET /matches` empty in every world) →
+    advance past next-day `release_time` → `GET /matches` now shows the
+    match (batch and release triggered *lazily* by the HTTP call itself,
+    never invoked directly) → message send/receive → block ends it
+    silently for the other side. 0 access-log lines throughout.
+- Measured: —
+- Version pins chosen: none new.
+- Spec changes: §7.2 (pending-match/digest-exclusion limitation, new
+  row); §9 retention row already present, now implemented; §12 adds
+  `notified` to `match_tokens` and the new `match_reads` table; §18 adds
+  `reveal.ended_match_retention_days`; §20 services list adds `cards`.
+  DECISIONS_LOG entry 15.
+- Deviations from this plan and why:
+  - The two privacy tests were not committed before the implementation in
+    separate commits (everything lands in one phase-5 commit); their
+    catching power was instead verified directly via a throwaway edit.
+  - `services/cards.py` was added (not in the original Files line) to
+    share `PeerCard`/frozen-card building between `digest.py` and
+    `matches.py` — a plain refactor, no behaviour change.
+  - `admin.py`'s report commands were not given their own test file;
+    exercised only by the type checker and manual review (consistent with
+    Phase 3's treatment of the campus commands).
+- Human review checklist (Phase 5):
+  - Leak-test sensitivity: confirmed live (see above), not just by
+    inspection.
+  - No request or response schema has an intent field
+    (`test_no_schema_field_is_named_or_typed_as_an_intent`).
+  - A cross-intent pair never matches
+    (`test_cross_intent_signals_never_match`).
+  - Blocking after a match deletes the messages, and the other party sees
+    "ended" (`test_block_after_a_match_ends_it_for_the_other_side_silently`,
+    `test_unmatch_deletes_messages_and_shows_ended_to_the_other_side`).
+  - Nothing in any response changes between the batch and `notify_after`
+    (the leak test's mid-point check, added specifically for this).
+- **Prompt 7 (independent security review), run as required before merging
+  this phase:** a background subagent reviewed the real source under
+  `server/` (not the spec, not this conversation) against all 11 CLAUDE.md
+  §5 invariants and C1–C5. Verdict: every one holds; nothing above low
+  severity. Three low-severity hardening findings were applied under the
+  human's standing delegation for security fixes (DECISIONS_LOG entry 16):
+  a global `IntegrityError` → `409` handler (`errors.py`), removal of the
+  vestigial `users.deleted_at` column and its now-plain unique index
+  (migration `0004`), and the message-rate-limit atomicity gap was parked
+  as deferred improvement #8 rather than fixed (abuse-surface only).
+- Tests after the review's fixes: `pytest server -q` → 123 passed;
+  `pytest packages/protocol_py server sim -q` → 253 passed; migration
+  0001→0004 round-trips cleanly with no autogenerate drift.
+- Next session starts with:
+  - the human reviews the diff (including the review's own findings) and
+    commits;
+  - then Phase 6: the simulation (can run in parallel in a separate
+    worktree) — no open questions block it.

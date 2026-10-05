@@ -2,34 +2,17 @@
 
 from __future__ import annotations
 
-from datetime import date
-
 from fastapi import APIRouter, Depends
 from mutual_protocol.constants import PROTOCOL_VERSION
 from sqlalchemy.orm import Session
 
 from mutual_server.clock import local_day
-from mutual_server.config import Settings
 from mutual_server.deps import AppContext, get_ctx, get_db, optional_session
 from mutual_server.models import Campus, SessionRow
 from mutual_server.schemas import CampusOut, ConfigOut, Window
+from mutual_server.services.arms import policy_for_day
 
 router = APIRouter(tags=["config"])
-
-
-def policy_for_day(settings: Settings, day: str) -> tuple[str, str | None]:
-    """The reveal policy active on ``day`` and the next date it changes (SPEC §11.2)."""
-    d = date.fromisoformat(day)
-    active = settings.reveal.default_policy
-    upcoming: list[str] = []
-    for w in settings.reveal.policy_schedule:
-        start, end = date.fromisoformat(w.start), date.fromisoformat(w.end)
-        if start <= d <= end:
-            active = w.policy
-            upcoming.append(date.fromordinal(end.toordinal() + 1).isoformat())
-        elif start > d:
-            upcoming.append(w.start)
-    return active, (min(upcoming) if upcoming else None)
 
 
 @router.get("/config", response_model=ConfigOut)

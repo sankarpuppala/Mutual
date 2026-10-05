@@ -24,9 +24,22 @@ from mutual_server.deps import AppContext
 from mutual_server.errors import install_error_handlers
 from mutual_server.ids import IdFactory, UuidIds
 from mutual_server.models import Campus
-from mutual_server.routers import account, auth, config_route, dev, digest, presence, profile
+from mutual_server.routers import (
+    account,
+    auth,
+    config_route,
+    dev,
+    digest,
+    matches,
+    messages,
+    presence,
+    profile,
+    safety,
+    signals,
+)
 from mutual_server.services.campus import seed_config_campuses
 from mutual_server.services.email import EmailSender, make_sender
+from mutual_server.services.matching import sync_matches
 from mutual_server.services.retention import run_retention
 
 _RETENTION_INTERVAL_SECONDS = 3600  # CLAUDE.md §6 / SPEC.md §9: "runs at startup and every hour"
@@ -47,6 +60,7 @@ async def _retention_loop(session_factory: sessionmaker[Session], ctx: AppContex
         await asyncio.sleep(_RETENTION_INTERVAL_SECONDS)
         try:
             with session_factory() as db:
+                sync_matches(db, ctx.clock, ctx.settings, ctx.ids)
                 run_retention(db, ctx.clock, ctx.settings)
         except Exception as exc:  # noqa: BLE001 - a failed sweep must never crash the server
             # No request data (no IP, no user id) in this line — it is the only
@@ -77,6 +91,7 @@ def create_app(
         with session_factory() as db:
             seed_config_campuses(db, settings, ctx.ids, ctx.clock)
             _check_study_campuses(db, settings)
+            sync_matches(db, ctx.clock, settings, ctx.ids)
             run_retention(db, ctx.clock, settings)
         task = asyncio.create_task(_retention_loop(session_factory, ctx))
         try:
@@ -93,7 +108,18 @@ def create_app(
     install_error_handlers(app)
 
     v1 = APIRouter(prefix="/v1")
-    for module in (auth, account, profile, config_route, presence, digest):
+    for module in (
+        auth,
+        account,
+        profile,
+        config_route,
+        presence,
+        digest,
+        signals,
+        matches,
+        messages,
+        safety,
+    ):
         v1.include_router(module.router)
     if settings.env == "dev":
         v1.include_router(dev.router)  # never mounted outside dev (invariant 11)

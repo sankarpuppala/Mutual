@@ -132,6 +132,7 @@ class RevealConfig(_Strict):
     default_policy: Literal["M", "C"]
     policy_schedule: list[PolicyWindow]
     conversation_messages_each: int = Field(gt=0)
+    ended_match_retention_days: int = Field(gt=0)
 
 
 class MessagesConfig(_Strict):

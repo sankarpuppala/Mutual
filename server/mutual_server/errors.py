@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
@@ -48,4 +49,14 @@ def install_error_handlers(app: FastAPI) -> None:
         code = _DEFAULT_CODES.get(exc.status_code, "error")
         return JSONResponse(
             {"error": code, "message": str(exc.detail)}, status_code=exc.status_code
+        )
+
+    @app.exception_handler(IntegrityError)
+    async def _integrity(_: Request, exc: IntegrityError) -> JSONResponse:
+        # A duplicate-write race (e.g. two concurrent uploads for the same epoch) hits a
+        # unique constraint instead of the route's own check-then-insert "already exists"
+        # test; this gives the same documented 409 instead of an unhandled 500. Never
+        # echoes the underlying SQL (it can contain user-supplied bytes).
+        return JSONResponse(
+            {"error": "conflict", "message": "That already exists."}, status_code=409
         )

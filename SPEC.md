@@ -445,6 +445,7 @@ sighting, and the server never learns a time (invariant 4).
 | Passive BLE sniffer (generic scanner app, or several planted receivers) | Partly | Sees one-time EIDs and that *some* Mutual device is nearby. Encounter tokens are keyed by a secret it cannot compute (§6.13), so it can neither create crossings nor link EIDs to accounts, not even with an account of its own. App presence leaks — accepted. Linking EIDs across rotations through an unchanged device address is checked in the spike (§14.2) |
 | Relay attacker or planted device (forwards EIDs both ways in real time, or a phone left at a place) | Accepted risk | A two-way real-time relay can create a crossing between two real users. A phone with an account left at a place gets crossings with people who stay ≥ 4 minutes, a weak "who uses Mutual here" oracle limited by `display_cap` |
 | Blocked or unmatched party receiving an "ended" mutual | Accepted risk | Fair delivery means they still see the match and its intent(s), and know the other side ended it. A report filed against the other party from an ended mutual goes to the moderation queue flagged for review, never acted on automatically |
+| A pending (not yet notified) match hides its own peer from later digests | Documented limitation | Once a match row exists, §11's "matched the viewer" exclusion applies at the next digest bake, even before `notify_after`. A block or report reaching that peer must then go through an *already-cached* digest snapshot from before the match formed, or through the match once it is notified — never through a freshly-baked digest while the match is still pending |
 | Sybil accounts | Mitigated | One account per verified college email |
 | Network attacker | TLS only | Dev runs on localhost HTTP; pilot must use TLS |
 | **Malicious (active) server** — substituting public keys, forging digests | **Out of scope** | Stated limitation. One substituted key would give an active server every one-sided interest and intent toward that peer, undetectably. Key transparency (a signed, append-only `(user_id, pk)` log) is future work |
@@ -604,7 +605,10 @@ institution before Tier 3. This spec is not legal advice.
 
 Errors: `400` malformed/semantic, `401` no session, `403` forbidden,
 `404` not found, `409` duplicate, `422` validation, `425` too early,
-`429` rate limited. Error body `{ "error": "<code>", "message": "<text>" }`.
+`429` rate limited. Error body `{ "error": "<code>", "message": "<text>" }`. A
+duplicate-write race (two concurrent requests both passing the same
+check-then-insert guard) still surfaces as `409 conflict` rather than an
+unhandled error, never echoing the underlying write.
 
 ### Auth and account
 | Method & path | Body → response | Rules |
@@ -706,8 +710,9 @@ date strings.
   attempts, created_at)`
 - `users(id, email_hmac UNIQUE, campus_id, first_name, year_of_study,
   identity_pk, identity_key_changed_at, age_verified_at, discovery_paused,
-  suspended_at, deleted_at, created_at, consent_version)`; `identity_pk` is
-  unique among rows with `deleted_at IS NULL` (partial unique index)
+  suspended_at, created_at, consent_version)`; `identity_pk` is unique.
+  Account deletion is a hard delete (S11): there is no `deleted_at` column
+  to check, because a deleted account's row does not exist any more
 - `otp_codes(email_hmac PK, campus_id, code_hash, expires_at, attempts,
   last_sent_at)` — `code_hash` is HMAC-SHA256 under the server pepper
 - `sessions(token_hash PK, user_id NULL until account exists, email_hmac,
@@ -732,9 +737,12 @@ date strings.
   ended_at NULL, ended_by NULL, frozen_card JSON NULL,
   ended_seen_by_other_at NULL)`; unique active pair. Ended matches are
   deleted once the other party has fetched them, or after 30 days
-- `match_tokens(match_id, epoch, token, notify_after)` — pending until
-  `notify_after`; the batch only inserts here
+- `match_tokens(match_id, epoch, token, notify_after, notified)` — pending
+  (`notified=False`) until the release step evaluates it at `notify_after`;
+  the batch only ever inserts rows here, never mutates an existing one
 - `reveal_consents(match_id, user_id)`
+- `match_reads(match_id, user_id, read_at)` — the `unread` flag in
+  `GET /matches` (§11): set on every `GET .../messages` call
 - `messages(id, match_id, sender_id, body, created_at)`
 - `blocks(blocker_id, blocked_id, created_at)`
 - `reports(id, reporter_id, reported_id, reason, excerpt JSON, status,
@@ -1110,6 +1118,7 @@ reveal:
   default_policy: M
   policy_schedule: []         # [{start: YYYY-MM-DD, end: YYYY-MM-DD, policy: M|C}]
   conversation_messages_each: 8
+  ended_match_retention_days: 30   # §6.9: "until... fetched or 30 days pass" fallback
 messages:
   max_length: 1000
   rate_limit_per_minute: 30
@@ -1309,7 +1318,7 @@ server/migrations/{env.py,script.py.mako,versions/}     (Alembic)
 server/mutual_server/{__init__,main,config,clock,ids,db,models,security,errors,deps,schemas,admin}.py
 server/mutual_server/data/prompts.json
 server/mutual_server/routers/{auth,account,profile,presence,digest,signals,matches,messages,safety,config_route,dev}.py
-server/mutual_server/services/{campus,resolution,matching,ranking,digest,arms,retention,email,media}.py
+server/mutual_server/services/{campus,resolution,matching,ranking,digest,arms,cards,retention,email,media}.py
 server/tests/{conftest,test_app,test_auth,test_account,test_profile,test_presence,test_digest,test_signals,test_matches,test_reveal,test_messages,test_safety,test_retention,test_leak_two_worlds,test_route_audit,test_study_gate}.py
 sim/{pyproject.toml,config.yaml}
 sim/mutual_sim/{__init__,population,copresence,policies,behaviour,metrics,run,sweep,report}.py

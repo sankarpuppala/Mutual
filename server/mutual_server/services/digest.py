@@ -65,7 +65,7 @@ def _candidates(
     out = []
     for peer_id, candidate in best.items():
         peer = db.get(User, peer_id)
-        if peer is None or peer.deleted_at is not None or peer.discovery_paused:
+        if peer is None or peer.discovery_paused:
             continue
         blocked_viewer = db.execute(
             select(Block.blocker_id).where(

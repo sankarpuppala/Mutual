@@ -53,19 +53,15 @@ class User(Base):
     age_verified_at: Mapped[datetime] = mapped_column(UtcDateTime)
     discovery_paused: Mapped[bool] = mapped_column(Boolean, default=False)
     suspended_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
-    deleted_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)
     consent_version: Mapped[str | None] = mapped_column(String(32))
 
+    # Account deletion is a hard delete (S11): the row itself is removed (routers/account.py),
+    # so "a public key may belong to only one non-deleted account" (§6.5) needs no extra
+    # condition — every remaining row is, by construction, a live account. A soft-delete
+    # marker was removed here (Phase 5 security review) once nothing set it any more.
     __table_args__ = (
-        # SPEC §6.5: a public key may belong to only one non-deleted account.
-        Index(
-            "uq_users_identity_pk_live",
-            "identity_pk",
-            unique=True,
-            sqlite_where=text("deleted_at IS NULL"),
-            postgresql_where=text("deleted_at IS NULL"),
-        ),
+        Index("uq_users_identity_pk_live", "identity_pk", unique=True),
         Index("ix_users_campus", "campus_id"),
     )
 
@@ -209,6 +205,11 @@ class Match(Base):
 
 
 class MatchToken(Base):
+    """A token is **pending** (``notified=False``) until its own ``notify_after`` is
+    reached; the release step (``services.matching.release_due_tokens``) then evaluates
+    it exactly once — dropping it silently (a block, unmatch or deleted account) or
+    flipping it to ``notified=True`` forever (SPEC.md §6.9 "fair delivery")."""
+
     __tablename__ = "match_tokens"
     match_id: Mapped[str] = mapped_column(
         ForeignKey("matches.id", ondelete="CASCADE"), primary_key=True
@@ -216,6 +217,7 @@ class MatchToken(Base):
     token: Mapped[bytes] = mapped_column(TOKEN, primary_key=True)
     epoch: Mapped[str] = mapped_column(DAY)
     notify_after: Mapped[datetime] = mapped_column(UtcDateTime)
+    notified: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class RevealConsent(Base):
@@ -224,6 +226,17 @@ class RevealConsent(Base):
         ForeignKey("matches.id", ondelete="CASCADE"), primary_key=True
     )
     user_id: Mapped[str] = mapped_column(ID, primary_key=True)
+
+
+class MatchRead(Base):
+    """How far each side has read a match's messages, for the ``unread`` flag (§11)."""
+
+    __tablename__ = "match_reads"
+    match_id: Mapped[str] = mapped_column(
+        ForeignKey("matches.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[str] = mapped_column(ID, primary_key=True)
+    read_at: Mapped[datetime] = mapped_column(UtcDateTime)
 
 
 class Message(Base):

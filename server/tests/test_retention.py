@@ -85,6 +85,28 @@ def test_old_digest_snapshots_are_cleaned_up(h: Harness) -> None:
         assert db.query(DigestSnapshot).count() == 0
 
 
+def test_ended_match_deleted_after_30_days_if_never_fetched(h: Harness) -> None:
+    from conftest import make_match
+
+    a = signup(h, email="a@example.ac.in")
+    b = signup(h, email="b@example.ac.in")
+    match_id = make_match(h, a, b, "2026-10-05", ["date"])
+    h.client.delete(f"/v1/matches/{match_id}", headers=auth(a.token))  # ends it for b
+    with h.db() as db:
+        from mutual_server.models import Match
+
+        assert db.query(Match).filter_by(id=match_id).count() == 1
+        run_retention(db, h.clock, h.settings)
+        assert db.query(Match).filter_by(id=match_id).count() == 1  # not yet 30 days
+
+    h.clock.advance(days=h.settings.reveal.ended_match_retention_days + 1)
+    with h.db() as db:
+        from mutual_server.models import Match
+
+        run_retention(db, h.clock, h.settings)
+        assert db.query(Match).filter_by(id=match_id).count() == 0
+
+
 def test_otp_and_session_retention(h: Harness) -> None:
     acct = signup(h)
     h.client.post("/v1/auth/request-otp", json={"email": "pending@example.ac.in"})
