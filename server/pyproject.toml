@@ -7,7 +7,18 @@ name = "mutual-server"
 version = "0.0.0"
 description = "Mutual FastAPI server (SPEC.md §10-§12)."
 requires-python = ">=3.11,<3.12"
-dependencies = []
+dependencies = [
+    "mutual-protocol",
+    "fastapi==0.142.2",
+    "uvicorn==0.54.0",
+    "SQLAlchemy==2.1.3",
+    "alembic==1.20.0",
+    "pydantic==2.13.5",
+    "PyYAML==6.0.3",
+    "python-multipart==0.0.32",
+    "pillow==12.3.0",
+    "tzdata==2026.5",
+]
 
 [project.optional-dependencies]
 dev = ["pytest==9.1.1", "ruff==0.16.10", "httpx==0.28.1"]
@@ -15,6 +26,13 @@ dev = ["pytest==9.1.1", "ruff==0.16.10", "httpx==0.28.1"]
 [tool.setuptools.packages.find]
 include = ["mutual_server*"]
 
+[tool.setuptools.package-data]
+mutual_server = ["data/*.json"]
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection markers are designed to be used as default values.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.File", "fastapi.Form"]

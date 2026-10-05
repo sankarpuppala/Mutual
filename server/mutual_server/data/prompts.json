@@ -1,0 +1,23 @@
+{
+  "looking_for": "looking_for",
+  "prompts": [
+    { "id": "looking_for", "text": "I'm looking for", "kind": "looking_for" },
+    { "id": "simple_pleasures", "text": "My simple pleasures" },
+    { "id": "ask_me_about", "text": "Ask me about" },
+    { "id": "geek_out", "text": "I geek out on" },
+    { "id": "typical_sunday", "text": "Typical Sunday" },
+    { "id": "win_me_over", "text": "The way to win me over is" },
+    { "id": "irrational_fear", "text": "My most irrational fear" },
+    { "id": "shower_thought", "text": "A shower thought I recently had" },
+    { "id": "together_we_could", "text": "Together, we could" },
+    { "id": "recently_discovered", "text": "I recently discovered" },
+    { "id": "makes_my_week", "text": "A small thing that makes my week" },
+    { "id": "unpopular_opinion", "text": "An opinion I will defend" },
+    { "id": "currently_learning", "text": "I'm currently learning" },
+    { "id": "study_ritual", "text": "My study ritual" },
+    { "id": "comfort_food", "text": "My comfort food" },
+    { "id": "go_to_song", "text": "A song I never skip" },
+    { "id": "proud_of", "text": "Something I'm quietly proud of" },
+    { "id": "green_flag", "text": "A green flag I look for" }
+  ]
+}

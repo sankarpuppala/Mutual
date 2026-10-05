@@ -1,0 +1,74 @@
+# Copy to server/config.yaml (gitignored) and edit. Every tunable number lives here (CLAUDE.md §6).
+timezone: Asia/Kolkata
+database:
+  url: sqlite:///server/mutual.db        # relative paths are resolved from the repository root
+secrets:                                 # set via environment variables in practice
+  email_pepper_env: MUTUAL_EMAIL_PEPPER
+email:
+  mode: console                          # console (dev only) | smtp
+  smtp_host: ""
+  smtp_port: 587
+  smtp_user_env: MUTUAL_SMTP_USER
+  smtp_password_env: MUTUAL_SMTP_PASSWORD
+  from_address: ""
+campuses:                                # pre-approved colleges (SPEC §4.1); more via the admin CLI
+  - key: example.ac.in
+    name: "Example College"
+    domains: ["example.ac.in"]           # subdomains are included automatically
+auth:
+  academic_suffixes: ["ac.in", "edu.in", "edu"]
+  otp_ttl_seconds: 600
+  otp_max_attempts: 5
+  otp_resend_cooldown_seconds: 60
+  session_ttl_days: 30
+  min_age_years: 18
+  identity_key_change_min_days: 30
+profile:
+  first_name_max_length: 40
+  year_of_study_max: 8
+  prompts_required: 3
+  prompt_text_max_length: 300
+  tags_max: 8
+  tag_max_length: 24
+presence:
+  min_qualified_windows: 4
+  crossing_retention_days: 7
+  upload_window_start: "00:05"
+  upload_window_end: "06:00"
+digest:
+  release_time: "08:00"
+  lookback_days: 7
+  display_cap: 40
+  media_prefetch_cap_mb: 25
+signals:
+  upload_window_start: "18:00"
+  upload_window_end: "23:30"
+  match_batch_time: "23:45"
+  interest_ttl_days: 7
+reveal:
+  default_policy: M
+  policy_schedule: []                    # [{start: YYYY-MM-DD, end: YYYY-MM-DD, policy: M|C}]
+  conversation_messages_each: 8
+messages:
+  max_length: 1000
+  rate_limit_per_minute: 30
+media:
+  storage_dir: server/media              # relative paths are resolved from the repository root
+  voice_max_seconds: 30
+  voice_max_bytes: 1048576
+  waveform_points: 48
+  photos_max: 4
+  photo_max_bytes: 10485760
+  photo_max_dimension: 1600
+  photo_jpeg_quality: 85
+ranking:
+  method: random                         # random | reciprocal_content
+ble:
+  scan_window_seconds: 8
+  scan_period_seconds: 60
+  rssi_threshold_dbm: -80
+  advertise_tx_power: medium
+study:
+  enabled: false
+  approval_reference: ""
+  campuses: []                           # study mode applies only to these campus keys

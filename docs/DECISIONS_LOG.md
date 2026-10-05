@@ -178,3 +178,34 @@ An independent reviewer saw only the protocol sections and attacked them.
   - a user's campus is fixed at sign-up;
   - "federation across several servers" stays out of scope.
 - **Timezone:** Asia/Kolkata confirmed (Q2).
+
+### 13. Phase 3 (server core) choices — Adopted
+- **Human:** "merge it yourself" and "start". Claude fast-forwarded `main` to
+  include Phases 1–2 and the college docs (no push; the human pushes to
+  `origin`). Phase 3 runs on `phase-3-server-core`.
+- **Login codes are hashed with a keyed hash (HMAC) under the server
+  pepper,** not plain SHA-256. A 6-digit code hashed without a key can be
+  brute-forced from a database dump in milliseconds. This is a security
+  fix applied under the standing delegation.
+- **Photos:** rotated by their EXIF orientation, then rebuilt from raw
+  pixels, so no EXIF, GPS, XMP or colour-profile data can survive. They are
+  shrunk to at most 1600 px and saved as JPEG at quality 85. A test uploads
+  a photo with GPS and checks the stored bytes.
+- **Voice notes:** the server reads the length from the M4A file's own
+  header, using a small built-in reader. This avoids adding a GPL audio
+  library. Over 30 seconds, or any video track, is refused.
+- **Deleting an account** in Phase 3 signs you out everywhere and marks the
+  account deleted. The full clean-up (rows, files, "ended" mutuals for the
+  other person) comes in Phase 5, as planned. Until then the same email
+  cannot sign up again; afterwards it can.
+- **A rejected college** (operator said "no", for example a school) gets
+  "use your college email".
+- **Your own profile** comes back inside `GET /account/me`; the spec has no
+  separate route for it.
+- **Dev seeding** returns the synthetic users' keys and login tokens, so a
+  developer can act as them. It exists only in dev mode.
+- **Server start command:** `uvicorn … --factory --no-access-log`. The
+  access log would record IP addresses (D22).
+- **New guard:** a pre-commit hook now runs the server tests too.
+- **Noted, not acted on:** Starlette warns that its test client prefers
+  `httpx2`. We stay on the pinned `httpx` 0.28.1; revisit if it breaks.

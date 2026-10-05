@@ -865,3 +865,80 @@ Add an entry at the end of every session. Newest at the bottom.
     `main`;
   - then Phase 3 (server core). Phase 3 **needs Q1** (college email domain)
     and **Q2** (confirm Asia/Kolkata) answered first.
+
+### 2026-10-05 — Phase 3 — done (awaiting human review; nothing committed)
+- Done:
+  - Q1/Q2 answered; SPEC v1.4 (§4.1 campuses, D24) committed by the human
+    (`5a842fe`).
+  - `main` fast-forwarded to `5a842fe` by Claude at the human's request (not
+    pushed). Branch `phase-3-server-core`.
+- Server package `mutual_server`:
+  - `config` (Pydantic, YAML + env, no-DST timezone check, study gate,
+    console email refused in prod);
+  - `clock` (injectable, dev offset), `ids` (UUIDv4 / deterministic), `db`
+    (UTC-aware datetimes, SQLite foreign keys), `models` (all 17 tables of
+    §12);
+  - `security`, `errors`, `deps`, `schemas`;
+  - services `campus`, `email`, `media`;
+  - routers `auth`, `account`, `profile`, `config_route`, `dev`;
+  - `admin` CLI; `data/prompts.json` (18 prompts);
+  - Alembic `alembic.ini`, `migrations/env.py`,
+    `versions/0001_initial_schema.py`;
+  - `config.example.yaml`.
+- Tests:
+  - `pytest server -q` → 46 passed. Files: `test_auth`, `test_account`,
+    `test_profile`, `test_study_gate`, `test_app`.
+  - `pytest packages/protocol_py server sim -q` → 176 passed (8.3 s).
+  - `pre-commit run --all-files` → ruff check, ruff format, pytest protocol,
+    pytest server and protocol-ts all Passed.
+  - `alembic upgrade head` on a fresh SQLite file → exit 0.
+  - `alembic check` → "No new upgrade operations detected".
+  - `downgrade base` then `upgrade head` → exit 0. 18 tables, including
+    `alembic_version`, and both partial unique indexes present.
+- Smoke test (real uvicorn, dev, `--no-access-log`):
+  - config, request-otp (code read from the console), verify, create
+    account and `/me` → "Smoke @ Example College";
+  - a pending college gets 403 `campus_not_open`; dev seed works;
+  - **0 access-log lines** in the server output.
+  - Admin CLI `campuses list` / `approve iitb.ac.in` worked against the same
+    database.
+- ⚠ verify results:
+  - Pillow 12.3.0: plain re-encode and `frombytes` rebuild both drop EXIF,
+    GPS and XMP; `exif_transpose` applies orientation. The rebuild is used.
+  - FastAPI 0.142.2 supports `lifespan=`.
+  - Windows needs `tzdata` for `zoneinfo`.
+- Version pins chosen: fastapi 0.142.2, uvicorn 0.54.0, SQLAlchemy 2.1.3,
+  alembic 1.20.0, pydantic 2.13.5, PyYAML 6.0.3, python-multipart 0.0.32,
+  pillow 12.3.0, tzdata 2026.5.
+- Spec changes:
+  - §12: `users.identity_key_changed_at`, `otp_codes.campus_id`,
+    `sessions.campus_id` and `created_at`, `media.duration_ms`; the partial
+    unique index is documented.
+  - §18 points to `config.example.yaml` as the full config (new `database`,
+    `email`, `profile` and `media` keys).
+  - §20: new modules and tests.
+  - CLAUDE.md §4: run, migration and admin commands.
+  - DECISIONS_LOG entry 13.
+- Deviations from this plan and why:
+  - OTP codes use HMAC rather than plain SHA-256 (security, entry 13).
+  - `DELETE /account` is partial until Phase 5.
+  - `ids.py`, `errors.py`, `deps.py`, `services/campus.py` and `test_app.py`
+    were added (§20 updated).
+  - Ruff B008 is told about FastAPI's `Depends`, `File` and `Form`.
+  - Phase 3 ran in the same session as earlier phases, at the human's
+    request.
+- Human review checklist (Phase 3):
+  - `date_of_birth` appears only in `schemas.py` (request) and the age
+    check in `routers/account.py`, never in a model or a log. A test also
+    searches the whole database and the 422 response for the date.
+  - There is no plaintext email column. A test dumps every table and
+    searches for the email, code and token.
+  - OTP comparison uses `hmac.compare_digest` (`security.otp_matches`,
+    asserted by a test).
+  - `datetime.now` appears only in `clock.py` (asserted by a test).
+  - Dev routes are absent unless `MUTUAL_ENV=dev` (404 test), and present in
+    dev (test).
+- Next session starts with:
+  - the human reviews and commits Phase 3;
+  - then Phase 4: presence uploads, crossing resolution with the campus
+    filter, digest snapshots and retention. No open questions block it.

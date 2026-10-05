@@ -17,6 +17,13 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: pytest-server
+        name: pytest server
+        entry: python -m pytest server -q -p no:warnings
+        language: system
+        pass_filenames: false
+        files: ^(server|packages/protocol_py|packages/protocol-spec)/
+
       # Cross-language guard: any change to the protocol or its vectors re-runs the TS suite.
       - id: protocol-ts
         name: npm test -w packages/protocol-ts (vectors + properties)

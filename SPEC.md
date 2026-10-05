@@ -704,14 +704,16 @@ date strings.
 - `campuses(id, key UNIQUE, name, domains JSON, status[open|pending|rejected],
   attempts, created_at)`
 - `users(id, email_hmac UNIQUE, campus_id, first_name, year_of_study,
-  identity_pk, age_verified_at, discovery_paused, suspended_at, deleted_at,
-  created_at, consent_version)`
-- `otp_codes(email_hmac, code_hash, expires_at, attempts, last_sent_at)`
+  identity_pk, identity_key_changed_at, age_verified_at, discovery_paused,
+  suspended_at, deleted_at, created_at, consent_version)`; `identity_pk` is
+  unique among rows with `deleted_at IS NULL` (partial unique index)
+- `otp_codes(email_hmac PK, campus_id, code_hash, expires_at, attempts,
+  last_sent_at)` — `code_hash` is HMAC-SHA256 under the server pepper
 - `sessions(token_hash PK, user_id NULL until account exists, email_hmac,
-  expires_at)`
+  campus_id, expires_at, created_at)`
 - `profiles(user_id PK, prompts JSON, tags JSON, updated_at)`
 - `media(id, user_id, kind[voice|photo], prompt_id NULL, photo_index NULL,
-  path, bytes, sha256, waveform JSON NULL, created_at)`
+  path, bytes, sha256, waveform JSON NULL, duration_ms NULL, created_at)`
 - `presence_uploads(user_id, day, uploaded_at)`, PK `(user_id, day)`
 - `encounters(day, token, user_id)`, index on `(day, token)` — one row per
   uploaded entry, deleted at cutoff with the upload
@@ -1061,10 +1063,17 @@ salt; no crossing pairs exported.
 ## 18. Configuration
 
 ### `server/config.example.yaml` (copied to `server/config.yaml`, which is gitignored)
+The authoritative, complete file is `server/config.example.yaml`. Phase 3
+added `database`, `email`, `profile` and extra `media` keys there (every
+tunable number lives in config, CLAUDE.md §6). The essentials:
 ```yaml
 timezone: Asia/Kolkata
+database:
+  url: sqlite:///server/mutual.db
 secrets:                      # set via environment variables in practice
   email_pepper_env: MUTUAL_EMAIL_PEPPER
+email:
+  mode: console               # console (dev/test only; refused in prod) | smtp
 campuses:                     # pre-approved colleges (§4.1); more are approved with the admin CLI
   - key: example.ac.in
     name: "Example College"
@@ -1291,12 +1300,12 @@ packages/protocol-ts/{package.json,tsconfig.json,vitest.config.ts}
 packages/protocol-ts/src/{index,constants,encoding,keys,tokens,eid,encounter,random}.ts
 packages/protocol-ts/test/{vectors,properties}.test.ts
 server/{pyproject.toml,config.example.yaml,alembic.ini}
-server/migrations/                                       (Alembic)
-server/mutual_server/{__init__,main,config,clock,db,models,security,schemas,admin}.py
+server/migrations/{env.py,script.py.mako,versions/}     (Alembic)
+server/mutual_server/{__init__,main,config,clock,ids,db,models,security,errors,deps,schemas,admin}.py
 server/mutual_server/data/prompts.json
 server/mutual_server/routers/{auth,account,profile,presence,digest,signals,matches,messages,safety,config_route,dev}.py
-server/mutual_server/services/{resolution,matching,ranking,arms,retention,email,media}.py
-server/tests/{conftest,test_auth,test_account,test_profile,test_presence,test_digest,test_signals,test_matches,test_reveal,test_messages,test_safety,test_retention,test_leak_two_worlds,test_route_audit,test_study_gate}.py
+server/mutual_server/services/{campus,resolution,matching,ranking,arms,retention,email,media}.py
+server/tests/{conftest,test_app,test_auth,test_account,test_profile,test_presence,test_digest,test_signals,test_matches,test_reveal,test_messages,test_safety,test_retention,test_leak_two_worlds,test_route_audit,test_study_gate}.py
 sim/{pyproject.toml,config.yaml}
 sim/mutual_sim/{__init__,population,copresence,policies,behaviour,metrics,run,sweep,report}.py
 sim/tests/{test_metrics,test_determinism,test_policies}.py

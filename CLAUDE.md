@@ -107,11 +107,17 @@ npm install
 npm test -w packages/protocol-ts
 npm run typecheck -w packages/protocol-ts
 
-# Server (dev mode: OTP codes printed to console, dev routes enabled)
-$env:MUTUAL_ENV="dev"; uvicorn mutual_server.main:app --reload --app-dir server
+# Server config: copy server/config.example.yaml to server/config.yaml (gitignored) once.
+# Server (dev mode: OTP codes printed to console, dev routes enabled). --no-access-log is
+# mandatory in every environment: the access log records client IP addresses (D22).
+$env:MUTUAL_ENV="dev"; uvicorn mutual_server.main:create_app --factory --reload --no-access-log --app-dir server
 
-# Database migrations
+# Database migrations (URL from MUTUAL_DATABASE_URL, else server/config.yaml)
 alembic -c server/alembic.ini upgrade head
+
+# Operator CLI (colleges, suspensions; reports in Phase 5)
+python -m mutual_server.admin campuses list
+python -m mutual_server.admin campuses approve <key> --name "<College name>"
 
 # Simulation
 python -m mutual_sim.run --config sim/config.yaml --seeds 30
