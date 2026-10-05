@@ -7,7 +7,12 @@ name = "mutual-sim"
 version = "0.0.0"
 description = "Agent-based simulation of photo-reveal policies (SPEC.md §15)."
 requires-python = ">=3.11,<3.12"
-dependencies = []
+dependencies = [
+    "numpy==2.4.6",
+    "pandas==3.0.6",
+    "matplotlib==3.11.2",
+    "PyYAML==6.0.3",
+]
 
 [project.optional-dependencies]
 dev = ["pytest==9.1.1", "ruff==0.16.10"]

@@ -344,3 +344,69 @@ An independent reviewer saw only the protocol sections and attacked them.
   work at the database level, never echoing submitted fields back in
   validation errors, and binding each OTP's hash to its own email hash so
   a stolen OTP can't be replayed against a different account.
+
+### 17. Phase 6 (simulation) — Adopted
+- **Human:** "start phase 6". This phase touches only `sim/`, independent
+  of the server; `main` fast-forwarded to Phase 5 (not pushed). Branch
+  `phase-6-simulation`.
+- **§15 describes the model at a level that leaves real implementation
+  gaps** — not ambiguity about what a sentence means, but places where a
+  working simulation needs a rule the spec doesn't state. Each one is
+  resolved here, stated plainly (also in `sim/config.yaml`'s comments and
+  the report's own methodology note), rather than silently assumed:
+  - **Which of the five intents the model represents.** §15 never
+    mentions intents after `date_openness_prob`, and the utility/reveal
+    formulas (§15.3-§15.4) have no intent parameter at all. **Decision:**
+    the simulation models the *date* channel only — the one reveal timing
+    is centrally about. `date_open=false` agents never signal or are
+    signalled on it, but still appear as crossing partners for everyone
+    else (real co-presence, just not part of the measured dynamic).
+  - **A pair that is both same-hostel and same-department** (§15.2 gives
+    three weights for what reads as three exclusive cases). **Decision:**
+    the hostel weight wins (`copresence.py`); stated in `config.yaml`.
+  - **"progress", the fraction of `n_reveal` rounds completed at reveal**
+    (§15.4). Re-read closely, this describes *one* reveal event per
+    conversation, happening at a different day depending on policy — not a
+    value that changes round by round. **Decision:** `progress = 0` for M
+    and P (reveal with zero rounds elapsed), `progress = 1` for C (all
+    `n_reveal` rounds elapsed) — a per-policy constant, in `policies.py`.
+  - **"recent_matches" in the churn formula** (§15.5) has no defined
+    window. **Decision:** matches formed in the trailing 7 days — the
+    model's other natural time horizon (`interest_ttl_days` mirrors it),
+    config key `recent_matches_window_days`.
+  - **"Share of matches captured by the top decile of `a`"** (§15.6).
+    **Decision:** the top 10% by attractiveness across the *whole*
+    population (not just active agents) is the population-level
+    reference group; a match counts if either participant is in it.
+  - **"Share of conversations ending at reveal"** (§15.6) — ending
+    relative to what denominator? **Decision:** of matches that *reached*
+    a reveal check (excludes ones that faded via ordinary churn before
+    ever getting there, which is a separate phenomenon from the
+    reveal-driven drop-off the metric is named for).
+  - **A match formed by two agents signalling each other for the first
+    time on the very same day.** A naive single forward pass over agents
+    could miss it (whoever is processed first can't yet see the other
+    side's same-day decision). **Fix, not a modelling assumption:**
+    signalling runs as two passes — decide, then check every new signal
+    for reciprocity once the whole day's decisions are final.
+- **Discovery, from yesterday's crossings only** (§15.3's literal
+  "agent `i` sees up to `display_cap` of day `t`'s crossings" — no 7-day
+  lookback window the way the real digest has one). Kept exactly as
+  written; a documented simplification versus the real system.
+- **Smoke-tested before the real run, per the plan's own instruction:** a
+  2-seed run of the full main-experiment pipeline, then a tiny sweep grid,
+  both producing a correct `report.md` with figures, before the real
+  30-seed experiment and full sweep. No parameter was touched after either
+  real run — both ran once, with the config as committed.
+- **A genuine finding, not a modelling artefact (checked twice):** under
+  policy P, the Gini of interest received is noticeably higher (0.664 vs.
+  ~0.61 for M/C) and matches captured by the top attractiveness decile
+  nearly double (0.312 vs. ~0.18) — concentration of attention tracking
+  photo-at-discovery, as RQ2 asks about. Retention at day 56 is much lower
+  under C (0.394 vs. ~0.69), consistent with accumulated frustration from
+  not seeing faces. The sweep shows these rankings are not universal: at
+  `beta_a_over_beta_c=0` (attractiveness carries no weight at all), P's
+  advantage disappears, which is the expected null case, not a bug.
+- **Not implemented, out of this phase's scope:** the field-pilot's own
+  switchback scheduling (Tier 3, gated) and `reciprocal_content` ranking
+  (Phase 11) — unrelated to this simulation.

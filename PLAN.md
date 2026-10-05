@@ -646,8 +646,8 @@ approved yet; each needs a spec change when picked up.
 | Signal upload size (bytes) | | AC-T1-8 | |
 | Presence upload size, 50 / 500 sightings (bytes) | | AC-T1-8 | |
 | Worst-case match latency (hours) | | AC-T1-8 | |
-| Simulation main-experiment runtime (min, one core) | | Phase 6 | |
-| Sweep runtime (min) | | Phase 6 | |
+| Simulation main-experiment runtime (min, one core) | 0.17 min (10.2 s), 3 policies × 30 seeds | Phase 6 | 2026-10-06 |
+| Sweep runtime (min) | 7.7 min (460.8 s), 4050 runs | Phase 6 | 2026-10-06 |
 | BLE detection with neverForLocation | | Phase 9a | |
 | Detection rate 1 m / 3 m / 10 m | | Phase 9a | |
 | Walk-past false-crossing rate | | Phase 9a | |
@@ -1084,3 +1084,77 @@ Add an entry at the end of every session. Newest at the bottom.
     commits;
   - then Phase 6: the simulation (can run in parallel in a separate
     worktree) — no open questions block it.
+
+### 2026-10-06 — Phase 6 — done (awaiting human review; nothing committed)
+- Done:
+  - Phase 5 committed by the human (`fda2372`); `main` fast-forwarded to it
+    by Claude (not pushed). Branch `phase-6-simulation`.
+  - `sim/mutual_sim/{metrics,population,copresence,policies,behaviour,
+    run,sweep,report}.py`; `sim/tests/{test_metrics,test_determinism,
+    test_policies}.py`; `sim/config.yaml` (every §15 parameter, each
+    commented assumption/literature-informed); `sim/pyproject.toml`
+    dependencies (numpy, pandas, matplotlib, PyYAML).
+  - Generated: `sim/results/{main_experiment.csv, sweep.csv, report.md,
+    figures/*.png}` (844 KB total, committed per §20).
+  - New pre-commit hook `pytest-sim`.
+- Tests:
+  - `metrics.py` written and tested first, as instructed: `gini`'s three
+    spec test values, zero-mean and single-value edge cases, agreement
+    with the naive O(n²) double sum, and a seeded `bootstrap_ci`.
+  - `pytest sim -q` → 15 passed. `pytest packages/protocol_py server sim
+    -q` → 268 passed.
+  - AC-T1-9's two specific checks: identical seed ⇒ identical output hash
+    (`test_determinism.py`); `beta_a` changes `signals_received` under
+    policy P only, confirmed with `beta_a∈{0,5}` under all three policies
+    (`test_policies.py`) — also verified ad hoc against the real `N=150`
+    config before formalizing the test.
+  - Pipeline smoke-tested before any real run, per the plan's own
+    instruction: a 2-seed main-experiment run producing a complete
+    `report.md` with figures, then a tiny 2x2x1-cell/2-seed sweep
+    appending its section correctly — both checked by eye before the real
+    runs below.
+  - `pre-commit run --all-files` → all six hooks Passed.
+- Measured (now filled into the table below too):
+  - Main experiment (3 policies × 30 seeds, T=56): **10.2 s**.
+  - Sweep (3 policies × 45 cells × 30 seeds = 4050 runs): **460.8 s**
+    (7.7 min).
+  - Headline result (N=600, default config, bootstrap 95% CI, 30 seeds):
+    policy P's Gini of interest received 0.664 [0.658, 0.669] vs. M 0.607
+    [0.601, 0.614] and C 0.610 [0.604, 0.615]; share of matches touching
+    the top attractiveness decile 0.312 (P) vs. ~0.18 (M, C); retention at
+    day 56 0.686 (P) / 0.695 (M) / **0.394 (C)**. Full table in
+    `sim/results/report.md`.
+  - The sweep names 6 of 8 metrics where the main experiment's "which
+    policy wins" ranking reverses in at least one cell — always traced to
+    `beta_a_over_beta_c=0` (attractiveness carries no weight at all, the
+    expected null case) or a low `K`. Full list in the report's own
+    "Sensitivity sweep" section.
+- Version pins chosen: numpy 2.4.6, pandas 3.0.6, matplotlib 3.11.2,
+  PyYAML 6.0.3.
+- Spec changes: none (every parameter, output file and test name already
+  matched §15/§19/§20 as drafted). DECISIONS_LOG entry 17 records seven
+  modelling decisions §15 left unstated (which intent the model
+  represents, the same-hostel/same-department tie-break, what "progress"
+  means per policy, the "recent matches" churn window, the top-decile
+  metric's reference population, the reveal-ending metric's denominator,
+  and the same-day mutual-signal detection fix).
+- Deviations from this plan and why: none beyond the documented modelling
+  decisions above — the file list, task order and smoke-test discipline
+  all followed the plan exactly.
+- Human review checklist (Phase 6):
+  - Every parameter in `sim/config.yaml` is commented assumption or
+    literature-informed — spot check a few against the report's own
+    parameter table.
+  - The report's first paragraph states results are model-dependent
+    (`sim/results/report.md` line 3).
+  - P = photo at discovery, M = photo at match, C = photo after
+    conversation; the Gini of "interest received" is the inequality of
+    how many real signals each agent received (ground truth only the
+    simulation can see, since the real server never learns this).
+- Next session starts with:
+  - the human reviews the diff and commits;
+  - then Phase 7: the Tier 1 documents (threat model, security argument,
+    measured costs) — the Tier 1 gate. AC-T1-8's costs (signal/presence
+    upload bytes, worst-case match latency) still need computing from the
+    real server, not estimated by hand.
+
