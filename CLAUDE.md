@@ -155,13 +155,17 @@ that violates one, stop and report it before doing anything else.
    `BLUETOOTH_SCAN` with `usesPermissionFlags="neverForLocation"` and block the
    location permissions in the Expo config. If BLE does not work without a
    location permission, **stop and escalate** — never add it as a workaround.
+   Daily keys, EIDs, RSSI and sighting times **never leave the device**.
+   Presence uploads contain only the padded encounter-token set (`SPEC.md`
+   §6.13).
 4. **No real-time proximity.** Crossings become visible only in the next
    morning's digest (after `digest_release_time`). Never show who is nearby
    now. Never show a place name. Never show crossing counts or exact times —
    only a coarse block (morning/afternoon/evening/night) computed on-device.
 5. **Minimal storage of identity data.** Never store plaintext email, date of
    birth, OTP codes or session tokens. Store keyed hashes and an
-   `age_verified_at` timestamp only.
+   `age_verified_at` timestamp only. Never log or store client IP addresses
+   or user agents (run uvicorn without its access log).
 6. **No third-party analytics, crash reporting or ad SDKs.** No Firebase
    Analytics, Sentry, Amplitude, Mixpanel, Segment or similar. The denylist is
    enforced by `app/scripts/check-privacy-invariants.ts`.
@@ -189,6 +193,11 @@ that violates one, stop and report it before doing anything else.
 11. **Dev-only routes never ship.** `/v1/dev/*` (clock travel, simulated
     crossings) exists only when `MUTUAL_ENV=dev` and is tested to be absent
     otherwise.
+12. **Fair match delivery.** Matching runs only in the nightly batch, never
+    inside a request. Before `notify_after`, no response to anyone may depend
+    on whether a match exists. After it, a match cannot be erased for one side:
+    unmatch or block leaves an `ended` match for the other party (`SPEC.md`
+    §6.9).
 
 ---
 

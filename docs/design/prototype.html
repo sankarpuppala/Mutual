@@ -193,7 +193,6 @@ button[disabled]{cursor:not-allowed}
 .count strong{font-family:var(--display);font-weight:500;font-size:26px;color:var(--ink);margin-right:4px;font-variant-numeric:tabular-nums}
 .upload{display:flex;gap:10px;margin:0;font-size:13px;color:var(--muted);border-top:1px solid var(--hair);padding-top:14px}
 .upload svg{flex:none;margin-top:2px}
-
 /* lists */
 .list{list-style:none;margin:0;padding:0}
 .row{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--hair);width:100%}
@@ -354,8 +353,7 @@ button[disabled]{cursor:not-allowed}
     </div>
     <ul class="notes">
       <li>Photos are placeholders painted in the browser.</li>
-      <li>In the Vikram chat, send three messages to see photos unlock under policy C.</li>
-      <li>"Not for me" on a profile is a proposed addition: it hides a card on this phone only and sends nothing.</li>
+      <li>In the Vikram chat, send three messages to see photos unlock under policy C.</li>      <li>"Not for me" on a profile is a proposed addition: it hides a card on this phone only and sends nothing.</li>
     </ul>
   </aside>
 </div>
@@ -511,7 +509,6 @@ const pill = i => '<span class="pill">'+LABEL[i]+'</span>';
 const pillM = i => '<span class="pill m">'+LABEL[i]+'</span>';
 const fmt = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
 const photosShown = m => m.policy === 'M' || state.revealed[m.id];
-
 /* ---------- pieces ---------- */
 function voice(id, i){
   const pr = P[id].prompts[i]; const r = rng(hash(id + ':wave' + i)); let prev = .5, bars = '';

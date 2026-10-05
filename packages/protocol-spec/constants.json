@@ -7,10 +7,13 @@
   "eid_bytes": 16,
   "eid_interval_minutes": 15,
   "eid_intervals_per_day": 96,
+  "encounter_bytes": 32,
+  "uid_bytes": 16,
   "personalization": {
     "pair_key": "mutual-pairkey01",
     "interest": "mutual-interest1",
-    "eid": "mutual-eid-v0001"
+    "eid": "mutual-eid-v0001",
+    "encounter": "mutual-encount01"
   },
   "intents": { "study": 1, "project": 2, "fitness": 3, "friend": 4, "date": 5 },
   "ble": { "company_id": 65535, "magic_hex": "4d55", "payload_version": 1 }

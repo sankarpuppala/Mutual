@@ -1,7 +1,11 @@
 # SPEC.md — Mutual
 
-Status: **v1.1 — the contract.** (v1.1, 2026-10-05: adds the approved visual
-reference, §13.9 and D19.) Every implementation decision is checked
+Status: **v1.2 — the contract.** (v1.1, 2026-10-05: adds the approved visual
+reference, §13.9 and D19. v1.2, 2026-10-05: fixes from the adversarial
+protocol review: encounter tokens §6.13, batch matching and fair delivery
+§6.9, identity binding §6.5, D5/D13 revised, D20–D22. Same day: the
+date-one-at-a-time rule was withdrawn for simplicity, see D20.) Every
+implementation decision is checked
 against this file. When the code and this file disagree, this file wins until
 the human approves a change to it. Section numbers are referenced from
 `CLAUDE.md` and `PLAN.md`; do not renumber without updating both.
@@ -118,7 +122,8 @@ intents (multi-select) and one line: "They'll only know if they signal you
 back — for the same thing." Confirm → gentle haptic → the card shows "Signal
 sent". The Signals tab shows "14 of 20 signals free" as a row of 20 dots, and
 each active signal with an expiry ("until Sunday"). A signal can be withdrawn
-any time.
+any time, and withdrawing frees its slot instantly. No intent has its own
+limit; all five share the 20 signals.
 
 **J5 — A mutual.** The next morning, the Mutuals tab shows the new match with
 the shared intent(s). Depending on the active reveal policy, photos reveal
@@ -162,10 +167,13 @@ outputs for every vector in `packages/protocol-spec/vectors.json`.
   "eid_bytes": 16,
   "eid_interval_minutes": 15,
   "eid_intervals_per_day": 96,
+  "encounter_bytes": 32,
+  "uid_bytes": 16,
   "personalization": {
     "pair_key": "mutual-pairkey01",
     "interest": "mutual-interest1",
-    "eid": "mutual-eid-v0001"
+    "eid": "mutual-eid-v0001",
+    "encounter": "mutual-encount01"
   },
   "intents": { "study": 1, "project": 2, "fitness": 3, "friend": 4, "date": 5 },
   "ble": { "company_id": 65535, "magic_hex": "4d55", "payload_version": 1 }
@@ -182,6 +190,11 @@ TypeScript via JSON import). No constant is duplicated in code.
 - Intent: one byte, value from `constants.intents`.
 - EID interval index `i`: unsigned 16-bit big-endian, `0 ≤ i < 96`,
   `i = floor(minutes_since_local_midnight / 15)`.
+- "Local" always means the deployment timezone. Devices read their clock
+  corrected by the `server_time` offset from `GET /v1/config`. The deployment
+  timezone must not observe daylight saving (config validation rejects one
+  that does), so every day has exactly 96 intervals.
+- User id `uid`: the account's UUIDv4 as 16 raw bytes (RFC 4122 byte order).
 
 ### 6.4 Identity keys
 At account creation the device generates an X25519 key pair. The private key
@@ -194,10 +207,19 @@ For users A and B:
 ```
 ss = X25519(sk_A, pk_B)                     # 32 bytes; MUST reject all-zero
 (lo, hi) = sort_bytes_lexicographic(pk_A, pk_B)
-K_AB = BLAKE2b(data = ss || lo || hi, digest_size = 32,
-               person = "mutual-pairkey01")
+K_AB = BLAKE2b(data = ss || lo || hi || uid(lo) || uid(hi),
+               digest_size = 32, person = "mutual-pairkey01")
 ```
-`K_AB == K_BA`. Computing a pair key where `pk_A == pk_B` is an error.
+`uid(x)` is the 16-byte id (§6.3) of the account that registered public key
+`x`. `K_AB == K_BA`. Computing a pair key where `pk_A == pk_B` or
+`uid_A == uid_B` is an error. Binding the account ids means a copied public
+key cannot redirect anyone's tokens.
+
+**Identity key validity.** A public key is valid only if it is 32 bytes,
+canonical (top bit clear and `u < 2^255 − 19`), not one of the low-order
+points, and not registered to another non-deleted account. The server
+enforces this at `POST /account` and `PUT /account/identity-key`. Clients
+apply the same checks, except uniqueness, before using a peer's key.
 
 ### 6.6 Interest token
 ```
@@ -228,18 +250,50 @@ EID(d, i) = first 16 bytes of BLAKE2b(data = uint16_be(i), key = DK_d,
                                      person = "mutual-eid-v0001")
 ```
 EIDs are computed in TypeScript and handed to the native module as a
-schedule (§14). `DK_d` is uploaded only **after** day `d` has ended (§6.11).
+schedule (§14). `DK_d` **never leaves the device**. It is deleted once day
+`d`'s encounter set (§6.13) has been uploaded.
 
 ### 6.9 Server matching rule
-For epoch `e`, users U ≠ V match iff some token `t ∈ S_U(e) ∩ S_V(e)`. The
-server records the unordered pair, the matching token(s) and the epoch. It
-does **not** know the intent. If a block exists in either direction, the match
-is suppressed (deleted, never notified). If U and V already have an active
-match, additional matching tokens are appended to it (a new shared intent).
+Matching for epoch `e` runs **once**, as a batch job at
+`signals.match_batch_time` (23:45 local, after the upload window closes).
+`PUT /signals` only stores the set. Users U ≠ V match iff some token
+`t ∈ S_U(e) ∩ S_V(e)`. The server records the unordered pair and each matching
+token with its epoch. It does **not** know the intent. If U and V already
+have an active match, new matching tokens are appended to it (a new shared
+intent). When the batch finishes, every non-matching `epoch_tokens` row for
+`e` is deleted.
+
+**Fair delivery.** `notify_after` = `digest.release_time` on day `e+1`. It is
+the same instant for both parties and for every match of the epoch.
+- Before `notify_after`, no response to any account may depend on whether a
+  match exists. That covers status codes, bodies, digest contents and timing.
+- A block in either direction that exists when the batch runs, or is created
+  before `notify_after`, deletes the match. Neither party is ever told. Such a
+  block is blind, because nothing about the match is observable yet.
+- After `notify_after`, a match cannot be erased for one side. If one party
+  unmatches or blocks, the other party still receives it, with
+  `state: "ended"` and its matched tokens, but no chat and no photos. It stays
+  until their client has fetched it or 7 days pass.
+
+So both parties always learn the same thing.
 
 ### 6.10 Client-side rules
 - A signal is active from creation until `interest_ttl_days` (7) after the
-  most recent crossing with that peer, or until withdrawn, or until matched.
+  most recent crossing with that peer, or until withdrawn, or until a match
+  containing its `(peer, intent)` token is received. Signals to the same peer
+  for other intents stay active, and can later be appended to the match.
+- **No per-intent limits.** All intents share the `signal_set_size` cap
+  (D20). Selecting several intents for one peer is allowed. Each is a real
+  signal, and a match reveals only the intent(s) both chose.
+- **Withdrawal** takes effect immediately on the device. The signal slot
+  frees at once, and the signal is left out of every later upload.
+  If tonight's set has already been uploaded, it still contains the token,
+  which can still match tonight; the UI says so (§13.6). No withdrawal request
+  is ever sent to the server, because its existence would leak the signal.
+- **Match verification.** The client accepts a match only if every matched
+  token equals `T(self, peer, epoch, x)` for one of its signals to the peer on
+  the match card that was active in that epoch. It computes this with that
+  card's `identity_pk` and `peer_id`. Otherwise it ignores the match.
 - A user can only signal peers present in their digest window (the client has
   their `pk` only then). Signalling oneself is rejected.
 - On receiving a match, the client recomputes `T` for each of its active
@@ -254,21 +308,57 @@ match, additional matching tokens are appended to it (a new shared intent).
   uniformly random time inside `[signal_upload_window_start,
   signal_upload_window_end]` (18:00–23:30 local) and uploads then, containing
   all signals active at that moment. If the device was off or offline, it
-  uploads at the next opportunity **before the epoch ends**; otherwise that
-  epoch is skipped. Never upload a set for a past epoch. The server rejects
+  uploads at the next opportunity **before `match_batch_time`** (23:45);
+  otherwise that epoch is skipped. Never upload a set for a past epoch. The server rejects
   uploads before the window start (HTTP 425) and duplicates (HTTP 409). The
   client uses the server's current epoch from `GET /v1/config`, never its own
   clock.
-- **Presence:** for each past day `d`, the client uploads `DK_d` and its
-  aggregated sightings once, at a random time between 00:05 and 06:00 local
+- **Presence:** for each past day `d`, the client uploads its padded
+  encounter set (§6.13) once, at a random time between 00:05 and 06:00 local
   on day `d+1`, or at next app open before the cutoff (start of day `d+2`).
+  It never uploads daily keys, EIDs or sighting times.
 - **Digest media:** after fetching a digest, the client downloads **every**
   media item it lists that is not already cached, in a fixed order (sorted by
   media id), whether or not the user ever opens the card.
 
 ### 6.12 Versioning
 Any change to §6 bumps `protocol_version`, changes the personalization
-strings' trailing digits, regenerates vectors, and requires approval.
+strings' trailing digits, regenerates vectors, and requires approval. (Before
+the first protocol code exists, as for v1.2, §6 may change without a bump.)
+
+### 6.13 Encounter tokens (presence)
+Crossings come from **mutual** sightings. The server never learns daily keys,
+EIDs or times.
+
+While advertising its own EID `a`, a device that hears EID `b` with RSSI ≥
+`ble.rssi_threshold_dbm` counts the scan windows in which it heard `b` while
+`a` was active (`windows`, 1–15). For each such pair it computes:
+```
+(lo, hi) = sort_bytes_lexicographic(a, b)
+E(d, a, b) = BLAKE2b(data = day_ascii(10) || lo || hi, digest_size = 32,
+                     person = "mutual-encount01")
+```
+The other device, hearing `a` while advertising `b`, computes the same `E`.
+No interval index is hashed, so two devices whose clocks straddle a 15-minute
+boundary still agree.
+
+The presence upload for day `d` is a set of `{e, windows}` entries. Dummy
+entries (32 CSPRNG bytes, `windows` uniform in 1–15) pad it to the next
+multiple of `presence.encounter_pad_block` (256, at least 256 entries), and
+the whole set is shuffled with a CSPRNG. The server:
+1. stores the set until the cutoff (start of `d+2`);
+2. for each pair of users X ≠ Y, finds the tokens both uploaded for day `d`;
+3. records a crossing when X's summed `windows` over those shared tokens is ≥
+   `presence.min_qualified_windows` **and** so is Y's (dwell, §14.4).
+
+A crossing therefore needs both phones to have heard each other. A scanner
+that only listens, or replays EIDs one way, cannot create one.
+
+For the digest window only, the device keeps a local map from each uploaded
+`e` to the coarse block (morning / afternoon / evening / night) in which it
+was heard. `GET /digest` returns, per peer, the viewer's own shared tokens,
+so the device can show the time chip while the server never knows a time
+(invariant 4).
 
 ---
 
@@ -287,12 +377,13 @@ strings' trailing digits, regenerates vectors, and requires approval.
 |---|---|---|
 | **Honest-but-curious server operator** with full DB and log access, following the protocol | **Yes — primary** | Claims C1–C5 are against this adversary |
 | Other student using the normal app (curious, probing, harassing, stalking) | Yes | Mitigated by protocol, K cap, next-day digest, coarse time, block/report |
-| Passive BLE sniffer (generic scanner app) | Partly | Sees rotating EIDs and that *some* Mutual device is nearby; cannot link EIDs to accounts without daily keys, which are never distributed. App presence leaks — accepted |
-| Relay attacker forwarding EIDs between two places in both directions | Accepted risk | Could create a false crossing between two real users; low impact |
+| Passive BLE sniffer (generic scanner app) | Partly | Sees rotating EIDs and that *some* Mutual device is nearby. Daily keys never leave devices, so EIDs cannot be linked to accounts, not even later. App presence leaks — accepted. Linking EIDs across rotations through an unchanged device address is checked in the spike (§14.2) |
+| Relay attacker or planted device (forwards EIDs both ways in real time, or a phone left at a place) | Accepted risk | Can create crossings with whoever passes, which makes a weak "who uses Mutual here" oracle limited by `display_cap`. Listening alone or one-way replay cannot create crossings (§6.13) |
+| Server operator plus a sniffer at the same place | Accepted risk | Anyone who records two devices' EIDs at the same moment can compute their encounter token. With database access, that confirms those two accounts were at that place |
 | Sybil accounts | Mitigated | One account per verified college email |
 | Network attacker | TLS only | Dev runs on localhost HTTP; pilot must use TLS |
-| **Malicious (active) server** — substituting public keys, forging digests | **Out of scope** | Stated limitation. A key-fingerprint display is a possible future mitigation |
-| Server operator colluding with a user account | Out of scope | That account can test one-sided interest *toward itself*; inherent to any scheme where the operator can also be a user |
+| **Malicious (active) server** — substituting public keys, forging digests | **Out of scope** | Stated limitation. One substituted key would give an active server every one-sided interest and intent toward that peer, undetectably. Key transparency (a signed, append-only `(user_id, pk)` log) is future work |
+| Server operator colluding with a user account | Out of scope | That account can test one-sided interest *toward itself*, silently and retroactively, until the batch deletes the epoch's tokens. Inherent to any scheme where the operator can also be a user. Governance rule: people with operator access hold no account in any pilot deployment |
 | Compromised or lost device | Out of scope | Secure storage reduces impact |
 
 ### 7.3 What the server learns (by design) and never learns
@@ -300,38 +391,55 @@ strings' trailing digits, regenerates vectors, and requires approval.
 | Server learns | Server never learns |
 |---|---|
 | Verified accounts, first names, profile text and media | Plaintext email, date of birth |
-| Crossing pairs at **day** granularity, retained 7 days | GPS location or any place |
+| Crossing pairs at **day** granularity, with the number of shared encounter tokens and windows; retained 7 days | GPS location, any place, or client IP addresses |
 | That a user uploaded a signal set (always exactly 20 tokens) | Whom a signal targets, or whether any real signal exists |
-| Mutual matches (pairs) | The intent of any signal or match |
+| That a user uploaded an encounter set, and its size rounded up to a multiple of 256 (a coarse activity level) | Daily keys, EIDs, or the time of day of any crossing |
+| Mutual matches (pairs), and how many intents a pair shares | The intent of any signal or match |
 | Messages within matches; message counts | Which digest cards a user opened or played |
-| Blocks and reports (explicit user disclosures) | Crossing times finer than the day after resolution |
+| Blocks and reports (explicit user disclosures) | Who was near whom at what time |
 
-Raw sightings are processed transiently during resolution (which reveals the
-15-minute interval of each sighting to the resolving process) and deleted at
-the cutoff; only the day is stored.
+Presence uploads contain only encounter tokens and window counts, and are
+deleted at the cutoff. The server never receives a daily key, an EID or a
+sighting time. It never logs or stores client IP addresses (§9).
 
 ### 7.4 Security claims (each must map to a test or a written argument)
 
-- **C1 — Independence.** For any user U, the server's stored rows and the
-  request log produced by U (method, path, query, body length, status, ordered
-  by time with a mocked clock) are identical whether or not U holds a real
-  signal for any particular peer — except for the random contents of
-  `epoch_tokens.token`. *Test:* `server/tests/test_leak_two_worlds.py`.
+- **C1 — Independence.** Take two worlds that differ only in whether user U
+  holds a signal for peer V that V does **not** return. The following are
+  identical in both worlds, except for the random contents of
+  `epoch_tokens.token` before the batch deletes them:
+  - the server's stored rows;
+  - the request log produced by **every** account (method, path, query, body
+    length, status, ordered by time with a mocked clock);
+  - the response bodies returned to every account.
+
+  Batch matching (§6.9) removes response timing as a channel, and AC-T2-2
+  covers client behaviour. *Test:* `server/tests/test_leak_two_worlds.py`.
   *Argument:* pseudorandomness of keyed BLAKE2b under a key derived from
   X25519 (`docs/SECURITY_ARGUMENT.md`).
-- **C2 — Only mutual same-intent interest is ever revealed**, and only to the
-  two parties. *Tests:* protocol property tests (different intent ⇒ different
-  token); server tests (cross-intent signals never match).
-- **C3 — The server never learns intents.** *Argument + test:* no API field
-  carries an intent; `test_route_audit.py` scans request/response schemas for
-  any field named or typed as an intent.
+- **C2 — Only mutual same-intent interest is ever revealed**, only to the two
+  parties, and **always to both**. *Tests:*
+  - protocol property tests: a different intent or uid gives a different
+    token;
+  - server tests: cross-intent signals never match;
+  - fair delivery: an unmatch or block at `notify_after` + 1 s still delivers
+    the ended match to the other party;
+  - before `notify_after`, every account's responses are identical with and
+    without the match.
+- **C3 — No protocol message, API field, stored column or log line carries an
+  intent.** *Test:* `test_route_audit.py` scans request and response schemas
+  for any field named or typed as an intent. *Stated limits:* message text
+  written by users can reveal an intent, and the number of matched tokens
+  reveals how many intents a pair shares (D10).
 - **C4 — No location.** *Test:* `app/scripts/check-privacy-invariants.ts`
   asserts the merged Android manifest contains no location permissions and
-  `BLUETOOTH_SCAN` carries `neverForLocation`. *Argument:* the server stores
-  only day-granularity crossing pairs with 7-day retention
-  (`test_retention.py`).
+  `BLUETOOTH_SCAN` carries `neverForLocation`. *Tests:* `test_presence.py`
+  asserts the presence upload schema has no key, EID or time field;
+  `test_retention.py` asserts 7-day crossing retention. *Argument:* the server
+  never receives daily keys, EIDs, sighting times or client IP addresses (§9).
 - **C5 — No real-time proximity.** *Test:* a crossing for day `d` is never
-  returned by `GET /v1/digest` before `release_time` on day `d+1`
+  returned by `GET /v1/digest` before `release_time` on day `d+1`, and every
+  response between two consecutive release times is identical
   (`test_digest.py`, using the injected clock).
 
 ---
@@ -343,9 +451,12 @@ the cutoff; only the day is stored.
 - **S2** One account per verified college email (allowlisted domains).
 - **S3** No messaging before a mutual match. Text only; max 1000 characters;
   30 messages per minute rate limit; no links rendered as links.
-- **S4** Block: immediate, both directions, silent. Removes the peer from all
-  future digests, deletes shared crossings, suppresses and deletes any match,
-  and hides the conversation.
+- **S4** Block: immediate for the blocker, both directions, silent. Removes
+  the peer from the blocker's digest at once and from the blocked person's at
+  the next release (§11), deletes shared crossings, deletes the match, and
+  hides the conversation. A match already delivered stays visible to the
+  other party as "This mutual has ended" (fair delivery, §6.9). They are never
+  told it was a block.
 - **S5** Report: reason (harassment, fake profile, inappropriate content,
   underage, safety concern, other) plus up to 10 selected messages, copied
   into the report so they survive an unmatch. Reports go to a moderation queue
@@ -374,16 +485,20 @@ the cutoff; only the day is stored.
 | Date of birth | Never stored; `age_verified_at` only | — |
 | OTP codes | SHA-256 hash, 10-minute TTL, 5 attempts | Deleted on use/expiry |
 | Session tokens | SHA-256 hash | 30 days |
-| Presence uploads (daily key + sightings) | Server | Until cutoff (start of `d+2`), then deleted |
-| Crossings (`day`, user pair) | Server | 7 days |
-| Epoch tokens | Server | Deleted 2 days after the epoch |
+| Presence uploads (padded encounter sets) | Server | Until cutoff (start of `d+2`), then deleted |
+| Crossings (`day`, user pair, shared encounter tokens and windows) | Server | 7 days |
+| Epoch tokens | Server | Non-matching tokens deleted when the epoch's matching batch finishes; matched tokens live on the match |
 | Matches | Server | Until unmatch, block or account deletion |
 | Messages | Server | Deleted on unmatch/block/deletion (report excerpts retained) |
 | Reports | Server | Until resolved + 90 days |
-| Signals, peer keys, sightings, own daily keys | Device (`expo-sqlite`, keys in `expo-secure-store`) | Signals: TTL; sightings: until uploaded; daily keys: until uploaded |
+| Signals, peer keys, sightings, encounter → time-block map, own daily keys | Device (`expo-sqlite`, keys in `expo-secure-store`) | Signals: TTL; sightings: until that day's encounter set is uploaded; encounter map: 7 days; daily keys: deleted after that day's upload |
 
 A retention job (`mutual_server.services.retention`) runs at startup and every
-hour. Request-path logging is off unless `MUTUAL_ENV=dev`. India's Digital
+hour. Request-path logging is off unless `MUTUAL_ENV=dev`. **Client IP
+addresses and user agents are never logged or stored** by the server or by
+any proxy in front of it. Uvicorn runs without its access log. Rate limits
+keyed on IP use an in-memory hash with a salt that rotates hourly. Backups
+exclude `epoch_tokens` and `presence_uploads`. India's Digital
 Personal Data Protection Act, 2023 applies to any real deployment; consult the
 institution before Tier 3. This spec is not legal advice.
 
@@ -396,7 +511,7 @@ institution before Tier 3. This spec is not legal advice.
  │  Expo app (TypeScript)                                               │
  │   ├─ @mutual/protocol (protocol-ts)  ← keys, tokens, EIDs            │
  │   ├─ signals/ (queue + scheduled padded upload)                      │
- │   ├─ presence/ (EID schedule → native; drain sightings → upload)     │
+ │   ├─ presence/ (EID schedule → native; sightings → encounter tokens) │
  │   ├─ digest/prefetch (eager media fetch)                             │
  │   ├─ api/client.ts  ← the ONLY network boundary                      │
  │   └─ modules/mutual-ble (Kotlin): advertise · scan · FG service      │
@@ -409,7 +524,7 @@ institution before Tier 3. This spec is not legal advice.
  │   services: resolution · matching · ranking · arms · retention ·     │
  │             email · clock                                            │
  │   SQLite (dev) via SQLAlchemy 2 + Alembic; media on local disk       │
- │   uses mutual_protocol (protocol_py) for EID resolution              │
+ │   uses mutual_protocol (protocol_py) for key validation and tests    │
  └──────────────────────────────────────────────────────────────────────┘
  sim/ (mutual_sim) — standalone; no dependency on server or app
 ```
@@ -425,12 +540,12 @@ Errors: `400` malformed/semantic, `401` no session, `403` forbidden,
 ### Auth and account
 | Method & path | Body → response | Rules |
 |---|---|---|
-| `POST /auth/request-otp` | `{email}` → 204 | Domain in `auth.allowed_email_domains`; 60 s resend cooldown; in dev the code is printed to the console |
+| `POST /auth/request-otp` | `{email}` → 204 | Domain in `auth.allowed_email_domains` (400 otherwise); 60 s resend cooldown applied silently (always 204, the code is simply not re-sent); in dev the code is printed to the console |
 | `POST /auth/verify-otp` | `{email, code}` → `{session_token, account_exists}` | Constant-time compare; 5 attempts |
 | `POST /auth/logout` | → 204 | Revokes session |
-| `POST /account` | `{date_of_birth, identity_pk, first_name, year_of_study?, consent_version?}` → `{user_id}` | 18+ (S1); DOB discarded; `consent_version` required only in study mode |
+| `POST /account` | `{date_of_birth, identity_pk, first_name, year_of_study?, consent_version?}` → `{user_id}` | 18+ (S1); DOB discarded; `identity_pk` valid per §6.5 (422 otherwise; 409 if already registered); `consent_version` required only in study mode |
 | `GET /account/me` | → account summary | |
-| `PUT /account/identity-key` | `{identity_pk}` → 204 | For reinstall; documented limitation §6.10 |
+| `PUT /account/identity-key` | `{identity_pk}` → 204 | For reinstall; valid per §6.5; at most once per `auth.identity_key_change_min_days` (429); documented limitation §6.10 |
 | `DELETE /account` | → 202 | S11 |
 
 ### Profile
@@ -446,17 +561,31 @@ Errors: `400` malformed/semantic, `401` no session, `403` forbidden,
 ### Presence and digest
 | Method & path | Notes |
 |---|---|
-| `POST /presence/{day}` | `{daily_key, sightings:[{eid, windows, rssi_median}]}` → 201. `day` must be before today and not past cutoff (400); once per day (409) |
-| `GET /digest` | → `{release_day, days:[{day, peers:[PeerCard]}], media:[{media_id, bytes, sha256}]}`. Only crossings whose day ≤ yesterday, and only after `release_time` for yesterday's. Excludes blocked, paused, deleted, suspended and already-matched peers. At most `display_cap` peers per day, ordered by ranking (§11.1) |
-| `GET /media/{media_id}` | Voice notes of peers in the viewer's digest window. 403 otherwise |
+| `POST /presence/{day}` | `{encounters:[{e, windows}]}` (§6.13) → 201. `day` must be before today and not past cutoff (400); once per day (409); 422 unless the count is a positive multiple of `encounter_pad_block`, every `e` is 32 bytes and every `windows` is 1–15 |
+| `GET /digest` | → `{release_day, peers:[{card: PeerCard, last_day, encounters:[base64url]}], media:[{media_id, bytes, sha256}]}`. See the rules below |
+| `GET /media/{media_id}` | Voice notes of peers in the viewer's digest window. A uniform 404 for every id the caller may not access, whether or not it exists |
+
+`GET /digest` rules:
+- **A snapshot.** It is computed once per viewer at `release_time` and stays
+  byte-identical until the next `release_time`.
+- **One entry per peer** (most recent crossing day only, within
+  `lookback_days`), at most `display_cap` per release, ordered by ranking
+  (§11.1).
+- **Late crossings.** Crossings resolved after a release (a late upload)
+  appear at the next release.
+- **Exclusions.** The viewer's own blocks and suspended peers are removed
+  immediately. Peers who blocked the viewer, paused, deleted their account,
+  or matched the viewer are removed at the next release.
+- **`encounters`** holds the viewer's own shared encounter tokens with that
+  peer, for the on-device time chip (§6.13).
 
 `PeerCard = {peer_id, first_name, year_of_study?, identity_pk, prompts:[{prompt_id, text, voice_media_id?, waveform?}]}` — never photos, never counts, never times.
 
 ### Signals and matches
 | Method & path | Notes |
 |---|---|
-| `PUT /signals/{epoch}` | `{tokens:[base64url × 20]}` → 201. 400 if `epoch ≠` current; 425 before window start; 409 if exists; 422 if count ≠ 20 or any token ≠ 32 bytes. Runs matching (§6.9) |
-| `GET /matches` | Matches with `notify_after ≤ now`: `[{match_id, peer: PeerCard, matched_tokens:[base64url], created_epoch, reveal:{state, policy, messages_needed_each?}, unread}]` |
+| `PUT /signals/{epoch}` | `{tokens:[base64url × 20]}` → 201. 400 if `epoch ≠` current; 425 before window start; 400 at or after `match_batch_time`; 409 if exists; 422 if count ≠ 20 or any token ≠ 32 bytes. Only stores the set; matching runs in the nightly batch (§6.9) |
+| `GET /matches` | Matches with `notify_after ≤ now`: `[{match_id, state: active\|ended, peer: PeerCard, matched:[{epoch, token}], created_epoch, reveal:{state, policy, messages_needed_each?}, unread}]`. An `ended` match carries no chat or photos (§6.9) |
 | `GET /matches/{match_id}/photos/{index}` | Only if revealed under the active policy (§11.2) |
 | `POST /matches/{match_id}/reveal-consent` | Policy C only |
 | `GET /matches/{match_id}/messages?after=` | |
@@ -466,8 +595,8 @@ Errors: `400` malformed/semantic, `401` no session, `403` forbidden,
 ### Safety, config, dev
 | Method & path | Notes |
 |---|---|
-| `POST /blocks` | `{peer_id}` (allowed pre-match; explicit user disclosure) |
-| `POST /reports` | `{peer_id, reason, message_ids?}` |
+| `POST /blocks` | `{peer_id}` (allowed pre-match; explicit user disclosure). Acts only on ids that appeared in the caller's digest window or matches; any other id gets the same 204 with no effect |
+| `POST /reports` | `{peer_id, reason, message_ids?}`. Same id rule and uniform 204 as blocks |
 | `POST /discovery/pause`, `POST /discovery/resume` | S6 |
 | `GET /config` | `{server_time, epoch, protocol_version, reveal_policy, next_policy_change?, signal_upload_window, presence_upload_window, digest_release_time, interest_ttl_days, ble:{...}, study_enabled}` |
 | `POST /dev/clock` | `{offset_seconds}` — **dev only** |
@@ -511,18 +640,19 @@ date strings.
 - `profiles(user_id PK, prompts JSON, tags JSON, updated_at)`
 - `media(id, user_id, kind[voice|photo], prompt_id NULL, photo_index NULL,
   path, bytes, sha256, waveform JSON NULL, created_at)`
-- `presence_uploads(user_id, day, daily_key, sightings JSON, uploaded_at)`,
-  PK `(user_id, day)`
-- `presence_eids(day, eid PK-part, user_id)` — derived lookup, deleted with
-  uploads
-- `directional_sightings(day, observer_id, observed_id, qualified_windows,
-  rssi_median)` — transient, deleted at cutoff
-- `crossings(day, user_lo, user_hi, created_at)`, PK `(day, user_lo, user_hi)`
+- `presence_uploads(user_id, day, uploaded_at)`, PK `(user_id, day)`
+- `encounters(day, token, user_id, windows)`, index on `(day, token)` —
+  one row per uploaded entry, deleted at cutoff with the upload
+- `crossings(day, user_lo, user_hi, tokens JSON, windows_lo, windows_hi,
+  created_at)`, PK `(day, user_lo, user_hi)` — `tokens` are the shared
+  encounter tokens, returned only to their own two users in the digest
 - `epoch_tokens(epoch, user_id, token)`, index on `(epoch, token)`; unique
   `(epoch, user_id, token)`; one set per `(epoch, user_id)` enforced via
   `signal_uploads(epoch, user_id PK, uploaded_at)`
-- `matches(id, user_lo, user_hi, tokens JSON, created_epoch, policy,
-  notify_after, revealed_at NULL, unmatched_at NULL)`; unique active pair
+- `matches(id, user_lo, user_hi, tokens JSON [{epoch, token}], created_epoch,
+  policy, notify_after, revealed_at NULL, ended_at NULL, ended_by NULL,
+  ended_seen_by_other_at NULL)`; unique active pair. Ended matches are
+  deleted once the other party has fetched them, or after 7 days
 - `reveal_consents(match_id, user_id)`
 - `messages(id, match_id, sender_id, body, created_at)`
 - `blocks(blocker_id, blocked_id, created_at)`
@@ -617,6 +747,9 @@ Plain, warm, honest, never pushy. No emoji in system copy. Examples:
 - Before release: "Your morning letter arrives at 8."
 - Signal sent: "Signal sent. If they send one back, you'll both know tomorrow morning."
 - Signals full: "All 20 signals are out. Withdraw one to send another."
+- Withdrawn, before tonight's upload: "Signal withdrawn. Nobody was ever told."
+- Withdrawn, after tonight's upload: "Signal withdrawn. It already left with tonight's set, so it could still match tonight. From tomorrow it's gone."
+- Ended mutual (Mutuals row): "This mutual has ended." No chat, no photos.
 - Privacy screen headings: "Mutual can see" / "Mutual can never see".
 
 ### 13.7 Accessibility
@@ -692,8 +825,11 @@ acceptable for a research prototype, decision D17), payload =
 `magic(0x4D 0x55) || payload_version(1) || EID(16)` = 19 bytes. Total
 advertisement 26 of 31 bytes (flags 3 + manufacturer AD 23). Low-power
 advertise mode; TX power from config. On each 15-minute EID rotation the
-module stops and restarts advertising (to encourage a new random device
-address; whether this happens is verified in the spike).
+module stops advertising, waits for the new random device address, and
+restarts. Whether the address really changes with the EID is verified in the
+spike. If it does not, a sniffer can link EIDs across rotations, and that is
+escalated as a spec decision. Advertising stops whenever no EID exists for the
+current interval.
 
 ### 14.3 Scanning
 Duty-cycled inside the foreground service: scan `ble.scan_window_seconds` (8)
@@ -702,12 +838,14 @@ every `ble.scan_period_seconds` (60). A `ScanFilter` on manufacturer id
 unfiltered scans when the screen is off). Own EIDs are dropped.
 
 ### 14.4 Sighting aggregation and dwell
-Per EID the module keeps `windows` (number of scan windows in which it was
-heard with RSSI ≥ `ble.rssi_threshold_dbm`) and the median RSSI. On
-resolution the server sums qualified windows across all of a peer's EIDs for
-the day; a **directional sighting** qualifies if the sum ≥
-`presence.min_qualified_windows` (4). A **crossing** requires qualified
-directional sightings in **both** directions.
+Per pair (own EID being advertised, heard EID) the module keeps `windows`:
+the number of scan windows in which the heard EID was received with RSSI ≥
+`ble.rssi_threshold_dbm`. RSSI itself never leaves the device. TypeScript
+drains these pairs, computes encounter tokens (§6.13), records each token's
+coarse time block locally, and deletes the raw pairs after upload. On
+resolution the server sums each user's `windows` over the tokens both users
+uploaded. A **crossing** requires both sums ≥ `presence.min_qualified_windows`
+(4).
 
 ### 14.5 Schedule and service lifecycle
 JS hands native a schedule of `(day, interval, eid)` for today and tomorrow.
@@ -849,8 +987,10 @@ auth:
   otp_resend_cooldown_seconds: 60
   session_ttl_days: 30
   min_age_years: 18
+  identity_key_change_min_days: 30
 presence:
   min_qualified_windows: 4
+  encounter_pad_block: 256
   crossing_retention_days: 7
   upload_window_start: "00:05"
   upload_window_end: "06:00"
@@ -862,8 +1002,8 @@ digest:
 signals:
   upload_window_start: "18:00"
   upload_window_end: "23:30"
+  match_batch_time: "23:45"
   interest_ttl_days: 7
-  token_retention_days: 2
 reveal:
   default_policy: M
   policy_schedule: []         # [{start: YYYY-MM-DD, end: YYYY-MM-DD, policy: M|C}]
@@ -903,35 +1043,70 @@ exists in the named file, whatever its value.
 
 ### Tier 1
 - **AC-T1-1 Protocol (Python).** `pytest packages/protocol_py` passes,
-  including: pair-key symmetry over 1 000 random key pairs; all-zero shared
-  secret rejected; identical keys rejected; tokens differ when pair, epoch or
-  intent differ (≥ 5 000 tokens, zero collisions); padded set has exactly 20
-  entries of 32 bytes, contains every real token, and raises on > 20 real
-  tokens; 96 distinct EIDs per daily key; all constants loaded from
-  `constants.json`.
+  including:
+  - pair-key symmetry over 1 000 random key pairs;
+  - all-zero shared secret rejected; identical keys or identical uids
+    rejected;
+  - the pair key changes when either uid changes;
+  - low-order and non-canonical public keys rejected by the validity check;
+  - tokens differ when pair, epoch or intent differ (≥ 5 000 tokens, zero
+    collisions);
+  - padded set has exactly 20 entries of 32 bytes, contains every real
+    token, and raises on > 20 real tokens;
+  - 96 distinct EIDs per daily key;
+  - encounter token symmetry, `E(d,a,b) = E(d,b,a)`, and a different day or
+    EID gives a different token;
+  - the padded encounter set has a size that is a multiple of 256 and
+    contains every real entry;
+  - all constants loaded from `constants.json`.
 - **AC-T1-2 Vectors.** `python -m mutual_protocol.vectors --out
   packages/protocol-spec/vectors.json` generates ≥ 100 deterministic cases
-  covering pair key, token, EID and base64url; the committed file equals a
-  fresh regeneration.
+  covering pair key, token, EID, encounter token, key validity and
+  base64url; the committed file equals a fresh regeneration.
 - **AC-T1-3 Protocol (TypeScript).** `npm test -w packages/protocol-ts`
   reproduces every vector byte-for-byte and passes the same property tests.
 - **AC-T1-4 Server functional.** `pytest server` passes, covering: OTP flow
   (domain allowlist, TTL, attempts, cooldown, constant-time compare); under-18
-  rejected and DOB not persisted; presence upload rules (past day only,
-  cutoff, once per day); resolution requires both directions and
-  `min_qualified_windows`; digest excludes blocked, paused, deleted,
-  suspended and matched peers and respects `display_cap`; signal upload
-  rules (400/409/422/425); matching on shared token, no match across intents,
-  match suppressed by block, new shared intent appended to existing match;
-  `notify_after` = next release time; photo gating under M and C; reveal
-  consent; message limits; unmatch deletes messages; report copies excerpts;
-  account deletion cascades.
+  rejected and DOB not persisted; identity keys rejected when duplicate,
+  low-order or non-canonical, and key changes rate-limited; `request-otp`
+  always 204 for an allowed domain.
+  - Presence:
+    - upload rules: past day only, cutoff, once per day, size a multiple of
+      256;
+    - the schema has no key, EID or time field;
+    - a crossing requires tokens uploaded by both users and
+      `min_qualified_windows` on both sides;
+    - a one-way replayed token creates no crossing.
+  - Digest:
+    - a byte-identical snapshot between release times;
+    - one entry per peer, respecting `display_cap`;
+    - exclusions and their timing as in §11;
+    - a late-resolved crossing appears at the next release.
+  - Signals:
+    - upload rules (400/409/422/425);
+    - `PUT /signals` does not match;
+    - the batch matches on a shared token, never across intents;
+    - non-matching tokens are deleted after the batch;
+    - a new shared intent is appended to an existing match.
+  - Fair delivery:
+    - `notify_after` = next release time;
+    - a block before `notify_after` deletes the match for both;
+    - an unmatch or block after `notify_after` leaves an `ended` match for
+      the other party.
+  - Other: uniform 404 on `/media`; block and report act only on known ids;
+    photo gating under M and C; reveal consent; message limits; unmatch
+    deletes messages; report copies excerpts; account deletion cascades.
 - **AC-T1-5 Leak test (C1).** `server/tests/test_leak_two_worlds.py` passes:
-  worlds A (U signals V for `date`) and B (U signals no one) produce
-  identical row counts, identical rows except `epoch_tokens.token` bytes,
-  identical request logs (method, path, query, body length, status), and
-  identical API views for V. A third world C (V signals U back) produces a
-  detectable match, proving the test is not vacuous.
+  worlds A (U signals V for `date`, V does not signal back) and B (U signals
+  no one) produce, for **every** account:
+  - identical row counts, and identical rows except `epoch_tokens.token`
+    bytes;
+  - identical request logs (method, path, query, body length, status);
+  - identical response bodies, before and after the batch.
+
+  A third world C (V signals U back) produces a match. It is visible only
+  from `notify_after`, and before that every response is identical to world
+  B, which proves the test is not vacuous.
 - **AC-T1-6 Route audit (invariant 10, C3).** `test_route_audit.py`
   enumerates every route; every route with a user, peer or match id is either
   on the block/report allowlist or returns non-2xx without a qualifying match;
@@ -960,8 +1135,13 @@ exists in the named file, whatever its value.
   no-hex-literal rule.
 - **AC-T2-2 App unit tests.** `npm test -w app` passes, covering: signal TTL
   and cap; padded set built through protocol-ts; upload scheduler never
-  uploads before the window, never twice per epoch, never for a past epoch;
-  match resolution token → (peer, intent); prefetch fetches every listed media
+  uploads before the window, never twice per epoch, never for a past epoch,
+  never at or after `match_batch_time`;
+  match resolution token → (peer, intent); match verification rejects a
+  token that does not fit the card's key and id; a withdrawal frees its slot
+  instantly and sends no request; encounter tokens and the
+  padded encounter set are built through protocol-ts, and no daily key, EID or
+  time is ever passed to `api/client.ts`; prefetch fetches every listed media
   item in sorted order regardless of UI state; rendering `CrossingCard` and
   `VoicePlayer` performs no network call.
 - **AC-T2-3 Privacy invariants.** `npm run check:privacy -w app` passes: the
@@ -1001,10 +1181,10 @@ CLAUDE.md  SPEC.md  PLAN.md  README.md  .gitignore  .pre-commit-config.yaml  pac
 packages/protocol-spec/constants.json
 packages/protocol-spec/vectors.json                     (generated, committed)
 packages/protocol_py/pyproject.toml
-packages/protocol_py/mutual_protocol/{__init__,constants,encoding,keys,tokens,eid,vectors}.py
-packages/protocol_py/tests/{test_keys,test_tokens,test_eid,test_encoding,test_vectors}.py
+packages/protocol_py/mutual_protocol/{__init__,constants,encoding,keys,tokens,eid,encounter,vectors}.py
+packages/protocol_py/tests/{test_keys,test_tokens,test_eid,test_encounter,test_encoding,test_vectors}.py
 packages/protocol-ts/{package.json,tsconfig.json,vitest.config.ts}
-packages/protocol-ts/src/{index,constants,encoding,keys,tokens,eid,random}.ts
+packages/protocol-ts/src/{index,constants,encoding,keys,tokens,eid,encounter,random}.ts
 packages/protocol-ts/test/{vectors,properties}.test.ts
 server/{pyproject.toml,config.example.yaml,alembic.ini}
 server/migrations/                                       (Alembic)
@@ -1023,7 +1203,7 @@ app/src/api/client.ts
 app/src/design/{tokens,typography,motion,theme}.ts(x)
 app/src/components/{CrossingCard,VoicePlayer,VoiceRecorder,SignalSheet,SignalDots,GenerativeAvatar,RevealMoment,ChatBubble,IntentChip,EmptyState,PrivacyRow}.tsx
 app/src/signals/{db,ttl,setBuilder,scheduler,upload}.ts
-app/src/presence/{bleAdapter,nativeBle,fakeBle,dailyKeys,schedule,drain,upload}.ts
+app/src/presence/{bleAdapter,nativeBle,fakeBle,dailyKeys,schedule,drain,encounters,upload}.ts
 app/src/digest/{prefetch,cache}.ts
 app/src/matches/resolve.ts
 app/src/storage/{secure,localDb}.ts
@@ -1048,7 +1228,7 @@ study/analysis/{export,analyze,make_synthetic_export}.py  study/analysis/synthet
 | D2 | No GPS, BLE only | Location is the most dangerous asset; BLE proximity is enough for "people you were near" |
 | D3 | Next-morning digest, never live | Kills real-time tracking and "who is that person right now" harassment |
 | D4 | Fixed-size padded signal set, once per epoch, random time in window | Makes volume and timing independent of interest (C1) |
-| D5 | Server resolves crossings and learns the day-granularity crossing graph | The alternative — distributing daily keys so clients resolve locally — lets any user track anyone in real time with a BLE scanner. A bounded, time-limited graph on the server is the lesser risk |
+| D5 | Server resolves crossings from mutual encounter tokens and learns only the day-granularity crossing graph (revised v1.2) | Distributing daily keys to clients lets any user track anyone with a BLE scanner. Giving them to the server (v1.0) let the operator rebuild a 15-minute proximity graph and attribute sniffed EIDs. Encounter tokens give the server only "these two phones heard each other that day" |
 | D6 | Intents are private and per-signal; never shown on profiles | Showing "open to dating" would reintroduce the signalling stigma the product removes |
 | D7 | No swipe UI; prompt-first cards | Swiping rewards snap visual judgement — the behaviour that concentrates attention |
 | D8 | Text answer required; voice optional | Accessibility (deaf and hard-of-hearing users) and lower barrier |
@@ -1056,13 +1236,16 @@ study/analysis/{export,analyze,make_synthetic_export}.py  study/analysis/synthet
 | D10 | No end-to-end encrypted chat in v1 | Reports need verifiable excerpts; E2E would need a separate reporting design. Stated limitation |
 | D11 | Whole app 18+ | Removes the risk of minors in a co-presence app with a date intent |
 | D12 | Emails stored only as HMAC | Data minimisation; honest about its limits (§9) |
-| D13 | Matches delivered at the next release time | Removes timing correlation between an upload and a notification |
+| D13 | Matching runs in one nightly batch; matches are delivered at the next release time, to both parties (revised v1.2) | Removes timing correlation between an upload and a notification, and stops one party from detecting a match and erasing it before the other sees it |
 | D14 | 20-signal cap | Bounds the padded set, limits probing ("signal everyone to see who likes me") and discourages volume behaviour |
 | D15 | Unmatch deletes the conversation (report excerpts kept) | Gives users a clean exit; preserves evidence when it matters |
 | D16 | One account per verified college email | Sybil resistance without collecting ID documents |
 | D17 | BLE company id 0xFFFF (SIG test id) | Free and acceptable for a prototype; must change before any public release |
 | D18 | Ranking never uses signal, match or attention data | Impossible by design and must stay identical across reveal policies |
 | D19 | The app's interface matches `docs/design/prototype.html` exactly (§13.9) | Interface quality is the human's top priority; approved 2026-10-05 |
+| D20 | No per-intent limits; all five intents share the 20-signal cap (§6.10) | Considered and withdrawn the same day (2026-10-05): "date one person at a time", and "hold other date signals while a date mutual is active". Signals are free and withdrawable, so there is nothing to protect. Any per-intent limit could only be enforced by the app, and simplicity wins. The hold idea is parked in PLAN.md "Deferred improvements" |
+| D21 | Pair keys bind both account ids; identity keys must be valid and unique (§6.5) | A copied public key could otherwise redirect signals meant for its owner |
+| D22 | The server never logs client IP addresses or user agents (§9) | Campus Wi-Fi addresses map to buildings, which would leak location |
 
 ---
 
@@ -1073,6 +1256,8 @@ needs them. The agent must not guess them.
 
 - **Q1 (before Phase 3)** Which college email domain(s) are allowed?
 - **Q2 (before Phase 3)** Confirm the timezone (`Asia/Kolkata`).
+- **Q8 (before Phase 5)** In a pilot, who holds operator access? Under §7.2
+  those people may not hold an account in that deployment.
 - **Q7 (resolved 2026-10-05)** Python version: 3.11 is used. On the
   development laptop it is provided by uv (`uv venv --seed --python 3.11`),
   because `py -3.11` does not find uv-managed interpreters.
@@ -1082,7 +1267,8 @@ needs them. The agent must not guess them.
 - **Q4 (before Phase 12)** Will you pursue the field pilot? Which ethics body
   approves research with students at your institution, and what is its
   timeline?
-- **Q5 (before Phase 1)** Confirm the five intents and their names. They are
-  protocol constants (§6.2); changing them later means a protocol version bump.
+- **Q5 (resolved 2026-10-05)** The five intents are confirmed as study,
+  project, fitness, friend, date, with the codes in §6.2. They are protocol
+  constants; changing them later means a protocol version bump.
 - **Q6 (before Phase 11)** Where will the server run for any demo with more
   than one phone (laptop on the same Wi-Fi is the default)?

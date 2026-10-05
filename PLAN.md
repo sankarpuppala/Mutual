@@ -97,7 +97,7 @@ collects zero tests without error; `npm install` succeeds at the root;
 a deterministic vector generator.
 
 **Files.** `packages/protocol_py/mutual_protocol/{constants,encoding,keys,
-tokens,eid,vectors}.py`, `tests/test_*.py`.
+tokens,eid,encounter,vectors}.py`, `tests/test_*.py`.
 
 **Tasks (in order, each with its test).**
 1. `constants.py` — load `constants.json` (via `importlib.resources` or a
@@ -107,14 +107,19 @@ tokens,eid,vectors}.py`, `tests/test_*.py`.
    and invalid characters); epoch/day string validation (`YYYY-MM-DD`, 10
    bytes); `uint16_be`.
 3. `keys.py` — generate identity key pair; `pair_key(sk_self, pk_self,
-   pk_peer)`; reject all-zero shared secret; reject identical public keys;
-   sort public keys **as raw bytes**.
+   uid_self, pk_peer, uid_peer)` with both uids bound in (§6.5); reject
+   all-zero shared secret; reject identical public keys or uids; sort public
+   keys **as raw bytes** and order the uids with them;
+   `is_valid_public_key(pk)` (32 bytes, canonical, not low-order).
 4. `tokens.py` — `interest_token(pair_key, epoch, intent)`; `padded_set(real,
    rng=secrets)` with exact size, CSPRNG dummies and CSPRNG Fisher–Yates
    shuffle; error on > `signal_set_size` real tokens.
 5. `eid.py` — `new_daily_key()`; `eid(daily_key, interval)`;
    `interval_for(local_time)`; `eid_schedule(daily_key) -> list of 96`.
-6. `vectors.py` — CLI that generates ≥ 100 vectors from **deterministic**
+6. `encounter.py` — `encounter_token(day, eid_a, eid_b)` (§6.13, symmetric);
+   `padded_encounter_set(real, block, rng=secrets)` (dummies, multiple of
+   `block`, CSPRNG shuffle).
+7. `vectors.py` — CLI that generates ≥ 100 vectors from **deterministic**
    inputs (e.g. private keys = BLAKE2b of a fixed seed and index — never the
    CSPRNG), covering every function, plus negative cases (all-zero shared
    secret input, identical keys). Writes `packages/protocol-spec/vectors.json`
@@ -127,6 +132,9 @@ tokens,eid,vectors}.py`, `tests/test_*.py`.
 - [ ] Constants come from `constants.json`, not literals.
 - [ ] Public keys are sorted as bytes, not as base64 strings.
 - [ ] The token message is exactly `epoch(10 bytes) || intent(1 byte)`.
+- [ ] The pair key hashes `ss || lo_pk || hi_pk || uid(lo) || uid(hi)`, and
+      each uid stays with its own key after sorting.
+- [ ] `encounter_token(d, a, b) == encounter_token(d, b, a)` (there is a test).
 - [ ] You can explain, in one sentence each, what a pair key, a token and an
       EID are. (If not, ask Claude to explain before approving.)
 
@@ -149,7 +157,8 @@ under Hermes (React Native) — so no Node-only APIs.
    unavailable in Hermes).
 4. `random.ts` — a single `randomBytes(n)` wrapper that throws a clear error
    if `crypto.getRandomValues` is missing.
-5. `keys.ts`, `tokens.ts`, `eid.ts` mirroring Python names and semantics.
+5. `keys.ts`, `tokens.ts`, `eid.ts`, `encounter.ts` mirroring Python names
+   and semantics.
 6. `vectors.test.ts` — reproduce every vector in `vectors.json`.
 7. `properties.test.ts` — the same property tests as Python.
 
@@ -192,7 +201,9 @@ schemas,admin}.py`, `routers/{auth,account,profile,config_route,dev}.py`,
 5. `security.py` — email HMAC with pepper from env; OTP generation and
    SHA-256 hashing; constant-time compare; session tokens (32 random bytes,
    stored hashed).
-6. Routers: auth, account (18+ check, DOB discarded), profile, prompts,
+6. Routers: auth (`request-otp` always 204, silent cooldown), account (18+
+   check, DOB discarded, identity-key validity and uniqueness via
+   `mutual_protocol`, key-change rate limit), profile, prompts,
    voice and photo upload (EXIF stripped, image re-encoded with Pillow, size
    and duration limits), `GET /config`, dev routes mounted only in dev.
 7. `admin.py` — CLI skeleton (`reports list`, `suspend <user_id>`), filled in
@@ -210,6 +221,8 @@ and AC-T3-1 pass; `alembic upgrade head` creates the schema from scratch.
 - [ ] OTP comparison uses `hmac.compare_digest`.
 - [ ] Nothing calls `datetime.now()` outside `clock.py`.
 - [ ] Dev routes are not mounted when `MUTUAL_ENV` is unset.
+- [ ] Uvicorn runs without its access log; no IP address is logged or
+      stored anywhere (search for `client.host`).
 
 **⚠ verify.** Current Pillow method for stripping EXIF; current FastAPI
 lifespan API.
@@ -225,18 +238,21 @@ morning digest, deleting raw data on schedule.
 retention}.py`, tests `test_presence`, `test_digest`, `test_retention`.
 
 **Tasks.**
-1. `POST /presence/{day}` per `SPEC.md` §11 (past day only, cutoff, once).
-2. Resolution (incremental): on each upload, derive the uploader's 96 EIDs
-   (via `mutual_protocol`) into `presence_eids`; resolve the uploader's
-   sightings against all EIDs known for that day, and earlier uploads'
-   sightings against the new EIDs; sum qualified windows per (observer,
-   observed); create a `crossings` row when both directions qualify.
-3. Cutoff job: at the start of `d+2`, delete `presence_uploads`,
-   `presence_eids`, `directional_sightings` for day `d`.
-4. Digest: per §11 — release time, exclusions, display cap, PeerCard shape,
-   full media list. Ranking `random` (stable per viewer and day);
-   `reciprocal_content` deferred to Phase 11 (optional).
-5. `GET /media/{media_id}` authorization (digest window or match).
+1. `POST /presence/{day}` per `SPEC.md` §11 (past day only, cutoff, once,
+   size a multiple of 256, `{e, windows}` entries only).
+2. Resolution (incremental, §6.13): on each upload, insert its entries into
+   `encounters`. Find the tokens this user shares with earlier uploaders for
+   the same day, and sum each side's `windows` per user pair. Create or
+   update a `crossings` row when both sums reach `min_qualified_windows`.
+3. Cutoff job: at the start of `d+2`, delete `presence_uploads` and
+   `encounters` for day `d`.
+4. Digest per §11: a snapshot computed at release time; one entry per peer
+   with `last_day` and the viewer's shared tokens; exclusions with their
+   timing; display cap; PeerCard shape; full media list. Ranking `random`
+   (stable per viewer and day); `reciprocal_content` deferred to Phase 11
+   (optional).
+5. `GET /media/{media_id}` authorization (digest window or match), with a
+   uniform 404.
 6. Retention job for crossings (7 days), OTP codes, expired sessions.
 7. Dev route `POST /dev/crossing`.
 
@@ -244,9 +260,11 @@ retention}.py`, tests `test_presence`, `test_digest`, `test_retention`.
 passes.
 
 **Human review checklist.**
-- [ ] One-direction sightings never create a crossing (there is a test).
-- [ ] A crossing for day d is invisible before 08:00 on d+1 (there is a test
-      using the injected clock).
+- [ ] A token uploaded by only one user never creates a crossing (there is a
+      test).
+- [ ] The presence schema has no daily key, EID, RSSI or time field.
+- [ ] A crossing for day d is invisible before 08:00 on d+1, and the digest
+      is byte-identical between two releases (tests using the injected clock).
 - [ ] PeerCard contains no photos, counts or times.
 - [ ] Raw uploads really are deleted at the cutoff (there is a test).
 
@@ -271,15 +289,20 @@ tests.
    satisfied): route enumeration, allowlist for block/report and own-resource
    routes (`/profile/voice/{prompt_id}`, `/profile/photos/{index}`), schema
    scan for intent fields, dev-route absence outside dev.
-3. `PUT /signals/{epoch}` with all status codes; matching on insert (§6.9);
-   block suppression; append new shared tokens to an existing match;
-   `notify_after` = next release time.
+3. `PUT /signals/{epoch}` with all status codes; it stores only. The nightly
+   matching batch at `match_batch_time` (§6.9) handles block suppression,
+   appends new shared tokens (with epoch) to an existing match, sets
+   `notify_after` = next release time, and deletes non-matching tokens.
+   Fair delivery: blocks before `notify_after` delete for both; unmatch or
+   block after it leaves an `ended` match for the other party.
 4. `GET /matches`; reveal policy selection by date (`services/arms.py`);
    photo gating for M and C; reveal consent.
 5. Messages (length, rate limit), unmatch (deletes messages).
 6. Blocks (both directions, removes crossings, deletes match), reports
    (excerpt copy), pause/resume, account deletion cascade and media deletion.
-7. Token retention (delete 2 days after epoch).
+7. Token retention: non-matching tokens deleted by the batch. Ended matches
+   are deleted once fetched by the other party, or after 7 days. Block and
+   report act only on known ids, with a uniform 204.
 8. `admin.py`: list reports, view excerpt, resolve, suspend.
 
 **Done when.** All of AC-T1-4, AC-T1-5, AC-T1-6 pass.
@@ -290,7 +313,10 @@ tests.
       (Ask Claude to demonstrate this with a temporary throwaway change.)
 - [ ] No request or response schema has an intent field.
 - [ ] A cross-intent pair (study vs date) never matches (there is a test).
-- [ ] Blocking after a match deletes the match and the messages.
+- [ ] Blocking after a match deletes the messages, and the other party sees
+      "ended" (there is a test).
+- [ ] Nothing in any response changes between the batch and `notify_after`
+      (the leak test's world C proves it).
 
 Then run **Prompt 7 (independent security review)** before merging.
 
@@ -424,8 +450,8 @@ escalate (CLAUDE.md invariant 3).
 
 **Goal.** The production-shape module from `SPEC.md` §14: EID schedule from
 JS, rotation every 15 minutes with advertising restart, duty-cycled filtered
-scanning in a foreground service, own-EID filtering, per-EID aggregation
-(windows, median RSSI) persisted on device, drain API, boot restart, pause,
+scanning in a foreground service, own-EID filtering, per-(own EID, heard
+EID) window counts above the RSSI threshold persisted on device, drain API, boot restart, pause,
 fail-safe when the schedule runs out; `nativeBle.ts` wrapper implementing the
 same interface as `fakeBle.ts`.
 
@@ -467,12 +493,17 @@ of every onboarding screen in both themes reviewed (Prompt 8) and matching
 with the native module.
 
 **Tasks (scheduler logic before UI).**
-1. `presence/`: daily keys 2 days ahead, schedule to adapter, drain, nightly
-   upload at a random time in the window via the background-task package
-   (⚠ verify), and on next open before the cutoff.
-2. `signals/`: local DB, TTL, 20-cap, `setBuilder` via protocol-ts,
+1. `presence/`: daily keys 2 days ahead, schedule to adapter, drain,
+   `encounters.ts` (encounter tokens and the local token → time-block map),
+   padded nightly upload at a random time in the window via the
+   background-task package (⚠ verify), and on next open before the cutoff.
+   Daily keys are deleted after upload.
+2. `signals/`: local DB, TTL, 20-cap, withdrawal that frees the slot
+   instantly with no network request (after-upload copy, §13.6),
+   match verification, `setBuilder` via protocol-ts,
    `scheduler` (random time in window, once per epoch, never for a past epoch,
-   uses the server epoch), `upload` — **with unit tests before any UI**.
+   never at or after `match_batch_time`, uses the server epoch), `upload` —
+   **with unit tests before any UI**.
 3. `digest/`: fetch, eager prefetch of every media item in sorted order,
    cache; Today screen with the morning letter, CrossingCards, "Earlier this
    week", empty and before-release states; time chips computed from local
@@ -559,10 +590,9 @@ choices can be fluent and wrong.
 Proposed on 2026-10-05 and parked until the plan is complete. None is
 approved yet; each needs a spec change when picked up.
 
-1. **Spec and protocol reviews.** PROMPT.md Prompt 1 (spec interrogation) and
-   Prompt 2 (adversarial protocol review) were skipped. *Recommendation:* run
-   Prompt 2 before Phase 1 anyway. A protocol flaw found after Phase 5 means
-   a rewrite.
+1. **Spec review.** PROMPT.md Prompt 1 (spec interrogation) was skipped.
+   Prompt 2 (adversarial protocol review) **was run on 2026-10-05**, and its
+   fixes are in SPEC v1.2.
 2. **Parallel UI track.** Build Phase 8/10/11 screens against the fake BLE
    adapter and a mock API alongside Tier 1, instead of after it.
 3. **Stronger AI/DS component.** Promote `reciprocal_content` ranking
@@ -576,6 +606,13 @@ approved yet; each needs a spec change when picked up.
    fixed media-id order.
 6. **Cold-start honesty.** State in the report that discovery needs many
    users with the app running; demos rely on the fake adapter and `/dev/seed`.
+7. **"Hold" other date signals during a date mutual** (the human's idea,
+   2026-10-05). Only worth it if signals ever become scarce, for example
+   through a daily allowance or a subscription; payments are out of scope
+   (§4). It is privacy-safe if done entirely on the device: held signals are
+   simply left out of the nightly upload, and the server cannot tell them
+   from decoys. Open questions: whether the 7-day expiry pauses while held,
+   and what happens when two date matches arrive on the same night.
 
 ---
 
@@ -652,3 +689,45 @@ Add an entry at the end of every session. Newest at the bottom.
 - Next session starts with: human reviews the Phase 0 diff, commits it
   (`/git-commit` or by hand), then Phase 1 — Protocol, Python reference +
   vectors.
+
+### 2026-10-05 — Spec v1.2 after protocol review — done (awaiting commit)
+- Done:
+  - Phase 0 committed by the human (`923a42a`).
+  - Q5 confirmed.
+  - PROMPT.md Prompt 2 run: an independent subagent saw only SPEC §6, §7,
+    §9, §11 and CLAUDE.md §5. It reported 15 findings: 1 critical, 3 high,
+    the rest medium or low.
+  - The human accepted the presence redesign (1a). For F2 the human first
+    chose "date is one person at a time". Later the same day, after
+    considering a "hold" variant, they agreed to remove per-intent limits
+    entirely for simplicity (D20). The hold idea is parked as deferred
+    improvement 7. Prototype changes are applied now ("do what is best").
+- Spec changes (approved by human on 2026-10-05), by finding:
+  - F1: batch matching and fair delivery (§6.9, D13, invariant 12).
+  - F3, F6, F7: encounter tokens; daily keys never leave the device (§6.13,
+    §6.8, §6.11, §12, §14.4, D5).
+  - F4: no IP logging (§9, D22).
+  - F5: uids bound into the pair key, plus identity key validity (§6.5,
+    D21).
+  - F2: once fair delivery (F1) is in place, choosing several intents
+    reveals only what both chose. No per-intent limit (§6.10, D20).
+  - F8: C1 restated across every account and response body (AC-T1-5).
+  - F9: C3 narrowed.
+  - F10: digest snapshot, one entry per peer, exclusion timing (§11).
+  - F11: operator governance and token deletion after the batch (§7.2, Q8).
+  - F12: withdrawal semantics and copy (§6.10, §13.6).
+  - F13: timezone without daylight saving, server-corrected clock, address
+    rotation (§6.3, §14.2).
+  - F14: uniform 204 / 404 and silent OTP cooldown (§11).
+  - F15: epoch stored with each matched token; "until matched" scoped per
+    intent.
+  - `constants.json` updated to §6.2. No `protocol_version` bump, because no
+    protocol code exists yet (§6.12).
+- Not adopted: end-to-end encrypted chat (F9), which conflicts with D10.
+  Disclosing the counterparty's full set (F2) was rejected because it would
+  leak one-sided intents.
+- Prototype: the date-slot rule was added, then removed again with D20. The
+  prototype is back to its approved behaviour. `docs/design/prototype.html`
+  and the published artifact are in sync.
+- Next session starts with: human commits "Spec v1.2 after protocol review",
+  then Phase 1 in a new session.
