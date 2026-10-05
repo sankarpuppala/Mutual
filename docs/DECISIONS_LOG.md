@@ -16,8 +16,6 @@ the reason), **Parked** (good idea, not now), **Open** (waiting for an answer).
 ### Open questions
 | # | Question | Needed before |
 |---|---|---|
-| Q1 | Which college email domain(s) are allowed to sign up? | Phase 3 |
-| Q2 | Confirm the timezone `Asia/Kolkata`. | Phase 3 |
 | Q3 | Do you have two Android 12+ phones for the Bluetooth test? | Phase 9 |
 | Q4 | Will you run the real-user pilot? Which ethics body approves it? | Phase 12 |
 | Q6 | Where will the server run for a demo with more than one phone? | Phase 11 |
@@ -149,3 +147,34 @@ An independent reviewer saw only the protocol sections and attacked them.
 - **New guard:** a pre-commit hook re-runs the TypeScript suite whenever the
   protocol or its vectors change, so the two languages cannot silently
   drift apart.
+
+### 12. Which colleges can join (Q1) and the timezone (Q2) — Adopted (SPEC v1.4, §4.1, D24)
+- **Claude asked:** which college email domain(s) may sign up, and is the
+  timezone Asia/Kolkata?
+- **Human:** "can't we make it for all colleges, like we let people see only
+  from their college", and "Kolkata".
+- **Decision:**
+  - One server hosts every college, and each college is a closed
+    **campus**, decided by the email domain (`cse.iitb.ac.in` → IIT Bombay).
+  - Nobody ever sees, crosses, signals or matches across colleges. Two
+    students from different colleges in the same café: the server ignores
+    the crossing and stores nothing.
+  - New CLAUDE.md invariant 13: campus isolation.
+- **Safety detail Claude decided** (the human can overrule):
+  - `.ac.in`, `.edu.in` and `.edu` domains are recognised automatically, but
+    a new college opens only after **one operator approval**
+    (`admin campuses approve`).
+  - Reason: some schools also use these suffixes, and the app is 18+ with a
+    self-declared age.
+  - Until a college is approved, its students see "Mutual isn't open at your
+    college yet". The server keeps only the domain and an attempt count.
+- **Options not taken:**
+  - Admit every academic domain automatically (fastest, but school students
+    could join).
+  - A fixed hand-written list only (safest, but every college needs a code
+    change).
+- **Also:**
+  - study mode now names the campus(es) it applies to;
+  - a user's campus is fixed at sign-up;
+  - "federation across several servers" stays out of scope.
+- **Timezone:** Asia/Kolkata confirmed (Q2).

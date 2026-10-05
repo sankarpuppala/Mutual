@@ -191,8 +191,10 @@ schemas,admin}.py`, `routers/{auth,account,profile,config_route,dev}.py`,
 `test_profile`, `test_study_gate`.
 
 **Tasks.**
-1. `config.py` — load YAML + environment; validate with Pydantic; **refuse to
-   start** if `study.enabled` and `approval_reference` is empty
+1. `config.py` — load YAML + environment; validate with Pydantic (including
+   the `campuses` list and `academic_suffixes`, and a timezone without
+   daylight saving); **refuse to start** if `study.enabled` and
+   `approval_reference` is empty or `study.campuses` names no open campus
    (`test_study_gate.py`).
 2. `clock.py` — injectable clock with a dev-only offset; helpers for "local
    day", "current epoch", "is before time-of-day in local tz".
@@ -203,13 +205,16 @@ schemas,admin}.py`, `routers/{auth,account,profile,config_route,dev}.py`,
 5. `security.py` — email HMAC with pepper from env; OTP generation and
    SHA-256 hashing; constant-time compare; session tokens (32 random bytes,
    stored hashed).
-6. Routers: auth (`request-otp` always 204, silent cooldown), account (18+
+6. Campus resolution (§4.1): listed domains and their subdomains, academic
+   suffixes → pending campus (403 `campus_not_open`, attempt counted),
+   anything else 400; `campus_id` set on the account. Tests: `test_auth.py`.
+   Routers: auth (`request-otp` 204 with a silent cooldown), account (18+
    check, DOB discarded, identity-key validity and uniqueness via
    `mutual_protocol`, key-change rate limit), profile, prompts,
    voice and photo upload (EXIF stripped, image re-encoded with Pillow, size
    and duration limits), `GET /config`, dev routes mounted only in dev.
-7. `admin.py` — CLI skeleton (`reports list`, `suspend <user_id>`), filled in
-   Phase 5.
+7. `admin.py` — CLI skeleton (`reports list`, `suspend <user_id>`, and now
+   `campuses list|approve <key> --name|reject <key>`), filled in Phase 5.
 8. Dev OTP: printed to the console only when `MUTUAL_ENV=dev`; an SMTP
    sender behind the same interface for later.
 
@@ -244,8 +249,9 @@ retention}.py`, tests `test_presence`, `test_digest`, `test_retention`.
    size a multiple of 256 and at most 1024, encounter tokens only, no
    repeats).
 2. Resolution (incremental, §6.13): on each upload, insert its entries into
-   `encounters`. Every token held by exactly two uploaders for the day
-   creates a `crossings` row for that pair, keeping only the byte-wise
+   `encounters`. Every token held by exactly two uploaders **of the same
+   campus** for the day creates a `crossings` row for that pair (a
+   cross-campus token is ignored and nothing is stored), keeping only the byte-wise
    smallest shared token. Tokens held by three or more uploaders are
    ignored.
 3. Cutoff job: at the start of `d+2`, delete `presence_uploads` and

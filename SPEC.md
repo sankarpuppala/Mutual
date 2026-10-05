@@ -1,6 +1,7 @@
 # SPEC.md — Mutual
 
-Status: **v1.3 — the contract.** (v1.3, 2026-10-05: second protocol
+Status: **v1.4 — the contract.** (v1.4, 2026-10-05: many colleges, each a
+closed campus, §4.1 and D24; Q1 and Q2 resolved. v1.3, 2026-10-05: second protocol
 review. EIDs are one-time X25519 public keys and encounter tokens are keyed
 by a shared secret, §6.8 and §6.13; per-token release, verification and
 deletion rules, §6.9 and §6.10; D23.) (v1.1, 2026-10-05: adds the approved visual
@@ -91,18 +92,46 @@ gap is a finding (RQ4), not a defect.
 **Out of scope:** iOS; group or event matching; payments; end-to-end
 encrypted chat (decision D10); images, links or voice in chat; web client;
 real-time location of any kind; recommendation trained on interest data
-(impossible by design); multi-campus federation; key backup/recovery;
-malicious-server security (§7.2); production hosting and app-store release.
+(impossible by design); federation across several servers; key
+backup/recovery; malicious-server security (§7.2); production hosting and
+app-store release.
 
 Mutual is **standalone**. It does not depend on any other project (including
 Bazaar). Identity is verified by college email OTP.
+
+### 4.1 Campuses (decided 2026-10-05, D24)
+One server hosts **many colleges**. Each college is a **campus**: a closed
+partition. Nobody ever sees, crosses, signals or matches anyone from another
+campus.
+- **Campus from the email domain.** The lowercase domain of the verified email
+  decides the campus:
+  1. if it equals or is a subdomain of a domain listed under a campus in
+     `campuses` (config), it belongs to that campus;
+  2. otherwise, if it ends in one of `auth.academic_suffixes` (`ac.in`,
+     `edu.in`, `edu`), its campus key is the label just before the suffix
+     plus the suffix (`cse.iitb.ac.in` → `iitb.ac.in`). That key is a
+     **pending campus** until the operator approves it once with
+     `python -m mutual_server.admin campuses approve <key> --name "<name>"`.
+     Some schools also use these suffixes, and the app is 18+ with a
+     self-declared age, so no college opens automatically;
+  3. anything else is not a college email.
+- **What the server stores** for a pending campus is only its key and a count
+  of attempts, never an email.
+- **Partition rule.** Crossings are recorded only between users of the same
+  campus (§6.13). A token shared across campuses is ignored and nothing is
+  stored. Digests, signals, matches, blocks and reports therefore stay inside
+  one campus.
+- **Account moves.** A user's campus is fixed at account creation. Moving to
+  another college means a new account with the new email.
 
 ---
 
 ## 5. User journeys
 
 **J1 — Onboarding (≈3 minutes).** Welcome → "How it works" (3 panels) → enter
-college email → 6-digit code → date of birth (must be 18+; not stored, only
+college email (the app shows "You're joining Mutual at {campus name}", or
+"Mutual isn't open at your college yet" for a pending campus, §4.1) →
+6-digit code → date of birth (must be 18+; not stored, only
 `age_verified_at`) → first name and year → choose and answer 3 prompts
 (text required, voice optional, one must be the `looking_for` prompt) →
 photos (optional, up to 4, with a plain explanation of exactly when they are
@@ -383,9 +412,10 @@ more real tokens, the device keeps those with the most windows.
 
 **Resolution.** The server:
 1. stores each set until the cutoff (start of `d+2`);
-2. records a crossing for users X ≠ Y when some token appears in exactly
-   their two uploads for day `d`. A token uploaded by more than two accounts
-   is ignored;
+2. records a crossing for users X ≠ Y **of the same campus** (§4.1) when
+   some token appears in exactly their two uploads for day `d`. A token
+   uploaded by more than two accounts, or by two users of different
+   campuses, is ignored and nothing about it is stored;
 3. keeps, for the crossing, only `(day, pair)` and one canonical token: the
    byte-wise smallest shared token.
 
@@ -425,7 +455,7 @@ sighting, and the server never learns a time (invariant 4).
 
 | Server learns | Server never learns |
 |---|---|
-| Verified accounts, first names, profile text and media | Plaintext email, date of birth |
+| Verified accounts, each user's campus (college), first names, profile text and media | Plaintext email, date of birth |
 | The day's **crossing graph**: who crossed whom, at day granularity, retained 7 days. Groups that spent time together show up as clusters, and with a public timetable an operator may guess which class a cluster was | GPS location, any place, or client IP addresses |
 | That a user uploaded a signal set (always exactly 20 tokens) | Whom a signal targets, or whether any real signal exists |
 | That a user uploaded an encounter set, and its size rounded up to a multiple of 256 (a coarse activity level) | Daily keys, EIDs, or the time of day of any crossing |
@@ -483,7 +513,8 @@ sighting time. It never logs or stores client IP addresses (§9).
 
 - **S1** 18+ only. Date of birth is checked at account creation and discarded;
   under-18 is rejected with a kind message.
-- **S2** One account per verified college email (allowlisted domains).
+- **S2** One account per verified college email, on an open (approved) campus
+  (§4.1). Campuses never mix.
 - **S3** No messaging before a mutual match. Text only; max 1000 characters;
   30 messages per minute rate limit; no links rendered as links.
 - **S4** Block: immediate for the blocker, both directions, silent. Removes
@@ -517,6 +548,8 @@ sighting time. It never logs or stores client IP addresses (§9).
 | Data | Where | Retention |
 |---|---|---|
 | Email | Never stored; HMAC-SHA256 with server secret `email_pepper` | Account lifetime. (This prevents casual exposure in a DB dump, not a determined operator.) |
+| Campus | `users.campus_id`, derived from the email domain (§4.1) | Account lifetime |
+| Pending campus keys | Key (for example `iitb.ac.in`) and attempt count only | Until approved or rejected by the operator |
 | Date of birth | Never stored; `age_verified_at` only | — |
 | OTP codes | SHA-256 hash, 10-minute TTL, 5 attempts | Deleted on use/expiry |
 | Session tokens | SHA-256 hash | 30 days |
@@ -575,7 +608,7 @@ Errors: `400` malformed/semantic, `401` no session, `403` forbidden,
 ### Auth and account
 | Method & path | Body → response | Rules |
 |---|---|---|
-| `POST /auth/request-otp` | `{email}` → 204 | Domain in `auth.allowed_email_domains` (400 otherwise); 60 s resend cooldown applied silently (always 204, the code is simply not re-sent); in dev the code is printed to the console |
+| `POST /auth/request-otp` | `{email}` → 204 | The domain must resolve to an open campus (§4.1). Otherwise 400 `not_a_college_email`, or 403 `campus_not_open` for a pending campus, which is recorded for the operator. 60 s resend cooldown applied silently (always 204, the code is simply not re-sent); in dev the code is printed to the console |
 | `POST /auth/verify-otp` | `{email, code}` → `{session_token, account_exists}` | Constant-time compare; 5 attempts |
 | `POST /auth/logout` | → 204 | Revokes session |
 | `POST /account` | `{date_of_birth, identity_pk, first_name, year_of_study?, consent_version?}` → `{user_id}` | 18+ (S1); DOB discarded; `identity_pk` valid per §6.5 (422 otherwise; 409 if already registered); `consent_version` required only in study mode |
@@ -635,7 +668,7 @@ Errors: `400` malformed/semantic, `401` no session, `403` forbidden,
 | `POST /blocks` | `{peer_id}` (allowed pre-match; explicit user disclosure). Acts only on ids in the caller's current digest window or notified matches; any other id gets the same 204 with no effect. The request only records the block; its effect on pending tokens is applied at release (§6.9) |
 | `POST /reports` | `{peer_id, reason, message_ids?}`. Same id rule and uniform 204 as blocks |
 | `POST /discovery/pause`, `POST /discovery/resume` | S6 |
-| `GET /config` | `{server_time, epoch, protocol_version, reveal_policy, next_policy_change?, signal_upload_window, presence_upload_window, digest_release_time, interest_ttl_days, ble:{...}, study_enabled}` |
+| `GET /config` | `{campus:{id, name}?, server_time, epoch, protocol_version, reveal_policy, next_policy_change?, signal_upload_window, presence_upload_window, digest_release_time, interest_ttl_days, ble:{...}, study_enabled}` |
 | `POST /dev/clock` | `{offset_seconds}` — **dev only** |
 | `POST /dev/crossing` | `{user_a, user_b, day}` — **dev only**, creates a confirmed crossing |
 | `POST /dev/seed` | Creates N synthetic users with profiles — **dev only** |
@@ -668,9 +701,11 @@ identical across reveal policies.
 All ids are UUIDv4 strings. All timestamps UTC; "day" and "epoch" are local
 date strings.
 
-- `users(id, email_hmac UNIQUE, first_name, year_of_study, identity_pk,
-  age_verified_at, discovery_paused, suspended_at, deleted_at, created_at,
-  consent_version)`
+- `campuses(id, key UNIQUE, name, domains JSON, status[open|pending|rejected],
+  attempts, created_at)`
+- `users(id, email_hmac UNIQUE, campus_id, first_name, year_of_study,
+  identity_pk, age_verified_at, discovery_paused, suspended_at, deleted_at,
+  created_at, consent_version)`
 - `otp_codes(email_hmac, code_hash, expires_at, attempts, last_sent_at)`
 - `sessions(token_hash PK, user_id NULL until account exists, email_hmac,
   expires_at)`
@@ -977,8 +1012,10 @@ reverse anywhere in the sweep.
 ## 16. Field pilot (Tier 3 — gated)
 
 **Gate (mechanically enforced).** `study.enabled: true` requires
-`study.approval_reference` to be non-empty; otherwise the server refuses to
-start (`test_study_gate.py`). `study/APPROVAL.md` must record the approving
+`study.approval_reference` to be non-empty and `study.campuses` to list at
+least one open campus; otherwise the server refuses to start
+(`test_study_gate.py`). Study mode, consent screens and exports apply only to
+users of the listed campuses (§4.1). `study/APPROVAL.md` must record the approving
 body, reference number, date and conditions. Permission from the relevant
 institutional authority is also required before recruitment.
 
@@ -1028,8 +1065,12 @@ salt; no crossing pairs exported.
 timezone: Asia/Kolkata
 secrets:                      # set via environment variables in practice
   email_pepper_env: MUTUAL_EMAIL_PEPPER
+campuses:                     # pre-approved colleges (§4.1); more are approved with the admin CLI
+  - key: example.ac.in
+    name: "Example College"
+    domains: ["example.ac.in"] # subdomains are included automatically
 auth:
-  allowed_email_domains: ["example.edu"]     # OPEN QUESTION Q1
+  academic_suffixes: ["ac.in", "edu.in", "edu"]   # unknown domains with these become pending campuses
   otp_ttl_seconds: 600
   otp_max_attempts: 5
   otp_resend_cooldown_seconds: 60
@@ -1072,6 +1113,7 @@ ble:
 study:
   enabled: false
   approval_reference: ""
+  campuses: []                # study mode applies only to these campus keys
 ```
 
 ### `sim/config.yaml`
@@ -1117,7 +1159,11 @@ exists in the named file, whatever its value.
 - **AC-T1-3 Protocol (TypeScript).** `npm test -w packages/protocol-ts`
   reproduces every vector byte-for-byte and passes the same property tests.
 - **AC-T1-4 Server functional.** `pytest server` passes, covering: OTP flow
-  (domain allowlist, TTL, attempts, cooldown, constant-time compare); under-18
+  (TTL, attempts, cooldown, constant-time compare); campuses (§4.1): listed
+  domains and their subdomains map to their campus, an unknown academic
+  domain becomes pending (403) until approved, a non-college domain gets 400,
+  a token shared across campuses creates no crossing and stores nothing, and
+  no digest, signal or match ever spans two campuses; under-18
   rejected and DOB not persisted; identity keys rejected when duplicate,
   low-order or non-canonical, and key changes rate-limited; `request-otp`
   always 204 for an allowed domain.
@@ -1299,6 +1345,7 @@ study/analysis/{export,analyze,make_synthetic_export}.py  study/analysis/synthet
 | D14 | 20-signal cap | Bounds the padded set, limits probing ("signal everyone to see who likes me") and discourages volume behaviour |
 | D15 | Unmatch deletes the conversation (report excerpts kept) | Gives users a clean exit; preserves evidence when it matters |
 | D16 | One account per verified college email | Sybil resistance without collecting ID documents |
+| D24 | One server, many colleges; each campus is a closed partition; new colleges open after a one-time operator approval (§4.1) | The human's choice (2026-10-05): "make it for all colleges, people see only their college". Approval because `.ac.in` and similar suffixes also cover some schools, and age is self-declared |
 | D17 | BLE company id 0xFFFF (SIG test id) | Free and acceptable for a prototype; must change before any public release |
 | D18 | Ranking never uses signal, match or attention data | Impossible by design and must stay identical across reveal policies |
 | D19 | The app's interface matches `docs/design/prototype.html` exactly (§13.9) | Interface quality is the human's top priority; approved 2026-10-05 |
@@ -1314,8 +1361,9 @@ study/analysis/{export,analyze,make_synthetic_export}.py  study/analysis/synthet
 Answer these by editing this section (and the config) before the phase that
 needs them. The agent must not guess them.
 
-- **Q1 (before Phase 3)** Which college email domain(s) are allowed?
-- **Q2 (before Phase 3)** Confirm the timezone (`Asia/Kolkata`).
+- **Q1 (resolved 2026-10-05)** All colleges, each its own closed campus;
+  a new college opens after one operator approval (§4.1, D24).
+- **Q2 (resolved 2026-10-05)** Timezone `Asia/Kolkata` confirmed.
 - **Q8 (before Phase 5)** In a pilot, who holds operator access? Under §7.2
   those people may not hold an account in that deployment.
 - **Q7 (resolved 2026-10-05)** Python version: 3.11 is used. On the

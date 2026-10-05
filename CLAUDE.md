@@ -201,6 +201,9 @@ that violates one, stop and report it before doing anything else.
     on whether a match exists. After it, a match cannot be erased for one side:
     unmatch or block leaves an `ended` match for the other party (`SPEC.md`
     §6.9).
+13. **Campus isolation.** No query, digest, crossing, signal match, block,
+    report or media access may ever span two campuses (`SPEC.md` §4.1). A
+    new college opens only after the operator approves it.
 
 ---
 
