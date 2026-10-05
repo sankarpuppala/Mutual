@@ -1,0 +1,20 @@
+# Fast checks before every commit. Activate the venv first: .venv\Scripts\Activate.ps1
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.10
+    hooks:
+      - id: ruff-check
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      # pytest exits with code 5 when it collects no tests (true until Phase 1);
+      # treat that as a pass, and any other non-zero code as a failure.
+      - id: pytest-protocol
+        name: pytest packages/protocol_py (fast)
+        entry: python -c "import sys, pytest; code = pytest.main(['packages/protocol_py', '-q']); sys.exit(0 if code == 5 else code)"
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # App hooks (lint, check:privacy, check:contrast) are added in Phase 8.

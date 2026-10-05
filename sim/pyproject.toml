@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mutual-sim"
+version = "0.0.0"
+description = "Agent-based simulation of photo-reveal policies (SPEC.md §15)."
+requires-python = ">=3.11,<3.12"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.1", "ruff==0.16.10"]
+
+[tool.setuptools.packages.find]
+include = ["mutual_sim*"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100

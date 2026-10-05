@@ -1,0 +1,12 @@
+{
+  "name": "mutual",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Mutual: campus co-presence matching research prototype. See SPEC.md.",
+  "workspaces": [
+    "packages/protocol-ts"
+  ],
+  "engines": {
+    "node": ">=24"
+  }
+}

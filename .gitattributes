@@ -1,0 +1,6 @@
+# Keep LF everywhere so generated files (vectors.json) stay byte-identical
+# across Windows checkouts (SPEC.md AC-T1-2).
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.m4a binary

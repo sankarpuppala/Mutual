@@ -1,0 +1,17 @@
+{
+  "protocol_version": 1,
+  "signal_set_size": 20,
+  "token_bytes": 32,
+  "pair_key_bytes": 32,
+  "daily_key_bytes": 32,
+  "eid_bytes": 16,
+  "eid_interval_minutes": 15,
+  "eid_intervals_per_day": 96,
+  "personalization": {
+    "pair_key": "mutual-pairkey01",
+    "interest": "mutual-interest1",
+    "eid": "mutual-eid-v0001"
+  },
+  "intents": { "study": 1, "project": 2, "fitness": 3, "friend": 4, "date": 5 },
+  "ble": { "company_id": 65535, "magic_hex": "4d55", "payload_version": 1 }
+}

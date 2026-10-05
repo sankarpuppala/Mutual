@@ -1,0 +1,6 @@
+{
+  "name": "@mutual/protocol",
+  "version": "0.0.0",
+  "private": true,
+  "description": "TypeScript implementation of the Mutual protocol (SPEC.md §6). Implemented in Phase 2."
+}

@@ -1,0 +1,34 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Node
+node_modules/
+
+# Databases, media, secrets
+*.db
+*.sqlite
+*.sqlite3
+server/config.yaml
+server/media/
+.env*
+*.keystore
+*.jks
+
+# App build output (Expo prebuild)
+app/android/
+app/ios/
+app/.expo/
+
+# Simulation cache
+sim/results/cache/
+
+# Personal driving notes, kept out of the repository (PROMPT.md A2)
+prompt.md
+notes/
