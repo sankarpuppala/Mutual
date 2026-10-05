@@ -1,6 +1,9 @@
 # SPEC.md — Mutual
 
-Status: **v1.2 — the contract.** (v1.1, 2026-10-05: adds the approved visual
+Status: **v1.3 — the contract.** (v1.3, 2026-10-05: second protocol
+review. EIDs are one-time X25519 public keys and encounter tokens are keyed
+by a shared secret, §6.8 and §6.13; per-token release, verification and
+deletion rules, §6.9 and §6.10; D23.) (v1.1, 2026-10-05: adds the approved visual
 reference, §13.9 and D19. v1.2, 2026-10-05: fixes from the adversarial
 protocol review: encounter tokens §6.13, batch matching and fair delivery
 §6.9, identity binding §6.5, D5/D13 revised, D20–D22. Same day: the
@@ -164,10 +167,12 @@ outputs for every vector in `packages/protocol-spec/vectors.json`.
   "token_bytes": 32,
   "pair_key_bytes": 32,
   "daily_key_bytes": 32,
-  "eid_bytes": 16,
+  "eid_bytes": 32,
   "eid_interval_minutes": 15,
   "eid_intervals_per_day": 96,
   "encounter_bytes": 32,
+  "encounter_pad_block": 256,
+  "encounter_max_entries": 1024,
   "uid_bytes": 16,
   "personalization": {
     "pair_key": "mutual-pairkey01",
@@ -245,10 +250,14 @@ way.
 Each device generates a fresh random 32-byte daily key `DK_d` for each local
 day `d`, at least 2 days in advance.
 ```
-EID(d, i) = first 16 bytes of BLAKE2b(data = uint16_be(i), key = DK_d,
-                                     digest_size = 32,
-                                     person = "mutual-eid-v0001")
+esk(d, i) = BLAKE2b(data = uint16_be(i), key = DK_d, digest_size = 32,
+                    person = "mutual-eid-v0001")       # X25519 private key
+EID(d, i) = X25519_public_key(esk(d, i))               # 32 bytes, broadcast
 ```
+The EID is a one-time public key. It is what the device advertises during
+interval `i`, and it is what a peer uses to compute the shared secret in
+§6.13. X25519 clamps `esk` as usual (RFC 7748), and a derived EID is always a
+valid public key (§6.5).
 EIDs are computed in TypeScript and handed to the native module as a
 schedule (§14). `DK_d` **never leaves the device**. It is deleted once day
 `d`'s encounter set (§6.13) has been uploaded.
@@ -263,17 +272,26 @@ have an active match, new matching tokens are appended to it (a new shared
 intent). When the batch finishes, every non-matching `epoch_tokens` row for
 `e` is deleted.
 
-**Fair delivery.** `notify_after` = `digest.release_time` on day `e+1`. It is
-the same instant for both parties and for every match of the epoch.
-- Before `notify_after`, no response to any account may depend on whether a
-  match exists. That covers status codes, bodies, digest contents and timing.
-- A block in either direction that exists when the batch runs, or is created
-  before `notify_after`, deletes the match. Neither party is ever told. Such a
-  block is blind, because nothing about the match is observable yet.
-- After `notify_after`, a match cannot be erased for one side. If one party
-  unmatches or blocks, the other party still receives it, with
-  `state: "ended"` and its matched tokens, but no chat and no photos. It stays
-  until their client has fetched it or 7 days pass.
+**Fair delivery.** Every matched token has its own `notify_after` =
+`digest.release_time` on day `e+1`, where `e` is that token's epoch. It is
+the same instant for both parties. The batch never modifies what is already
+visible. It writes new tokens, for a new match or appended to an existing
+one, as **pending**.
+- **Nothing before release.** Before a token's `notify_after`, no response to
+  any account may depend on that token. That covers status codes, bodies,
+  digest contents and timing. `GET /matches` shows a match only from its
+  first token's `notify_after`, and each token only from its own.
+- **Blind removal.** Pending tokens are dropped for both parties when, at
+  release time, a block exists in either direction, either party has deleted
+  their account, or the match was unmatched. Neither party is ever told. This
+  is evaluated by the release step, never inside the block, unmatch or delete
+  request. If no notified token remains, the match is deleted.
+- **No one-sided erasure.** After `notify_after`, a notified match cannot be
+  erased for one side. If one party unmatches, blocks or deletes their
+  account, the other party still receives it as `state: "ended"`, carrying
+  its notified tokens and a frozen minimal card (`peer_id`, `first_name`,
+  `identity_pk`), but no chat and no photos. It stays until that party's
+  client has fetched it or 30 days pass.
 
 So both parties always learn the same thing.
 
@@ -290,10 +308,14 @@ So both parties always learn the same thing.
   If tonight's set has already been uploaded, it still contains the token,
   which can still match tonight; the UI says so (§13.6). No withdrawal request
   is ever sent to the server, because its existence would leak the signal.
-- **Match verification.** The client accepts a match only if every matched
-  token equals `T(self, peer, epoch, x)` for one of its signals to the peer on
-  the match card that was active in that epoch. It computes this with that
-  card's `identity_pk` and `peer_id`. Otherwise it ignores the match.
+- **Match verification.** For every uploaded set, the client keeps the real
+  tokens it contained, and the `(peer, intent, peer pk, peer uid)` each was
+  computed from, until that epoch's `notify_after` has passed and matches
+  have been fetched. This applies even if a signal was withdrawn after
+  upload. A matched token is accepted only if it equals one of those kept
+  tokens, and it maps to that `(peer, intent)`. The peer's current key on the
+  card is never used for verification, so a key change after upload cannot
+  break the match for one side.
 - A user can only signal peers present in their digest window (the client has
   their `pk` only then). Signalling oneself is rejected.
 - On receiving a match, the client recomputes `T` for each of its active
@@ -327,38 +349,51 @@ strings' trailing digits, regenerates vectors, and requires approval. (Before
 the first protocol code exists, as for v1.2, §6 may change without a bump.)
 
 ### 6.13 Encounter tokens (presence)
-Crossings come from **mutual** sightings. The server never learns daily keys,
-EIDs or times.
+Crossings come from **mutual** sightings. A sighting is keyed with a secret
+that only the two devices can compute, so listening alone gives nothing. The
+server never learns daily keys, EIDs or times.
 
-While advertising its own EID `a`, a device that hears EID `b` with RSSI ≥
-`ble.rssi_threshold_dbm` counts the scan windows in which it heard `b` while
-`a` was active (`windows`, 1–15). For each such pair it computes:
+**Sightings.** While advertising its own EID `a` (interval `i`, private key
+`esk_a`), a device that hears EID `b` counts the scan windows in which it
+received `b` with RSSI ≥ `ble.rssi_threshold_dbm` (`windows`, 1–15). It drops
+`b` if `b` is not a valid public key (§6.5, without the uniqueness rule).
+**Midnight rule:** it records nothing while its own interval is the first
+(`i = 0`) or the last (`i = 95`) of the day. Both devices are therefore on the
+same local day `d` whenever they record each other.
+
+**Dwell and token.** A sighting qualifies when `windows ≥
+presence.min_qualified_windows` (4) within that single interval. The best
+single sighting counts; counts are never summed, so carrying several
+advertisers buys nothing. For each qualifying sighting the device computes:
 ```
+ss = X25519(esk_a, b)                       # MUST reject all-zero
 (lo, hi) = sort_bytes_lexicographic(a, b)
-E(d, a, b) = BLAKE2b(data = day_ascii(10) || lo || hi, digest_size = 32,
-                     person = "mutual-encount01")
+E = BLAKE2b(data = day_ascii(10) || lo || hi, key = ss, digest_size = 32,
+            person = "mutual-encount01")
 ```
 The other device, hearing `a` while advertising `b`, computes the same `E`.
-No interval index is hashed, so two devices whose clocks straddle a 15-minute
-boundary still agree.
+Without `esk_a` or `esk_b`, nobody can compute it. That includes a sniffer
+that heard both EIDs, and the server.
 
-The presence upload for day `d` is a set of `{e, windows}` entries. Dummy
-entries (32 CSPRNG bytes, `windows` uniform in 1–15) pad it to the next
-multiple of `presence.encounter_pad_block` (256, at least 256 entries), and
-the whole set is shuffled with a CSPRNG. The server:
-1. stores the set until the cutoff (start of `d+2`);
-2. for each pair of users X ≠ Y, finds the tokens both uploaded for day `d`;
-3. records a crossing when X's summed `windows` over those shared tokens is ≥
-   `presence.min_qualified_windows` **and** so is Y's (dwell, §14.4).
+**Upload.** The presence upload for day `d` is the set of distinct qualifying
+`E` values, with no window counts. It is padded with CSPRNG dummies to the
+next multiple of `encounter_pad_block` (256, at least 256) and shuffled with a
+CSPRNG. At most `encounter_max_entries` (1024) entries are sent; if there are
+more real tokens, the device keeps those with the most windows.
 
-A crossing therefore needs both phones to have heard each other. A scanner
-that only listens, or replays EIDs one way, cannot create one.
+**Resolution.** The server:
+1. stores each set until the cutoff (start of `d+2`);
+2. records a crossing for users X ≠ Y when some token appears in exactly
+   their two uploads for day `d`. A token uploaded by more than two accounts
+   is ignored;
+3. keeps, for the crossing, only `(day, pair)` and one canonical token: the
+   byte-wise smallest shared token.
 
-For the digest window only, the device keeps a local map from each uploaded
-`e` to the coarse block (morning / afternoon / evening / night) in which it
-was heard. `GET /digest` returns, per peer, the viewer's own shared tokens,
-so the device can show the time chip while the server never knows a time
-(invariant 4).
+**Time chip.** For the digest window only, the device keeps a local map from
+each uploaded `E` to the coarse block (morning / afternoon / evening / night)
+of its sighting. `GET /digest` returns, per peer, only the canonical token,
+so the device can show the chip. A client learns at most the time of one
+sighting, and the server never learns a time (invariant 4).
 
 ---
 
@@ -377,9 +412,9 @@ so the device can show the time chip while the server never knows a time
 |---|---|---|
 | **Honest-but-curious server operator** with full DB and log access, following the protocol | **Yes — primary** | Claims C1–C5 are against this adversary |
 | Other student using the normal app (curious, probing, harassing, stalking) | Yes | Mitigated by protocol, K cap, next-day digest, coarse time, block/report |
-| Passive BLE sniffer (generic scanner app) | Partly | Sees rotating EIDs and that *some* Mutual device is nearby. Daily keys never leave devices, so EIDs cannot be linked to accounts, not even later. App presence leaks — accepted. Linking EIDs across rotations through an unchanged device address is checked in the spike (§14.2) |
-| Relay attacker or planted device (forwards EIDs both ways in real time, or a phone left at a place) | Accepted risk | Can create crossings with whoever passes, which makes a weak "who uses Mutual here" oracle limited by `display_cap`. Listening alone or one-way replay cannot create crossings (§6.13) |
-| Server operator plus a sniffer at the same place | Accepted risk | Anyone who records two devices' EIDs at the same moment can compute their encounter token. With database access, that confirms those two accounts were at that place |
+| Passive BLE sniffer (generic scanner app, or several planted receivers) | Partly | Sees one-time EIDs and that *some* Mutual device is nearby. Encounter tokens are keyed by a secret it cannot compute (§6.13), so it can neither create crossings nor link EIDs to accounts, not even with an account of its own. App presence leaks — accepted. Linking EIDs across rotations through an unchanged device address is checked in the spike (§14.2) |
+| Relay attacker or planted device (forwards EIDs both ways in real time, or a phone left at a place) | Accepted risk | A two-way real-time relay can create a crossing between two real users. A phone with an account left at a place gets crossings with people who stay ≥ 4 minutes, a weak "who uses Mutual here" oracle limited by `display_cap` |
+| Blocked or unmatched party receiving an "ended" mutual | Accepted risk | Fair delivery means they still see the match and its intent(s), and know the other side ended it. A report filed against the other party from an ended mutual goes to the moderation queue flagged for review, never acted on automatically |
 | Sybil accounts | Mitigated | One account per verified college email |
 | Network attacker | TLS only | Dev runs on localhost HTTP; pilot must use TLS |
 | **Malicious (active) server** — substituting public keys, forging digests | **Out of scope** | Stated limitation. One substituted key would give an active server every one-sided interest and intent toward that peer, undetectably. Key transparency (a signed, append-only `(user_id, pk)` log) is future work |
@@ -391,14 +426,14 @@ so the device can show the time chip while the server never knows a time
 | Server learns | Server never learns |
 |---|---|
 | Verified accounts, first names, profile text and media | Plaintext email, date of birth |
-| Crossing pairs at **day** granularity, with the number of shared encounter tokens and windows; retained 7 days | GPS location, any place, or client IP addresses |
+| The day's **crossing graph**: who crossed whom, at day granularity, retained 7 days. Groups that spent time together show up as clusters, and with a public timetable an operator may guess which class a cluster was | GPS location, any place, or client IP addresses |
 | That a user uploaded a signal set (always exactly 20 tokens) | Whom a signal targets, or whether any real signal exists |
 | That a user uploaded an encounter set, and its size rounded up to a multiple of 256 (a coarse activity level) | Daily keys, EIDs, or the time of day of any crossing |
 | Mutual matches (pairs), and how many intents a pair shares | The intent of any signal or match |
 | Messages within matches; message counts | Which digest cards a user opened or played |
 | Blocks and reports (explicit user disclosures) | Who was near whom at what time |
 
-Presence uploads contain only encounter tokens and window counts, and are
+Presence uploads contain only encounter tokens, with no durations, and are
 deleted at the cutoff. The server never receives a daily key, an EID or a
 sighting time. It never logs or stores client IP addresses (§9).
 
@@ -438,9 +473,9 @@ sighting time. It never logs or stores client IP addresses (§9).
   `test_retention.py` asserts 7-day crossing retention. *Argument:* the server
   never receives daily keys, EIDs, sighting times or client IP addresses (§9).
 - **C5 — No real-time proximity.** *Test:* a crossing for day `d` is never
-  returned by `GET /v1/digest` before `release_time` on day `d+1`, and every
-  response between two consecutive release times is identical
-  (`test_digest.py`, using the injected clock).
+  returned by `GET /v1/digest` before `release_time` on day `d+1`. Every
+  response between two consecutive release times is identical, apart from
+  the viewer's own blocks (`test_digest.py`, using the injected clock).
 
 ---
 
@@ -486,9 +521,9 @@ sighting time. It never logs or stores client IP addresses (§9).
 | OTP codes | SHA-256 hash, 10-minute TTL, 5 attempts | Deleted on use/expiry |
 | Session tokens | SHA-256 hash | 30 days |
 | Presence uploads (padded encounter sets) | Server | Until cutoff (start of `d+2`), then deleted |
-| Crossings (`day`, user pair, shared encounter tokens and windows) | Server | 7 days |
+| Crossings (`day`, user pair, one canonical encounter token) | Server | 7 days |
 | Epoch tokens | Server | Non-matching tokens deleted when the epoch's matching batch finishes; matched tokens live on the match |
-| Matches | Server | Until unmatch, block or account deletion |
+| Matches | Server | Until unmatch, block or account deletion; then kept as `ended` for the other party until fetched or 30 days (§6.9) |
 | Messages | Server | Deleted on unmatch/block/deletion (report excerpts retained) |
 | Reports | Server | Until resolved + 90 days |
 | Signals, peer keys, sightings, encounter → time-block map, own daily keys | Device (`expo-sqlite`, keys in `expo-secure-store`) | Signals: TTL; sightings: until that day's encounter set is uploaded; encounter map: 7 days; daily keys: deleted after that day's upload |
@@ -546,7 +581,7 @@ Errors: `400` malformed/semantic, `401` no session, `403` forbidden,
 | `POST /account` | `{date_of_birth, identity_pk, first_name, year_of_study?, consent_version?}` → `{user_id}` | 18+ (S1); DOB discarded; `identity_pk` valid per §6.5 (422 otherwise; 409 if already registered); `consent_version` required only in study mode |
 | `GET /account/me` | → account summary | |
 | `PUT /account/identity-key` | `{identity_pk}` → 204 | For reinstall; valid per §6.5; at most once per `auth.identity_key_change_min_days` (429); documented limitation §6.10 |
-| `DELETE /account` | → 202 | S11 |
+| `DELETE /account` | → 202 | S11. Notified matches become `ended` for the other party; pending tokens are dropped blindly at release (§6.9) |
 
 ### Profile
 | Method & path | Notes |
@@ -561,13 +596,15 @@ Errors: `400` malformed/semantic, `401` no session, `403` forbidden,
 ### Presence and digest
 | Method & path | Notes |
 |---|---|
-| `POST /presence/{day}` | `{encounters:[{e, windows}]}` (§6.13) → 201. `day` must be before today and not past cutoff (400); once per day (409); 422 unless the count is a positive multiple of `encounter_pad_block`, every `e` is 32 bytes and every `windows` is 1–15 |
-| `GET /digest` | → `{release_day, peers:[{card: PeerCard, last_day, encounters:[base64url]}], media:[{media_id, bytes, sha256}]}`. See the rules below |
+| `POST /presence/{day}` | `{encounters:[base64url]}` (§6.13) → 201. `day` must be before today and not past cutoff (400); once per day (409); 422 unless the count is a positive multiple of `encounter_pad_block` and at most `encounter_max_entries`, every entry is 32 bytes, and no entry repeats |
+| `GET /digest` | → `{release_day, peers:[{card: PeerCard, last_day, encounter: base64url}], media:[{media_id, bytes, sha256}]}`. See the rules below |
 | `GET /media/{media_id}` | Voice notes of peers in the viewer's digest window. A uniform 404 for every id the caller may not access, whether or not it exists |
 
 `GET /digest` rules:
 - **A snapshot.** It is computed once per viewer at `release_time` and stays
-  byte-identical until the next `release_time`.
+  byte-identical until the next `release_time`. The only exception is the
+  viewer's own blocks, which remove that peer from the viewer's own response
+  at once (the viewer's own action, visible to nobody else).
 - **One entry per peer** (most recent crossing day only, within
   `lookback_days`), at most `display_cap` per release, ordered by ranking
   (§11.1).
@@ -576,8 +613,8 @@ Errors: `400` malformed/semantic, `401` no session, `403` forbidden,
 - **Exclusions.** The viewer's own blocks and suspended peers are removed
   immediately. Peers who blocked the viewer, paused, deleted their account,
   or matched the viewer are removed at the next release.
-- **`encounters`** holds the viewer's own shared encounter tokens with that
-  peer, for the on-device time chip (§6.13).
+- **`encounter`** is the crossing's canonical encounter token, for the
+  on-device time chip (§6.13).
 
 `PeerCard = {peer_id, first_name, year_of_study?, identity_pk, prompts:[{prompt_id, text, voice_media_id?, waveform?}]}` — never photos, never counts, never times.
 
@@ -585,7 +622,7 @@ Errors: `400` malformed/semantic, `401` no session, `403` forbidden,
 | Method & path | Notes |
 |---|---|
 | `PUT /signals/{epoch}` | `{tokens:[base64url × 20]}` → 201. 400 if `epoch ≠` current; 425 before window start; 400 at or after `match_batch_time`; 409 if exists; 422 if count ≠ 20 or any token ≠ 32 bytes. Only stores the set; matching runs in the nightly batch (§6.9) |
-| `GET /matches` | Matches with `notify_after ≤ now`: `[{match_id, state: active\|ended, peer: PeerCard, matched:[{epoch, token}], created_epoch, reveal:{state, policy, messages_needed_each?}, unread}]`. An `ended` match carries no chat or photos (§6.9) |
+| `GET /matches` | Matches with at least one token past its `notify_after`, showing only such tokens: `[{match_id, state: active\|ended, peer: PeerCard, matched:[{epoch, token}], created_epoch, reveal:{state, policy, messages_needed_each?}, unread}]`. An `ended` match carries the frozen minimal card and no chat or photos (§6.9). Any match id that does not exist, is not the caller's, or is not yet notified gets the same 404 on every `/matches/{id}` route |
 | `GET /matches/{match_id}/photos/{index}` | Only if revealed under the active policy (§11.2) |
 | `POST /matches/{match_id}/reveal-consent` | Policy C only |
 | `GET /matches/{match_id}/messages?after=` | |
@@ -595,7 +632,7 @@ Errors: `400` malformed/semantic, `401` no session, `403` forbidden,
 ### Safety, config, dev
 | Method & path | Notes |
 |---|---|
-| `POST /blocks` | `{peer_id}` (allowed pre-match; explicit user disclosure). Acts only on ids that appeared in the caller's digest window or matches; any other id gets the same 204 with no effect |
+| `POST /blocks` | `{peer_id}` (allowed pre-match; explicit user disclosure). Acts only on ids in the caller's current digest window or notified matches; any other id gets the same 204 with no effect. The request only records the block; its effect on pending tokens is applied at release (§6.9) |
 | `POST /reports` | `{peer_id, reason, message_ids?}`. Same id rule and uniform 204 as blocks |
 | `POST /discovery/pause`, `POST /discovery/resume` | S6 |
 | `GET /config` | `{server_time, epoch, protocol_version, reveal_policy, next_policy_change?, signal_upload_window, presence_upload_window, digest_release_time, interest_ttl_days, ble:{...}, study_enabled}` |
@@ -641,18 +678,20 @@ date strings.
 - `media(id, user_id, kind[voice|photo], prompt_id NULL, photo_index NULL,
   path, bytes, sha256, waveform JSON NULL, created_at)`
 - `presence_uploads(user_id, day, uploaded_at)`, PK `(user_id, day)`
-- `encounters(day, token, user_id, windows)`, index on `(day, token)` —
-  one row per uploaded entry, deleted at cutoff with the upload
-- `crossings(day, user_lo, user_hi, tokens JSON, windows_lo, windows_hi,
-  created_at)`, PK `(day, user_lo, user_hi)` — `tokens` are the shared
-  encounter tokens, returned only to their own two users in the digest
+- `encounters(day, token, user_id)`, index on `(day, token)` — one row per
+  uploaded entry, deleted at cutoff with the upload
+- `crossings(day, user_lo, user_hi, token, created_at)`, PK
+  `(day, user_lo, user_hi)` — `token` is the canonical encounter token,
+  returned only to the crossing's own two users in the digest
 - `epoch_tokens(epoch, user_id, token)`, index on `(epoch, token)`; unique
   `(epoch, user_id, token)`; one set per `(epoch, user_id)` enforced via
   `signal_uploads(epoch, user_id PK, uploaded_at)`
-- `matches(id, user_lo, user_hi, tokens JSON [{epoch, token}], created_epoch,
-  policy, notify_after, revealed_at NULL, ended_at NULL, ended_by NULL,
+- `matches(id, user_lo, user_hi, created_epoch, policy, revealed_at NULL,
+  ended_at NULL, ended_by NULL, frozen_card JSON NULL,
   ended_seen_by_other_at NULL)`; unique active pair. Ended matches are
-  deleted once the other party has fetched them, or after 7 days
+  deleted once the other party has fetched them, or after 30 days
+- `match_tokens(match_id, epoch, token, notify_after)` — pending until
+  `notify_after`; the batch only inserts here
 - `reveal_consents(match_id, user_id)`
 - `messages(id, match_id, sender_id, body, created_at)`
 - `blocks(blocker_id, blocked_id, created_at)`
@@ -819,12 +858,21 @@ Verify exact names against current Android documentation for the installed
 target SDK and record them in the Progress log.
 
 ### 14.2 Advertisement
-Legacy, non-connectable advertisement with manufacturer-specific data:
-company id `0xFFFF` (Bluetooth SIG test id — **not for shipping products**;
-acceptable for a research prototype, decision D17), payload =
-`magic(0x4D 0x55) || payload_version(1) || EID(16)` = 19 bytes. Total
-advertisement 26 of 31 bytes (flags 3 + manufacturer AD 23). Low-power
-advertise mode; TX power from config. On each 15-minute EID rotation the
+Non-connectable advertisement with manufacturer-specific data: company id
+`0xFFFF` (Bluetooth SIG test id — **not for shipping products**; acceptable
+for a research prototype, decision D17). Payload =
+`magic(0x4D 0x55) || payload_version(1) || EID(32)` = 35 bytes. That is more
+than a legacy advertisement can carry (at most 27 bytes of manufacturer data),
+so the spike (Phase 9a) must confirm one of these layouts (D23):
+1. **Preferred:** BLE 5 extended advertising (Android `AdvertisingSet`,
+   `setLegacyMode(false)`), carrying the full 35-byte payload.
+2. **Fallback:** a scannable legacy advertisement carrying
+   `magic || version || EID[0:24]`, with the scan response carrying
+   `EID[24:32]` under the same company id. The scanner uses active scanning
+   and joins the two halves.
+
+If neither works reliably on two Android 12+ phones, stop and escalate.
+Low-power advertise mode; TX power from config. On each 15-minute EID rotation the
 module stops advertising, waits for the new random device address, and
 restarts. Whether the address really changes with the EID is verified in the
 spike. If it does not, a sniffer can link EIDs across rotations, and that is
@@ -841,11 +889,11 @@ unfiltered scans when the screen is off). Own EIDs are dropped.
 Per pair (own EID being advertised, heard EID) the module keeps `windows`:
 the number of scan windows in which the heard EID was received with RSSI ≥
 `ble.rssi_threshold_dbm`. RSSI itself never leaves the device. TypeScript
-drains these pairs, computes encounter tokens (§6.13), records each token's
-coarse time block locally, and deletes the raw pairs after upload. On
-resolution the server sums each user's `windows` over the tokens both users
-uploaded. A **crossing** requires both sums ≥ `presence.min_qualified_windows`
-(4).
+drains these pairs, applies the midnight rule and the per-interval dwell
+threshold `presence.min_qualified_windows` (4), computes encounter tokens for
+the qualifying ones (§6.13), records each token's coarse time block locally,
+and deletes the raw pairs after upload. A **crossing** requires both devices
+to have uploaded the same token, so each side's own dwell check passed.
 
 ### 14.5 Schedule and service lifecycle
 JS hands native a schedule of `(day, interval, eid)` for today and tomorrow.
@@ -990,7 +1038,6 @@ auth:
   identity_key_change_min_days: 30
 presence:
   min_qualified_windows: 4
-  encounter_pad_block: 256
   crossing_retention_days: 7
   upload_window_start: "00:05"
   upload_window_end: "06:00"
@@ -1053,11 +1100,15 @@ exists in the named file, whatever its value.
     collisions);
   - padded set has exactly 20 entries of 32 bytes, contains every real
     token, and raises on > 20 real tokens;
-  - 96 distinct EIDs per daily key;
-  - encounter token symmetry, `E(d,a,b) = E(d,b,a)`, and a different day or
-    EID gives a different token;
-  - the padded encounter set has a size that is a multiple of 256 and
-    contains every real entry;
+  - EIDs: 96 distinct valid public keys per daily key;
+  - encounter token symmetry: both devices compute the same token;
+  - a different day or EID gives a different token;
+  - computing it with a wrong private key gives a different token, so a party
+    that only heard both EIDs cannot reproduce it;
+  - low-order heard EIDs are rejected;
+  - the padded encounter set is a multiple of 256 (at least 256, at most
+    1024), contains every real entry, and raises above 1024 real entries;
+  - the midnight rule flags intervals 0 and 95;
   - all constants loaded from `constants.json`.
 - **AC-T1-2 Vectors.** `python -m mutual_protocol.vectors --out
   packages/protocol-spec/vectors.json` generates ≥ 100 deterministic cases
@@ -1072,11 +1123,13 @@ exists in the named file, whatever its value.
   always 204 for an allowed domain.
   - Presence:
     - upload rules: past day only, cutoff, once per day, size a multiple of
-      256;
-    - the schema has no key, EID or time field;
-    - a crossing requires tokens uploaded by both users and
-      `min_qualified_windows` on both sides;
-    - a one-way replayed token creates no crossing.
+      256 and at most 1024, no repeated entries;
+    - the schema has only encounter tokens: no key, EID, window or time
+      field;
+    - a crossing requires a token uploaded by exactly those two users;
+    - a token in one upload creates no crossing;
+    - a token in three or more uploads is ignored;
+    - only the canonical token is kept on the crossing.
   - Digest:
     - a byte-identical snapshot between release times;
     - one entry per peer, respecting `display_cap`;
@@ -1090,9 +1143,13 @@ exists in the named file, whatever its value.
     - a new shared intent is appended to an existing match.
   - Fair delivery:
     - `notify_after` = next release time;
-    - a block before `notify_after` deletes the match for both;
-    - an unmatch or block after `notify_after` leaves an `ended` match for
-      the other party.
+    - every match token is pending until its own `notify_after`, and
+      `GET /matches` hides it until then;
+    - a block, unmatch or account deletion before a token's `notify_after`
+      drops it blindly at release;
+    - after `notify_after`, an unmatch, block or account deletion leaves an
+      `ended` match with a frozen card for the other party;
+    - a block request's response does not depend on any pending match.
   - Other: uniform 404 on `/media`; block and report act only on known ids;
     photo gating under M and C; reveal consent; message limits; unmatch
     deletes messages; report copies excerpts; account deletion cascades.
@@ -1137,8 +1194,9 @@ exists in the named file, whatever its value.
   and cap; padded set built through protocol-ts; upload scheduler never
   uploads before the window, never twice per epoch, never for a past epoch,
   never at or after `match_batch_time`;
-  match resolution token → (peer, intent); match verification rejects a
-  token that does not fit the card's key and id; a withdrawal frees its slot
+  match resolution token → (peer, intent); match verification accepts only
+  tokens kept from that epoch's uploaded set (still recognised after a
+  withdrawal or a peer key change); a withdrawal frees its slot
   instantly and sends no request; encounter tokens and the
   padded encounter set are built through protocol-ts, and no daily key, EID or
   time is ever passed to `api/client.ts`; prefetch fetches every listed media
@@ -1182,7 +1240,7 @@ packages/protocol-spec/constants.json
 packages/protocol-spec/vectors.json                     (generated, committed)
 packages/protocol_py/pyproject.toml
 packages/protocol_py/mutual_protocol/{__init__,constants,encoding,keys,tokens,eid,encounter,vectors}.py
-packages/protocol_py/tests/{test_keys,test_tokens,test_eid,test_encounter,test_encoding,test_vectors}.py
+packages/protocol_py/tests/{test_constants,test_keys,test_tokens,test_eid,test_encounter,test_encoding,test_vectors}.py
 packages/protocol-ts/{package.json,tsconfig.json,vitest.config.ts}
 packages/protocol-ts/src/{index,constants,encoding,keys,tokens,eid,encounter,random}.ts
 packages/protocol-ts/test/{vectors,properties}.test.ts
@@ -1212,6 +1270,7 @@ app/scripts/{check-privacy-invariants,check-contrast}.ts
 app/__tests__/                                           (jest tests for AC-T2-2)
 docs/{THREAT_MODEL,SECURITY_ARGUMENT,E2E_CHECKLIST,BLE_SPIKE,INTERVIEW_QUESTIONS}.md
 docs/design/prototype.html                               (approved visual reference, §13.9)
+docs/DECISIONS_LOG.md                                    (every question, issue, idea and decision, in plain words)
 docs/design-decisions/                                   (generated walkthrough, Phase 13)
 study/{PREREGISTRATION,CONSENT,PARTICIPANT_INFO,ETHICS_APPLICATION_DRAFT}.md       (Tier 3)
 study/APPROVAL.md                                        (written by the human, only after approval)
@@ -1228,7 +1287,7 @@ study/analysis/{export,analyze,make_synthetic_export}.py  study/analysis/synthet
 | D2 | No GPS, BLE only | Location is the most dangerous asset; BLE proximity is enough for "people you were near" |
 | D3 | Next-morning digest, never live | Kills real-time tracking and "who is that person right now" harassment |
 | D4 | Fixed-size padded signal set, once per epoch, random time in window | Makes volume and timing independent of interest (C1) |
-| D5 | Server resolves crossings from mutual encounter tokens and learns only the day-granularity crossing graph (revised v1.2) | Distributing daily keys to clients lets any user track anyone with a BLE scanner. Giving them to the server (v1.0) let the operator rebuild a 15-minute proximity graph and attribute sniffed EIDs. Encounter tokens give the server only "these two phones heard each other that day" |
+| D5 | Server resolves crossings from mutual, secret-keyed encounter tokens and learns only the day-granularity crossing graph (revised v1.2, v1.3) | Distributing daily keys to clients lets any user track anyone with a BLE scanner. Giving them to the server (v1.0) let the operator rebuild a 15-minute proximity graph and attribute sniffed EIDs. Unkeyed tokens (v1.2) let a listen-only sniffer with an account forge crossings. Tokens keyed by an X25519 secret between the two devices fix all three |
 | D6 | Intents are private and per-signal; never shown on profiles | Showing "open to dating" would reintroduce the signalling stigma the product removes |
 | D7 | No swipe UI; prompt-first cards | Swiping rewards snap visual judgement — the behaviour that concentrates attention |
 | D8 | Text answer required; voice optional | Accessibility (deaf and hard-of-hearing users) and lower barrier |
@@ -1246,6 +1305,7 @@ study/analysis/{export,analyze,make_synthetic_export}.py  study/analysis/synthet
 | D20 | No per-intent limits; all five intents share the 20-signal cap (§6.10) | Considered and withdrawn the same day (2026-10-05): "date one person at a time", and "hold other date signals while a date mutual is active". Signals are free and withdrawable, so there is nothing to protect. Any per-intent limit could only be enforced by the app, and simplicity wins. The hold idea is parked in PLAN.md "Deferred improvements" |
 | D21 | Pair keys bind both account ids; identity keys must be valid and unique (§6.5) | A copied public key could otherwise redirect signals meant for its owner |
 | D22 | The server never logs client IP addresses or user agents (§9) | Campus Wi-Fi addresses map to buildings, which would leak location |
+| D23 | EIDs are 32-byte one-time X25519 public keys, carried by extended advertising or an advertisement plus scan response (§6.8, §14.2) | Required for keyed encounter tokens (D5). If the Phase 9a spike shows neither layout works, the fallback is the v1.0 server-side resolution with its operator visibility stated honestly — a spec decision for the human |
 
 ---
 

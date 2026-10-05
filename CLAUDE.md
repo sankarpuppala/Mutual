@@ -155,9 +155,10 @@ that violates one, stop and report it before doing anything else.
    `BLUETOOTH_SCAN` with `usesPermissionFlags="neverForLocation"` and block the
    location permissions in the Expo config. If BLE does not work without a
    location permission, **stop and escalate** — never add it as a workaround.
-   Daily keys, EIDs, RSSI and sighting times **never leave the device**.
-   Presence uploads contain only the padded encounter-token set (`SPEC.md`
-   §6.13).
+   Daily keys, ephemeral private keys, EIDs, RSSI and sighting times are
+   **never sent over the network** (EIDs are only broadcast over BLE).
+   Presence uploads contain only the padded, secret-keyed encounter-token set
+   (`SPEC.md` §6.13).
 4. **No real-time proximity.** Crossings become visible only in the next
    morning's digest (after `digest_release_time`). Never show who is nearby
    now. Never show a place name. Never show crossing counts or exact times —
@@ -188,7 +189,8 @@ that violates one, stop and report it before doing anything else.
    synthetic accounts only.
 10. **No per-peer endpoints before a match**, except the explicit,
     user-initiated safety actions: block and report. Every route taking a peer
-    or user id must return 403 unless a match exists (or it is block/report).
+    or user id must return a uniform error unless a **notified** match exists
+    (or it is block/report, which always return the same 204).
     `server/tests/test_route_audit.py` enforces this.
 11. **Dev-only routes never ship.** `/v1/dev/*` (clock travel, simulated
     crossings) exists only when `MUTUAL_ENV=dev` and is tested to be absent
@@ -286,6 +288,13 @@ The workflow is spec → plan → implement → verify → iterate.
    session ends.
 7. **When in doubt, ask.** Privacy, safety, the study gate, and anything
    irreversible always warrant a question rather than a guess.
+8. **Keep `docs/DECISIONS_LOG.md` current.** Every time you ask the human a
+   question, a review reports findings, or an idea is raised, add a
+   plain-language entry in the same session: what came up, the options, what
+   was decided, by whom, and where it landed in the spec. Keep its Board (open
+   questions, parked ideas) up to date. Pure security fixes may be applied
+   without asking (the human's standing delegation, 2026-10-05), but they
+   must still be logged there.
 
 ---
 

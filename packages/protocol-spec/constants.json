@@ -4,10 +4,12 @@
   "token_bytes": 32,
   "pair_key_bytes": 32,
   "daily_key_bytes": 32,
-  "eid_bytes": 16,
+  "eid_bytes": 32,
   "eid_interval_minutes": 15,
   "eid_intervals_per_day": 96,
   "encounter_bytes": 32,
+  "encounter_pad_block": 256,
+  "encounter_max_entries": 1024,
   "uid_bytes": 16,
   "personalization": {
     "pair_key": "mutual-pairkey01",

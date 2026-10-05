@@ -7,7 +7,7 @@ name = "mutual-protocol"
 version = "0.0.0"
 description = "Python reference implementation of the Mutual protocol (SPEC.md §6)."
 requires-python = ">=3.11,<3.12"
-dependencies = []
+dependencies = ["cryptography==50.0.2"]
 
 [project.optional-dependencies]
 dev = ["pytest==9.1.1", "ruff==0.16.10"]

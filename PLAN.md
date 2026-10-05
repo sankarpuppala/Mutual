@@ -114,11 +114,13 @@ tokens,eid,encounter,vectors}.py`, `tests/test_*.py`.
 4. `tokens.py` — `interest_token(pair_key, epoch, intent)`; `padded_set(real,
    rng=secrets)` with exact size, CSPRNG dummies and CSPRNG Fisher–Yates
    shuffle; error on > `signal_set_size` real tokens.
-5. `eid.py` — `new_daily_key()`; `eid(daily_key, interval)`;
+5. `eid.py` — `new_daily_key()`; `ephemeral_private_key(daily_key,
+   interval)` and `eid(daily_key, interval)` (the X25519 public key, §6.8);
    `interval_for(local_time)`; `eid_schedule(daily_key) -> list of 96`.
-6. `encounter.py` — `encounter_token(day, eid_a, eid_b)` (§6.13, symmetric);
-   `padded_encounter_set(real, block, rng=secrets)` (dummies, multiple of
-   `block`, CSPRNG shuffle).
+6. `encounter.py` — `encounter_token(day, esk_own, eid_own, eid_heard)`
+   keyed by the X25519 shared secret (§6.13, symmetric); the midnight rule;
+   `padded_encounter_set(real, rng=secrets)` (dummies to a multiple of 256,
+   at most 1024, CSPRNG shuffle).
 7. `vectors.py` — CLI that generates ≥ 100 vectors from **deterministic**
    inputs (e.g. private keys = BLAKE2b of a fixed seed and index — never the
    CSPRNG), covering every function, plus negative cases (all-zero shared
@@ -239,15 +241,17 @@ retention}.py`, tests `test_presence`, `test_digest`, `test_retention`.
 
 **Tasks.**
 1. `POST /presence/{day}` per `SPEC.md` §11 (past day only, cutoff, once,
-   size a multiple of 256, `{e, windows}` entries only).
+   size a multiple of 256 and at most 1024, encounter tokens only, no
+   repeats).
 2. Resolution (incremental, §6.13): on each upload, insert its entries into
-   `encounters`. Find the tokens this user shares with earlier uploaders for
-   the same day, and sum each side's `windows` per user pair. Create or
-   update a `crossings` row when both sums reach `min_qualified_windows`.
+   `encounters`. Every token held by exactly two uploaders for the day
+   creates a `crossings` row for that pair, keeping only the byte-wise
+   smallest shared token. Tokens held by three or more uploaders are
+   ignored.
 3. Cutoff job: at the start of `d+2`, delete `presence_uploads` and
    `encounters` for day `d`.
 4. Digest per §11: a snapshot computed at release time; one entry per peer
-   with `last_day` and the viewer's shared tokens; exclusions with their
+   with `last_day` and the canonical encounter token; exclusions with their
    timing; display cap; PeerCard shape; full media list. Ranking `random`
    (stable per viewer and day); `reciprocal_content` deferred to Phase 11
    (optional).
@@ -293,8 +297,10 @@ tests.
    matching batch at `match_batch_time` (§6.9) handles block suppression,
    appends new shared tokens (with epoch) to an existing match, sets
    `notify_after` = next release time, and deletes non-matching tokens.
-   Fair delivery: blocks before `notify_after` delete for both; unmatch or
-   block after it leaves an `ended` match for the other party.
+   Fair delivery (§6.9): the batch only inserts pending rows into
+   `match_tokens`; the release step drops pending tokens blindly after a
+   block, unmatch or account deletion; after `notify_after`, these leave an
+   `ended` match with a frozen card for the other party.
 4. `GET /matches`; reveal policy selection by date (`services/arms.py`);
    photo gating for M and C; reveal consent.
 5. Messages (length, rate limit), unmatch (deletes messages).
@@ -426,9 +432,12 @@ output).
 `SPEC.md` §14 works, before building the full module.
 
 **Tasks.**
-1. Minimal local Expo module (Kotlin): advertise a fixed test payload with
-   company id 0xFFFF; scan with a manufacturer-data filter; log sightings with
-   RSSI to a file; a bare debug screen with start/stop and export.
+1. Minimal local Expo module (Kotlin): advertise a fixed **35-byte** test
+   payload with company id 0xFFFF. Try layout 1 (extended advertising)
+   first, then layout 2 (advertisement plus scan response, active scanning)
+   from SPEC §14.2 / D23. Record which works on each phone, in pockets and
+   with the screen off. Scan with a manufacturer-data filter; log sightings
+   with RSSI to a file; a bare debug screen with start/stop and export.
 2. `BLUETOOTH_SCAN` with `neverForLocation`, no location permission.
 3. Measurements on two Android 12+ phones, recorded in `docs/BLE_SPIKE.md`:
    detection with `neverForLocation` (yes/no); detection rate at 1 m, 3 m,
@@ -582,6 +591,7 @@ choices can be fluent and wrong.
 | R9 | Battery drain unacceptable | Medium | Medium | Duty cycle in config; measured; spec change if > 10 % per 8 h |
 | R10 | Scope creep (it is a big project) | High | High | Tiers; Tier 1 gate; one phase per session; CLAUDE.md rule 5 |
 | R11 | Version drift (Expo packages, noble APIs, Android rules) | High | Low–Medium | ⚠ verify items; pins recorded in the Progress log |
+| R12 | 35-byte BLE payload (D23) unsupported or unreliable on some phones | Medium | High (Tier 2) | Spike tests both layouts in 9a; Tier 1 unaffected; fallback to v1.0 server-side resolution is a human decision |
 
 ---
 
@@ -731,3 +741,68 @@ Add an entry at the end of every session. Newest at the bottom.
   and the published artifact are in sync.
 - Next session starts with: human commits "Spec v1.2 after protocol review",
   then Phase 1 in a new session.
+
+### 2026-10-05 — Phase 1 — done (awaiting human review; nothing committed)
+- Done:
+  - Spec v1.2 committed by the human (`503b347`); branch
+    `phase-1-protocol-py`.
+  - A second independent review covered §6.13, §6.5 and §6.9. It found 12
+    issues, N1 critical. All were applied as **SPEC v1.3 under the human's
+    standing delegation for security fixes** (DECISIONS_LOG entries 8–9).
+  - `mutual_protocol`: `constants`, `encoding`, `keys`, `tokens`, `eid`,
+    `encounter`, `vectors`, each with tests.
+  - `packages/protocol-spec/vectors.json`: 135 deterministic cases.
+  - New `docs/DECISIONS_LOG.md`, plus CLAUDE.md §8 rule 8 to keep it
+    current.
+- Tests:
+  - `pytest packages/protocol_py -q` → 130 passed in 0.64 s.
+  - `pytest packages/protocol_py server sim -q` → 130 passed.
+  - `python -m mutual_protocol.vectors --out …` → 135 cases. A second
+    regeneration is byte-identical (SHA-256 equal), and `test_vectors.py`
+    asserts it.
+  - `pre-commit run --all-files` → ruff check, ruff format and pytest all
+    Passed.
+  - `constants.json` vs SPEC §6.2 → MATCH.
+- Independent check: three vectors (pair key, interest token, encounter
+  token) were recomputed with only `hashlib` + `cryptography` → all True.
+- ⚠ verify results:
+  - `cryptography` 50.0.2 raises `ValueError` for all 5 canonical low-order
+    points and 4 non-canonical encodings; the explicit check is kept anyway.
+  - A top-bit-set key is an alias with the same shared secret, so the
+    canonical rule is required.
+  - BLAKE2b zero-pads a short `person`, so exactly 16 bytes is enforced.
+  - `uuid.bytes` is in RFC 4122 order.
+- Measured: —
+- Version pins chosen: cryptography 50.0.2.
+- Spec changes:
+  - SPEC v1.3 (§6.2, §6.8, §6.9, §6.10, §6.13, §7.2, §7.3, §9, §11, §12,
+    §14.2, §14.4, §18, §19, D5, D23; `constants.json`: `eid_bytes` 32,
+    `encounter_pad_block`, `encounter_max_entries`).
+  - CLAUDE.md invariants 3 and 10, and §8 rule 8.
+  - PLAN Phases 1, 4, 5 and 9a; risk R12.
+- Deviations from this plan and why:
+  - Phase 1 ran in the same session as Phase 0 and the reviews, at the
+    human's request ("start").
+  - `tests/test_constants.py` was added (§20 updated).
+  - `ProtocolError` lives in `encoding.py`, so no extra module was needed.
+  - Vectors are hex, not base64url, for readability; base64url has its own
+    vector group.
+  - EIDs became 32-byte keys (v1.3), so `eid.py` also exports
+    `ephemeral_private_key`.
+- Human review checklist (Phase 1):
+  - No `random` module anywhere, checked with a search.
+  - Constants come only from `constants.json`.
+  - Public keys are sorted as bytes, with uids bound to their own key (there
+    is a test).
+  - The token message is `epoch(10) || intent(1)`, recomputed by hand in
+    `test_token_message_layout`.
+  - `encounter_token(d, a, b)` is symmetric (there is a test).
+  - Still for the human: be able to say in one sentence each what a pair key,
+    a token, an EID and an encounter token are.
+- Next session starts with:
+  - the human reviews the diff and commits ("Phase 1 (protocol-py) …"), then
+    merges `phase-1-protocol-py` into `main`;
+  - then Phase 2 (TypeScript protocol + cross-language vectors) in a new
+    session. Its ⚠ verify items are the `@noble/curves` and `@noble/hashes`
+    versions and import paths, and whether noble's x25519 rejects low-order
+    points.
