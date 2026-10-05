@@ -209,3 +209,39 @@ An independent reviewer saw only the protocol sections and attacked them.
 - **New guard:** a pre-commit hook now runs the server tests too.
 - **Noted, not acted on:** Starlette warns that its test client prefers
   `httpx2`. We stay on the pinned `httpx` 0.28.1; revisit if it breaks.
+
+### 14. Phase 4 (presence, digest, retention) choices — Adopted
+- **Human:** "start phase 4". `main` fast-forwarded to Phase 3 (not pushed).
+- **"Byte-identical until the next release" needs something to freeze.**
+  SPEC describes the digest as a snapshot but doesn't name a storage
+  mechanism. Claude added a new table, `digest_snapshots`, computed once
+  (lazily, on first visit after a release) and never edited afterwards.
+  Only the "snapshot" (which peers, in what order) is frozen; each peer's
+  profile is still read live, so editing your prompts updates what others
+  see on their next refresh without waiting for a release.
+- **Two exclusion timings, read literally from §11:** the viewer's own
+  blocks and a peer's suspension are checked live, every request, never
+  baked in. A peer blocking the viewer, pausing, deleting their account, or
+  matching the viewer only takes effect at the *next* release. Both are
+  tested directly (flip a flag mid-window, confirm the digest does or
+  doesn't change).
+- **Crossing-token "poisoning".** If a third account ever uploads a token
+  two others already share, the spec says it's ignored entirely. Claude's
+  resolution service recomputes every pair that token touches from
+  scratch, so a crossing already formed from that token is removed too —
+  unless the same two people also share a different, still-clean token, in
+  which case the crossing survives on that token instead. Tested directly.
+- **Encounter tokens in tests are built with the real protocol**, not
+  arbitrary random bytes, per CLAUDE.md §7 ("never mock the protocol
+  package in server tests"). A new `make_shared_token()` helper in
+  `conftest.py` generates two independent one-time keys and derives the
+  token exactly as two real phones would.
+- **GET /media serves only voice notes of peers currently in the digest.**
+  Photos are never served through this route, even for a matched peer —
+  pre-match this follows directly from "no photos before a match"; photo
+  delivery after a match is Phase 5's `/matches/{id}/photos` route.
+- **Retention runs at startup and every hour** via a background task
+  started in the app's lifespan, with its own try/except so one failed
+  sweep can never crash the server. It also now cleans up old digest
+  snapshots (same 7-day bound as crossings), which the spec didn't name
+  explicitly but follows from the same retention rule.

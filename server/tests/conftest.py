@@ -15,7 +15,9 @@ from typing import Any
 import pytest
 import yaml
 from fastapi.testclient import TestClient
+from mutual_protocol.eid import eid, ephemeral_private_key, new_daily_key
 from mutual_protocol.encoding import b64url_encode
+from mutual_protocol.encounter import encounter_token, padded_encounter_set
 from mutual_protocol.keys import generate_identity_keypair
 from sqlalchemy import Engine, inspect, select, text
 from sqlalchemy.orm import Session
@@ -153,3 +155,24 @@ def campus_status(h: Harness, key: str) -> tuple[str, int] | None:
     with h.db() as db:
         row = db.scalar(select(Campus).where(Campus.key == key))
         return (row.status, row.attempts) if row else None
+
+
+def make_shared_token(day: str, interval: int = 40) -> bytes:
+    """A real encounter token (SPEC §6.13), as two independent devices would each compute it.
+
+    Built with the real mutual_protocol, not an arbitrary random value (CLAUDE.md §7):
+    the server treats encounter tokens as opaque 32-byte data either way, so what matters
+    here is that the token is a genuine output of the protocol, not its provenance.
+    """
+    dk_a = new_daily_key()
+    esk_a, id_a = ephemeral_private_key(dk_a, interval), eid(dk_a, interval)
+    dk_b = new_daily_key()
+    esk_b, id_b = ephemeral_private_key(dk_b, interval), eid(dk_b, interval)
+    token = encounter_token(day, esk_a, id_a, id_b)
+    assert token == encounter_token(day, esk_b, id_b, id_a)
+    return token
+
+
+def padded(real: list[bytes]) -> list[str]:
+    """Base64url-encode a padded encounter set, ready for POST /presence/{day}."""
+    return [b64url_encode(t) for t in padded_encounter_set(real)]

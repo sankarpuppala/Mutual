@@ -555,6 +555,7 @@ sighting time. It never logs or stores client IP addresses (§9).
 | Session tokens | SHA-256 hash | 30 days |
 | Presence uploads (padded encounter sets) | Server | Until cutoff (start of `d+2`), then deleted |
 | Crossings (`day`, user pair, one canonical encounter token) | Server | 7 days |
+| Digest snapshots (materialized peer lists) | Server | Same as crossings (7 days) |
 | Epoch tokens | Server | Non-matching tokens deleted when the epoch's matching batch finishes; matched tokens live on the match |
 | Matches | Server | Until unmatch, block or account deletion; then kept as `ended` for the other party until fetched or 30 days (§6.9) |
 | Messages | Server | Deleted on unmatch/block/deletion (report excerpts retained) |
@@ -720,6 +721,10 @@ date strings.
 - `crossings(day, user_lo, user_hi, token, created_at)`, PK
   `(day, user_lo, user_hi)` — `token` is the canonical encounter token,
   returned only to the crossing's own two users in the digest
+- `digest_snapshots(user_id, release_day, peers JSON, created_at)`, PK
+  `(user_id, release_day)` — the materialized peer list (`[{peer_id,
+  last_day, token}]`) behind "byte-identical until the next release"
+  (§11); built once, lazily, on first access after a release instant
 - `epoch_tokens(epoch, user_id, token)`, index on `(epoch, token)`; unique
   `(epoch, user_id, token)`; one set per `(epoch, user_id)` enforced via
   `signal_uploads(epoch, user_id PK, uploaded_at)`
@@ -1304,7 +1309,7 @@ server/migrations/{env.py,script.py.mako,versions/}     (Alembic)
 server/mutual_server/{__init__,main,config,clock,ids,db,models,security,errors,deps,schemas,admin}.py
 server/mutual_server/data/prompts.json
 server/mutual_server/routers/{auth,account,profile,presence,digest,signals,matches,messages,safety,config_route,dev}.py
-server/mutual_server/services/{campus,resolution,matching,ranking,arms,retention,email,media}.py
+server/mutual_server/services/{campus,resolution,matching,ranking,digest,arms,retention,email,media}.py
 server/tests/{conftest,test_app,test_auth,test_account,test_profile,test_presence,test_digest,test_signals,test_matches,test_reveal,test_messages,test_safety,test_retention,test_leak_two_worlds,test_route_audit,test_study_gate}.py
 sim/{pyproject.toml,config.yaml}
 sim/mutual_sim/{__init__,population,copresence,policies,behaviour,metrics,run,sweep,report}.py

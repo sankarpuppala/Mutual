@@ -7,6 +7,9 @@ The access log stays off in every environment: it would record client IP address
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -21,9 +24,12 @@ from mutual_server.deps import AppContext
 from mutual_server.errors import install_error_handlers
 from mutual_server.ids import IdFactory, UuidIds
 from mutual_server.models import Campus
-from mutual_server.routers import account, auth, config_route, dev, profile
+from mutual_server.routers import account, auth, config_route, dev, digest, presence, profile
 from mutual_server.services.campus import seed_config_campuses
 from mutual_server.services.email import EmailSender, make_sender
+from mutual_server.services.retention import run_retention
+
+_RETENTION_INTERVAL_SECONDS = 3600  # CLAUDE.md §6 / SPEC.md §9: "runs at startup and every hour"
 
 
 def _check_study_campuses(db: Session, settings: Settings) -> None:
@@ -34,6 +40,18 @@ def _check_study_campuses(db: Session, settings: Settings) -> None:
     missing = [k for k in settings.study.campuses if k not in open_keys]
     if missing:
         raise ConfigError(f"study.campuses not open: {', '.join(missing)}")
+
+
+async def _retention_loop(session_factory: sessionmaker[Session], ctx: AppContext) -> None:
+    while True:
+        await asyncio.sleep(_RETENTION_INTERVAL_SECONDS)
+        try:
+            with session_factory() as db:
+                run_retention(db, ctx.clock, ctx.settings)
+        except Exception as exc:  # noqa: BLE001 - a failed sweep must never crash the server
+            # No request data (no IP, no user id) in this line — it is the only
+            # place the server ever prints outside the dev OTP console message.
+            print(f"[retention] hourly sweep failed: {exc!r}", file=sys.stderr)
 
 
 def create_app(
@@ -59,7 +77,14 @@ def create_app(
         with session_factory() as db:
             seed_config_campuses(db, settings, ctx.ids, ctx.clock)
             _check_study_campuses(db, settings)
-        yield
+            run_retention(db, ctx.clock, settings)
+        task = asyncio.create_task(_retention_loop(session_factory, ctx))
+        try:
+            yield
+        finally:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
     app = FastAPI(title="Mutual", version="0.1.0", lifespan=lifespan, docs_url=None, redoc_url=None)
     app.state.ctx = ctx
@@ -68,7 +93,7 @@ def create_app(
     install_error_handlers(app)
 
     v1 = APIRouter(prefix="/v1")
-    for module in (auth, account, profile, config_route):
+    for module in (auth, account, profile, config_route, presence, digest):
         v1.include_router(module.router)
     if settings.env == "dev":
         v1.include_router(dev.router)  # never mounted outside dev (invariant 11)

@@ -140,6 +140,43 @@ class DevSeedIn(_In):
     campus_key: str
 
 
+class DevCrossingIn(_In):
+    user_a: str
+    user_b: str
+    day: date
+
+
+# --- presence / digest -------------------------------------------------------
+class PresenceUploadIn(_In):
+    encounters: list[str]  # base64url, 32 bytes each (SPEC §6.13)
+
+
+class PeerCardOut(_Out):
+    peer_id: str
+    first_name: str
+    year_of_study: int | None
+    identity_pk: str
+    prompts: list[PromptAnswer]  # never photos, never counts, never times (§11)
+
+
+class DigestPeerOut(_Out):
+    card: PeerCardOut
+    last_day: str
+    encounter: str  # this crossing's canonical encounter token, base64url (§6.13)
+
+
+class DigestMediaOut(_Out):
+    media_id: str
+    bytes: int
+    sha256: str
+
+
+class DigestOut(_Out):
+    release_day: str
+    peers: list[DigestPeerOut]
+    media: list[DigestMediaOut]
+
+
 class DevSeededUser(_Out):
     user_id: str
     session_token: str

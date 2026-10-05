@@ -148,6 +148,22 @@ class Crossing(Base):
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)
 
 
+class DigestSnapshot(Base):
+    """The materialized peer list behind "byte-identical until next release" (SPEC.md §11).
+
+    Computed once, lazily, on first access after a release instant; never edited afterwards
+    except by the retention job, which deletes rows once their crossings would also expire.
+    """
+
+    __tablename__ = "digest_snapshots"
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    release_day: Mapped[str] = mapped_column(DAY, primary_key=True)
+    peers: Mapped[list[dict[str, Any]]] = mapped_column(JSON)  # [{peer_id, last_day, token (hex)}]
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
 class SignalUpload(Base):
     __tablename__ = "signal_uploads"
     epoch: Mapped[str] = mapped_column(DAY, primary_key=True)
