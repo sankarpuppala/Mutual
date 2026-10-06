@@ -1324,7 +1324,7 @@ sim/{pyproject.toml,config.yaml}
 sim/mutual_sim/{__init__,population,copresence,policies,behaviour,metrics,run,sweep,report}.py
 sim/tests/{test_metrics,test_determinism,test_policies}.py
 sim/results/report.md  sim/results/figures/            (generated)
-app/{package.json,app.json,app.config.ts,tsconfig.json,eslint.config.js,jest.config.js,babel.config.js,metro.config.js,index.ts}
+app/{package.json,app.json,app.config.ts,tsconfig.json,eslint.config.js,jest.config.js,babel.config.js,metro.config.js}
 app/plugins/withBleNeverForLocation.js                   (local Expo config plugin, §14.1)
 app/app/...                                              (routes listed in §13.2)
 app/src/api/{client,endpoints,types}.ts
@@ -1340,7 +1340,7 @@ app/src/storage/{secure,localDb}.ts
 app/modules/mutual-ble/                                  (Expo local module: index.ts, expo-module.config.json, android/…Kotlin)
 app/scripts/{check-privacy-invariants,check-contrast}.ts
 app/__tests__/                                           (jest tests for AC-T2-2)
-docs/{THREAT_MODEL,SECURITY_ARGUMENT,E2E_CHECKLIST,BLE_SPIKE,INTERVIEW_QUESTIONS}.md
+docs/{THREAT_MODEL,SECURITY_ARGUMENT,E2E_CHECKLIST,BLE_SPIKE,INTERVIEW_QUESTIONS,RUNNING_LOCALLY}.md
 docs/design/prototype.html                               (approved visual reference, §13.9)
 docs/DECISIONS_LOG.md                                    (every question, issue, idea and decision, in plain words)
 docs/design-decisions/                                   (generated walkthrough, Phase 13)

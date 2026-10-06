@@ -1,6 +1,6 @@
 /**
  * Root layout (SPEC.md §13.2). Order matters here:
- *   1. the CSPRNG polyfill is already loaded by `index.ts`, before this file runs;
+ *   1. the CSPRNG polyfill is the first import below, before any protocol code can run;
  *   2. fonts load before anything renders, because type carries the design (SPEC §13.3);
  *   3. the theme provider wraps everything, so every screen works in both themes.
  *
@@ -8,6 +8,12 @@
  * refetch on window focus, because a refetch triggered by the user opening the app while
  * looking at a particular card would be attention-dependent traffic (invariant 1).
  */
+
+// The CSPRNG polyfill, before anything else (CLAUDE.md invariant 7). This is the first
+// module of the app's own tree to execute, and nothing in @mutual/protocol touches the
+// CSPRNG at import time -- random.ts throws when called, never on load -- so this runs
+// before any protocol code can.
+import 'react-native-get-random-values';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';

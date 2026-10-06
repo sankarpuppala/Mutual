@@ -59,15 +59,18 @@ export function Screen({
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const base: ViewStyle = { flex: 1, backgroundColor: theme.colors.bg };
+  // The top inset matters as much as the bottom one: without it, a screen's back button
+  // and title sit underneath the status bar and the notch. Caught by looking at a
+  // screenshot of the privacy screen on a device, not by any test (DECISIONS_LOG 27).
   const inner: ViewStyle = {
     paddingHorizontal: GUTTER,
-    paddingTop: space.sm,
+    paddingTop: space.sm + insets.top,
     paddingBottom: space.xl + bottomInset + insets.bottom,
   };
 
   if (!scroll) {
     return (
-      <View testID={testID} style={[base, style]}>
+      <View testID={testID} style={[base, { paddingTop: insets.top }, style]}>
         {children}
       </View>
     );

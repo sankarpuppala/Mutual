@@ -34,7 +34,7 @@ export const fonts = {
 
 /** Loads every face the design uses. Returns true once they are all ready. */
 export function useAppFonts(): boolean {
-  const [loaded] = useFonts({
+  const [loaded, error] = useFonts({
     Fraunces_400Regular,
     Fraunces_400Regular_Italic,
     Fraunces_500Medium,
@@ -44,6 +44,18 @@ export function useAppFonts(): boolean {
     Inter_500Medium,
     Inter_600SemiBold,
   });
+
+  // Carry on in the system face if a font fails to load.
+  //
+  // The root layout renders a blank background until this returns true, so swallowing the
+  // error would leave the app on a blank screen **forever**, with nothing on screen and
+  // nothing in the log to explain it -- the worst possible failure, because it looks
+  // identical to a hang. A wrong-looking app that works is better than a correct-looking
+  // app that never appears.
+  if (error) {
+    console.warn('Fonts failed to load; falling back to the system face.', error);
+    return true;
+  }
   return loaded;
 }
 

@@ -1017,3 +1017,155 @@ sounded. The criterion's own wording allows it ("may be against the prebuild
 output"), but the stronger check was available all along and is now the one that
 runs. Lint, typecheck and 174 jest tests could not have found any of this: it
 needed a JDK, the Android SDK, a 12-minute build and a look at the output.
+
+### 27. Running the app for the first time — two real bugs, and a blocked interpreter
+
+Getting the built APK to actually launch on an emulator found two defects that
+nothing earlier in the project could have found. Both were in code that
+compiled cleanly and passed 174 tests.
+
+**Bug 1 — a missing dependency that made the app unlaunchable.**
+
+```
+Unable to resolve module @expo/ui/jetpack-compose
+  from node_modules/expo-router/build/layouts/stack-utils/toolbar/StackToolbarMenu/native.android.js
+```
+
+`expo-router` in SDK 57 imports `@expo/ui`, and `npx expo install expo-router`
+does not pull it in. Metro returned HTTP 500 for the bundle and the dev client
+died with a `DebugServerException`. **Fix:** `npx expo install @expo/ui`
+(57.0.22), now declared in `app/package.json`.
+
+**Bug 2 — the native module could never have loaded, in my own Kotlin.**
+
+```
+java.lang.UnsupportedOperationException: This function has a reified type parameter
+  at app.mutual.ble.MutualBleModule.definition(MutualBleModule.kt)
+  at expo.modules.kotlin.ModuleHolder.<init>
+```
+
+The Expo Modules API builds its JS/native converters by **reifying** the types
+in each `Function { ... }` signature. `MutualBleModule` used
+`Map<String, Any?>` for `setSchedule`'s argument, `start`'s config, and the
+return values of `drain`, `status` and `peek`. `Any?` is erased, so reification
+throws — **at module-registration time**, which takes the whole app down on
+launch before a line of JS runs.
+
+This is the most serious defect found in the whole project, and it is worth
+being precise about why nothing caught it: the Kotlin **compiles** (reified
+generics fail at runtime, not at compile time), the TypeScript wrapper has
+10 passing tests (they mock the native module, which is the only thing a unit
+test can do), and `aapt2` is happy with the APK. It needed a JDK, the Android
+SDK, a 12-minute build, an emulator and a launch.
+
+**Fix:** every argument and return value across the bridge is now an Expo
+`Record` with `@Field`-annotated properties of concrete types —
+`ScheduleEntryRecord`, `StartConfigRecord`, `SightingResultRecord`,
+`StatusRecord`, `PeekRecord`. The privacy shape is unchanged and now
+enforced by the type system rather than by convention: `SightingResultRecord`
+has exactly five fields and there is no `Any` for an RSSI value or a timestamp
+to hide in. `ScheduleEntryRecord.toEntry()` returns null for a malformed
+entry, so one bad record cannot poison the schedule.
+
+**The development machine started blocking its own Python.**
+
+Part-way through the session, `.venv\Scripts\python.exe` began failing with
+`blocked by your organization's Device Guard policy`. It had worked for hours.
+The uv-managed interpreter it was copied from is still allowed, so the
+workaround is to use that interpreter with the venv's `site-packages` **and**
+the three editable-install source directories on `PYTHONPATH` (a `.pth` file is
+not processed via `PYTHONPATH`, which is why all four entries are needed).
+Verified: 272 tests still pass.
+
+This is recorded as an **environment problem for the human to resolve
+properly**, not a thing to work around permanently: it also disables the
+pre-commit hooks, and a project about privacy should not run with its test gate
+off. Written up in the new `docs/RUNNING_LOCALLY.md`, together with the
+PowerShell execution-policy failure the human hit, the 260-character path
+limit, the `MSYS_NO_PATHCONV` requirement for `adb` paths, and the fact that
+PowerShell's `>` redirect corrupts a `screencap` PNG.
+
+**Also found while getting this far:** the default AVD skin is 320x640 at
+density 160, which is far too small to judge a design against
+`docs/design/prototype.html` (390x812). `adb shell wm size 1080x1920` and
+`wm density 420` give a realistic phone for screenshots.
+
+### 28. The app runs — what the last two bugs were, and what was verified on screen
+
+Continuing entry 27. Two more defects stood between a built APK and a running
+app, and both are the same shape: something that compiles, has no test that
+could see it, and fails only when a real Android runtime loads it.
+
+**Bug 3 — `start` and `stop` returned an Android class.**
+
+The reified-type crash survived the rewrite to `Record` types, which was
+confusing until the cause turned out not to be the argument types at all.
+Kotlin infers a lambda's return type from its last expression, and
+`context.startService(intent)` returns **`ComponentName?`**. So
+`Function("stop") { ... context.startService(...) }` had `R = ComponentName?`,
+an Android class Expo cannot convert — and reifying it threw at
+module-registration time, exactly as `Map<String, Any?>` had.
+
+**This bug was in the very first version of the module.** The `Record` rewrite
+had not failed; it had fixed a different (also real) problem while leaving this
+one. Fixed by making both lambdas end in an explicit `Unit`, with a comment
+saying why, because the next person to add a `Function` that ends in a
+framework call will hit it again.
+
+The bridge kept the JSON-string shape from entry 27 rather than reverting to
+`Record`s. Both would now work; the JSON version is the one that has been
+seen to run, and it makes the privacy contract easier to audit — every field
+that crosses is written out by name in `drainJson`, so there is no object
+spread through which an RSSI value or a timestamp could arrive unnoticed.
+
+**Bug 4 — a custom entry file left expo-router with no routes.**
+
+`package.json` had `"main": "index.ts"`, a two-line file importing the CSPRNG
+polyfill and then `expo-router/entry`. The bundle built (2,086 modules) and the
+app launched with **no error anywhere** — and rendered a blank white screen,
+because expo-router resolves its `app/` directory relative to the entry it was
+given and found none, so it registered zero routes.
+
+A blank screen with no error is the worst failure mode to debug: nothing in
+logcat, nothing in Metro, nothing on screen. What identified it was measuring
+the pixel colour — pure white, not the app's `#F7F3EE`, which proved no part of
+our tree was painting.
+
+Fixed by using the documented `"main": "expo-router/entry"` and making the
+polyfill the first import of `app/_layout.tsx`. That is still before any
+protocol code can run: `_layout.tsx` is the first module of the app's own tree
+to execute, and nothing in `@mutual/protocol` touches the CSPRNG at import time
+— `random.ts` throws when called, never on load. `app/index.ts` is deleted and
+removed from SPEC §20.
+
+**A robustness bug fixed on the way.** `useAppFonts()` ignored the error from
+`useFonts`, and the root layout renders a blank background until it returns
+true. A font that failed to load would have left the app blank **forever**,
+with nothing on screen and nothing in the log — indistinguishable from a hang.
+It now warns and carries on in the system face: a wrong-looking app that works
+beats a correct-looking app that never appears.
+
+**A layout bug found by looking at a screenshot.** `Screen` added the bottom
+safe-area inset but not the top, so every screen's back button and title sat
+underneath the status bar. Visible immediately on the privacy screen, invisible
+to every test. Fixed, and confirmed fixed on screen.
+
+#### What was verified on the emulator
+
+| | |
+|---|---|
+| App launches, no crash | yes, package `app.mutual` on Android 16 |
+| **Protocol self-test on the device** | **"Protocol OK" — 17 vectors from `vectors.json` reproduced byte-for-byte under Hermes**: pair keys, interest tokens, EIDs, ephemeral keys, encounter tokens, key validity and base64url |
+| Welcome screen against the prototype | matches: warm paper `#F7F3EE`, Fraunces display, "almost" in terracotta italic, the overlapping-circles logo, ink pill button, underlined privacy link |
+| Privacy screen | matches: both lists, eye and crossed-eye icons, the unaudited-prototype footnote and the not-end-to-end-encrypted note |
+| Fonts | Fraunces and Inter both load and render on the device |
+
+That settles the Phase 8 human-review item "the in-app protocol self-test shows
+OK on the emulator", which had been outstanding since Phase 8. **The
+TypeScript protocol produces the same bytes as the Python reference, on an
+actual Android runtime** — which is the claim the whole cross-language vector
+suite exists to support, and until now it had only been checked under Node.
+
+Still not done, and still needing a person: the 60 steps of
+`docs/E2E_CHECKLIST.md` (two emulators, and judgement about what each screen
+should feel like), and the two-phone BLE spike.

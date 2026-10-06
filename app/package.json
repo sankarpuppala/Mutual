@@ -1,10 +1,12 @@
 {
   "name": "app",
   "version": "1.0.0",
-  "main": "index.ts",
+  "main": "expo-router/entry",
   "dependencies": {
     "@expo-google-fonts/fraunces": "^0.4.1",
     "@expo-google-fonts/inter": "^0.4.2",
+    "@expo/metro-runtime": "~57.0.16",
+    "@expo/ui": "~57.0.22",
     "@mutual/protocol": "*",
     "@tanstack/react-query": "^5.104.1",
     "expo": "~57.0.26",
