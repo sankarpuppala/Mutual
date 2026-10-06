@@ -1,6 +1,6 @@
 {
   "platforms": ["android"],
   "android": {
-    "modules": ["in.mutual.ble.MutualBleModule"]
+    "modules": ["app.mutual.ble.MutualBleModule"]
   }
 }

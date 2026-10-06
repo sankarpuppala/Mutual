@@ -121,6 +121,16 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
         key TEXT NOT NULL
       );
 
+      -- The minute-of-day drawn for an epoch's signal upload (SPEC 6.11).
+      -- Persisted, not held in memory: a restart that re-drew the minute would bias the
+      -- effective distribution earlier (the minimum of several uniform draws), and would
+      -- make the upload time correlate with how often the user opens the app -- which is
+      -- the kind of correlation the random draw exists to remove.
+      CREATE TABLE IF NOT EXISTS epoch_plans (
+        epoch  TEXT PRIMARY KEY NOT NULL,
+        minute INTEGER NOT NULL
+      );
+
       -- Which reveals this device has already played, so the Mutuals tab knows what is
       -- still "new this morning". Device-local UI state with no privacy weight: the server
       -- already knows the match exists and whether it is revealed.
@@ -147,6 +157,7 @@ export async function wipeLocalDatabase(): Promise<void> {
     DELETE FROM media_cache;
     DELETE FROM daily_keys;
     DELETE FROM seen_reveals;
+    DELETE FROM epoch_plans;
   `);
 }
 
@@ -200,6 +211,55 @@ export async function hiddenPeerIds(): Promise<string[]> {
     'SELECT peer_id FROM hidden_peers',
   );
   return rows.map((r) => r.peer_id);
+}
+
+// ---------------------------------------------------------------- epoch plans
+
+/**
+ * The minute-of-day this epoch's signal upload is due, drawing one if none exists yet.
+ *
+ * `draw` is only called when there is no stored plan, so the minute for an epoch is drawn
+ * exactly once however many times the app restarts (SPEC 6.11).
+ */
+export async function plannedMinuteFor(
+  epoch: string,
+  draw: () => number,
+): Promise<number> {
+  const database = await db();
+  const existing = await database.getFirstAsync<{ minute: number }>(
+    'SELECT minute FROM epoch_plans WHERE epoch = ?',
+    [epoch],
+  );
+  if (existing) return existing.minute;
+
+  const minute = draw();
+  // INSERT OR IGNORE, then read back: if two callers race, both end up with the same
+  // minute rather than one silently overwriting the other's plan.
+  await database.runAsync('INSERT OR IGNORE INTO epoch_plans (epoch, minute) VALUES (?, ?)', [
+    epoch,
+    minute,
+  ]);
+  const settled = await database.getFirstAsync<{ minute: number }>(
+    'SELECT minute FROM epoch_plans WHERE epoch = ?',
+    [epoch],
+  );
+  return settled?.minute ?? minute;
+}
+
+/** The stored plan for an epoch, without drawing one. For the dev panel's readout. */
+export async function storedPlannedMinute(epoch: string): Promise<number | null> {
+  const database = await db();
+  const row = await database.getFirstAsync<{ minute: number }>(
+    'SELECT minute FROM epoch_plans WHERE epoch = ?',
+    [epoch],
+  );
+  return row?.minute ?? null;
+}
+
+/** Drops plans for epochs that have passed, so the table does not grow forever. */
+export async function pruneEpochPlans(before: string): Promise<void> {
+  const database = await db();
+  await database.runAsync('DELETE FROM epoch_plans WHERE epoch < ?', [before]);
 }
 
 // --------------------------------------------------------------- seen reveals

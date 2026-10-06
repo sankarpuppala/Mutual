@@ -38,7 +38,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   userInterfaceStyle: 'automatic',
   assetBundlePatterns: ['**/*'],
   android: {
-    package: 'in.mutual.app',
+    // Not in.mutual.*: `in` is a Kotlin keyword, and Expo's autolinking generator
+    // writes package names unquoted into generated Kotlin (DECISIONS_LOG 25).
+    package: 'app.mutual',
     versionCode: 1,
     adaptiveIcon: {
       backgroundColor: '#F7F3EE',

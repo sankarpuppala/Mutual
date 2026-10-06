@@ -20,15 +20,33 @@ import { ThemeProvider, useTheme } from '@/design/theme';
 import { useAppFonts } from '@/design/typography';
 import { registerNightlyTask } from '@/presence/schedule';
 
+/**
+ * Query defaults chosen for invariant 1, not for freshness.
+ *
+ * `staleTime: Infinity` is the important one, and it is a privacy setting rather than a
+ * performance one. With a finite stale time, opening a profile card would remount a
+ * `useQuery(['digest'])` whose data had aged out, and TanStack Query would issue a
+ * `GET /digest`. The request would not say *which* card was opened — but its existence and
+ * timing would depend on a card having been opened, which is exactly what invariant 1
+ * forbids ("existence, timing, size, order or parameters").
+ *
+ * Nothing is lost by it. The digest is byte-identical between release times by design
+ * (claim C5), so a refetch inside a day cannot return anything new. Screens that genuinely
+ * need fresh data ask for it explicitly: `matches` and `messages` set their own
+ * `refetchInterval`, and Today exposes a manual refresh.
+ *
+ * Focus and reconnect refetching are off for the same reason: a refetch triggered by the
+ * user opening the app while looking at a particular card is attention-dependent traffic.
+ */
 function makeQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
       queries: {
-        // The digest is a daily snapshot; polling it adds nothing and costs battery.
         refetchOnWindowFocus: false,
         refetchOnReconnect: false,
+        refetchOnMount: false,
         retry: 1,
-        staleTime: 60_000,
+        staleTime: Number.POSITIVE_INFINITY,
       },
     },
   });

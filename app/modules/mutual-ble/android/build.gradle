@@ -1,14 +1,16 @@
 // Local Expo module: BLE advertise + scan + foreground service (SPEC.md §14).
+// The package is app.mutual.ble, not in.mutual.ble: `in` is a Kotlin keyword, and
+// Expo's autolinking generator emits the package name unquoted (DECISIONS_LOG 25).
 // No cryptography here -- ephemeral ids arrive from TypeScript as a schedule
 // (CLAUDE.md invariant 7).
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 
-group = 'in.mutual.ble'
+group = 'app.mutual.ble'
 version = '0.1.0'
 
 android {
-  namespace 'in.mutual.ble'
+  namespace 'app.mutual.ble'
   compileSdk 36
 
   defaultConfig {

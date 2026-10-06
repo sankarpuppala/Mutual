@@ -1,4 +1,4 @@
-package `in`.mutual.ble
+package app.mutual.ble
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -209,8 +209,8 @@ class MutualBleService : Service(), BleRadio.Listener {
     }
 
     companion object {
-        const val ACTION_CONFIGURE = "in.mutual.ble.CONFIGURE"
-        const val ACTION_STOP = "in.mutual.ble.STOP"
+        const val ACTION_CONFIGURE = "app.mutual.ble.CONFIGURE"
+        const val ACTION_STOP = "app.mutual.ble.STOP"
         const val EXTRA_SCAN_PERIOD = "scanPeriodSeconds"
         const val EXTRA_SCAN_WINDOW = "scanWindowSeconds"
         const val EXTRA_RSSI_THRESHOLD = "rssiThresholdDbm"

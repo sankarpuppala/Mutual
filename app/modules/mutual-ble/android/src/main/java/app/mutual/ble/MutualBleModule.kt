@@ -1,4 +1,4 @@
-package `in`.mutual.ble
+package app.mutual.ble
 
 import android.Manifest
 import android.content.Context

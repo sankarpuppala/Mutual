@@ -68,6 +68,11 @@ export default function DevScreen(): ReactNode {
   const run = useCallback(() => setState(runSafely()), []);
 
   const config = useQuery({ queryKey: ['config'], queryFn: getConfig, enabled: isDev() });
+  const plannedQuery = useQuery({
+    queryKey: ['planned-upload-minute'],
+    queryFn: () => plannedUploadMinute(),
+    enabled: isDev(),
+  });
   const [offsetHours, setOffsetHours] = useState('24');
   const [peerId, setPeerId] = useState('');
   const [log, setLog] = useState<string[]>([]);
@@ -86,7 +91,7 @@ export default function DevScreen(): ReactNode {
   }
 
   const failures = result?.cases.filter((c) => !c.passed) ?? [];
-  const planned = plannedUploadMinute();
+  const planned = plannedQuery.data ?? null;
 
   const actions = {
     travel: async () => {
@@ -130,6 +135,7 @@ export default function DevScreen(): ReactNode {
     },
     nightly: async () => {
       const outcome = await runNightlyWork();
+      await plannedQuery.refetch();
       say(
         `Nightly work: signals ${outcome.signals}; presence ${
           outcome.presence?.presence.map((p) => `${p.day}:${p.status}`).join(', ') ?? 'none'

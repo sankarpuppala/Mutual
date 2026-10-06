@@ -1,4 +1,4 @@
-package `in`.mutual.ble
+package app.mutual.ble
 
 import android.content.BroadcastReceiver
 import android.content.Context

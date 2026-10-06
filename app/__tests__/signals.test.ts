@@ -31,8 +31,17 @@ import {
   expiryLabel,
   isActive,
 } from '@/signals/ttl';
+import {
+  lastAllowedMinute,
+  minutesOfDay,
+  pickUploadMinute,
+} from '@/signals/scheduler';
 import { uploadSignalSet } from '@/signals/upload';
-import { wipeLocalDatabase } from '@/storage/localDb';
+import {
+  plannedMinuteFor,
+  storedPlannedMinute,
+  wipeLocalDatabase,
+} from '@/storage/localDb';
 
 jest.mock('@/api/endpoints', () => ({
   uploadSignals: jest.fn(async () => undefined),
@@ -426,5 +435,50 @@ describe('match verification (AC-T2-2)', () => {
       { epoch: '2026-10-06', token: 'tok', peerId: 'peer-1', intent: 'study' },
     ]);
     expect(await lookupSentToken('2026-10-07', 'tok')).toBeNull();
+  });
+});
+
+// ------------------------------------------------- the upload minute, persisted
+
+describe('the chosen upload minute (SPEC §6.11)', () => {
+  it('is drawn once per epoch, however many times the app restarts', async () => {
+    let draws = 0;
+    const draw = () => {
+      draws += 1;
+      return 1100 + draws; // a different value each time, so a re-draw would be visible
+    };
+
+    const first = await plannedMinuteFor('2026-10-06', draw);
+    const second = await plannedMinuteFor('2026-10-06', draw);
+    const third = await plannedMinuteFor('2026-10-06', draw);
+
+    expect(draws).toBe(1);
+    expect([second, third]).toEqual([first, first]);
+  });
+
+  it('draws separately for a different epoch', async () => {
+    const a = await plannedMinuteFor('2026-10-06', () => 1111);
+    const b = await plannedMinuteFor('2026-10-07', () => 1222);
+    expect(a).toBe(1111);
+    expect(b).toBe(1222);
+  });
+
+  it('reports a stored plan without drawing one', async () => {
+    expect(await storedPlannedMinute('2026-10-06')).toBeNull();
+    await plannedMinuteFor('2026-10-06', () => 1234);
+    expect(await storedPlannedMinute('2026-10-06')).toBe(1234);
+  });
+
+  it('is uniform over the allowed range, and never at or after the batch time', () => {
+    const window = { start: '18:00', end: '23:30', batchTime: '23:45' };
+    const first = minutesOfDay(window.start);
+    const last = lastAllowedMinute(window);
+    expect(last).toBe(minutesOfDay('23:30') - 1);
+
+    const drawn = Array.from({ length: 400 }, () => pickUploadMinute(window));
+    expect(Math.min(...drawn)).toBeGreaterThanOrEqual(first);
+    expect(Math.max(...drawn)).toBeLessThanOrEqual(last);
+    // A wide spread: a draw stuck near the start would be a predictable schedule.
+    expect(new Set(drawn).size).toBeGreaterThan(100);
   });
 });

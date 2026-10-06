@@ -22,7 +22,13 @@ import type { ServerConfig } from '@/api/types';
 import { decide, localDay, pickUploadMinute } from '@/signals/scheduler';
 import { addDays } from '@/signals/ttl';
 import { uploadSignalSet } from '@/signals/upload';
-import { hasUploaded, pruneEncounterTimes } from '@/storage/localDb';
+import {
+  hasUploaded,
+  plannedMinuteFor,
+  pruneEncounterTimes,
+  pruneEpochPlans,
+  storedPlannedMinute,
+} from '@/storage/localDb';
 import { getIdentity, getUserId } from '@/storage/secure';
 
 import type { BleAdapter } from './bleAdapter';
@@ -71,6 +77,7 @@ export async function presenceTick(
 
   // Time blocks are only needed while a crossing can still appear in a digest.
   await pruneEncounterTimes(addDays(today, -(config.interest_ttl_days + 1)));
+  await pruneEpochPlans(today);
 
   return {
     sightingsDrained: drained,
@@ -114,9 +121,6 @@ export async function fetchConfig(): Promise<ServerConfig> {
 
 export const NIGHTLY_TASK = 'mutual-nightly';
 
-/** The minute chosen for tonight, held in memory: a restart simply chooses again. */
-let plannedMinute: { epoch: string; minute: number } | null = null;
-
 /**
  * One pass of the nightly work. Exported so the dev panel and an app-open can run it too,
  * which is what makes the "on next open before the cutoff" path in SPEC §13.8 work.
@@ -143,15 +147,15 @@ export async function runNightlyWork(now: Date = new Date()): Promise<{
     batchTime: config.match_batch_time,
   };
   const epoch = localDay(now);
-  if (!plannedMinute || plannedMinute.epoch !== epoch) {
-    plannedMinute = { epoch, minute: pickUploadMinute(window) };
-  }
+  // Drawn once per epoch and persisted: see plannedMinuteFor in storage/localDb.ts for why
+  // re-drawing on restart would weaken the property this minute exists to provide.
+  const minute = await plannedMinuteFor(epoch, () => pickUploadMinute(window));
 
   const decision = decide({
     now,
     window,
     alreadyUploaded: await hasUploaded('signals', epoch),
-    plannedMinute: plannedMinute.minute,
+    plannedMinute: minute,
   });
 
   if (decision.action !== 'upload') {
@@ -208,7 +212,6 @@ export async function unregisterNightlyTask(): Promise<void> {
  * It is shown in a dev build only -- knowing it in advance would be exactly the predictable
  * schedule the random draw exists to avoid.
  */
-export function plannedUploadMinute(now: Date = new Date()): number | null {
-  const epoch = localDay(now);
-  return plannedMinute?.epoch === epoch ? plannedMinute.minute : null;
+export async function plannedUploadMinute(now: Date = new Date()): Promise<number | null> {
+  return storedPlannedMinute(localDay(now));
 }

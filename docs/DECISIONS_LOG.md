@@ -844,3 +844,87 @@ An independent reviewer saw only the protocol sections and attacked them.
   ones to expect — including "would anyone actually use this?", whose honest
   answer is that nobody knows and which pre-registered outcome is meant to find
   out.
+
+### 25. Security review of the app, and the first real Android build — Adopted
+
+**How the review was done, and why that matters.** Prompt 7 asks for an
+independent subagent with no knowledge of the conversation. It was launched and
+**terminated partway through** by the account's session rate limit. Rather than
+claim a review that did not happen, an inline audit was run instead: targeted
+searches for each specific failure mode rather than a reading of the comments,
+which is the part that can be done honestly without independence. It is
+**weaker evidence than an independent review**, and re-running Prompt 7 is on
+the Phase 11 human review checklist.
+
+**What the audit checked, and found clean:**
+
+- no `console.*` anywhere in `app/src`, `app/app` or the Kotlin — so no per-user
+  activity reaches a device log;
+- no `Math.random()` outside comments explaining why it is forbidden;
+- no bare `fetch(` outside `src/api/client.ts` (every other hit is TanStack
+  Query's `refetch`);
+- no daily key, ephemeral id, RSSI value, window count or interval appears
+  anywhere in `src/api/`;
+- no intent appears in any path, query or header in `src/api/endpoints.ts`;
+- in Kotlin, RSSI is only ever compared against a threshold
+  (`BleRadio.kt:238`) and never stored — `SightingStore` has no field for it,
+  and no timestamp either;
+- no cryptography in Kotlin at all, as invariant 7 requires;
+- secure storage holds exactly four keys (session token, identity private and
+  public key, user id). The onboarding store is plain Zustand with no
+  persistence middleware, so the email address and date of birth live in memory
+  only; `localDb` has no column for either.
+
+**Two real findings, both fixed under the standing security delegation:**
+
+1. **Opening a profile card could have issued a `GET /digest`.** The query
+   client's `staleTime` was 60 seconds. Opening a card more than a minute after
+   the digest was fetched would remount `useQuery(['digest'])` with stale data,
+   and TanStack Query would refetch. The request would not say *which* card was
+   opened — but its existence and timing would depend on a card having been
+   opened, and invariant 1 forbids a request whose "existence, timing, size,
+   order or parameters" depend on which profile a user viewed. A timing channel
+   keyed to attention, created by an ordinary caching default.
+   **Fix:** `staleTime: Infinity` with `refetchOnMount: false`. Nothing is lost
+   — the digest is byte-identical between release times by design (claim C5),
+   so an intra-day refetch cannot return anything new. Screens that need fresh
+   data ask explicitly (`matches` and `messages` set `refetchInterval`).
+   `__tests__/query-defaults.test.ts` pins the settings and asserts they match
+   what `app/_layout.tsx` actually configures.
+
+2. **The random upload minute was re-drawn on every app restart.** It lived in
+   a module-level variable, so a device that restarted twice inside the upload
+   window drew twice and used the later-arriving draw — which makes the
+   effective distribution the *minimum* of several uniform draws, biased
+   earlier, and makes the upload time correlate with how often the user opens
+   the app. The random minute exists precisely to remove that correlation.
+   **Fix:** an `epoch_plans` table. The minute is drawn once per epoch and
+   persisted; `plannedMinuteFor` only calls the draw when no plan exists, and
+   re-reads after an `INSERT OR IGNORE` so two racing callers agree. Four tests
+   added, including one asserting the draw happens exactly once across three
+   calls.
+
+**A blocking bug that only a real compile could find.** The first Android build
+failed, and the reason is worth recording:
+
+```
+ExpoModulesPackageList.kt:46:7 Syntax error: Expecting an expression.
+      in.mutual.ble.MutualBleModule::class.java to null
+```
+
+`in` is a **reserved keyword in Kotlin**. The module's own sources escaped it
+(`` package `in`.mutual.ble ``) and would have compiled on their own, but
+Expo's autolinking **generates** a Kotlin file that writes the package name
+unquoted — so no build could ever succeed. Nothing in lint, typecheck or 174
+jest tests could have caught it; it needed the JDK and the Android SDK, which
+were installed during this session for exactly this reason.
+
+**Fix:** the Android package is now `app.mutual` and the native module's
+package is `app.mutual.ble`. The reason is written into `app.config.ts` and the
+module's `build.gradle` so nobody reintroduces `in.mutual.*` as the more
+idiomatic reverse-domain name for an Indian project. The package name was
+already on the Phase 8 human review checklist as a decision worth confirming;
+it still is, with one option removed.
+
+Also added `app/modules/*/android/build/` to `.gitignore` — the local module's
+Gradle output had been left untracked-but-visible.

@@ -1,4 +1,4 @@
-package `in`.mutual.ble
+package app.mutual.ble
 
 /**
  * The advertisement schedule handed down from TypeScript (SPEC.md §14.5).

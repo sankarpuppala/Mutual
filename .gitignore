@@ -21,10 +21,11 @@ server/media/
 *.keystore
 *.jks
 
-# App build output (Expo prebuild)
+# App build output (Expo prebuild and Gradle)
 app/android/
 app/ios/
 app/.expo/
+app/modules/*/android/build/
 
 # Simulation cache
 sim/results/cache/

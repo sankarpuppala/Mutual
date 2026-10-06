@@ -13,17 +13,15 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
-from datetime import datetime, timedelta
 
 import pytest
+from conftest import Harness, auth, make_shared_token, signup
 from mutual_protocol.encoding import b64url_encode
 from mutual_protocol.keys import pair_key
 from mutual_protocol.tokens import interest_token, padded_set
 
 from mutual_server.clock import add_days, at_local
 from mutual_server.config import REPO_ROOT
-
-from conftest import Harness, auth, make_shared_token, signup
 
 SECURITY_ARGUMENT = REPO_ROOT / "docs" / "SECURITY_ARGUMENT.md"
 COSTS_BLOCK = re.compile(r"```measured-costs\n(.*?)```", re.DOTALL)
@@ -178,11 +176,22 @@ def test_padding_hides_how_many_sightings_a_small_night_had(
     assert one == fifty
 
 
+def _minutes(hhmm: str) -> int:
+    hours, minutes = (int(part) for part in hhmm.split(":"))
+    return hours * 60 + minutes
+
+
 def test_upload_window_is_long_enough_to_hide_the_upload_time(h: Harness) -> None:
-    """A random upload time is only cover if the window is wide (SPEC §6.11, D4)."""
-    start = datetime.strptime(h.settings.signals.upload_window_start, "%H:%M")
-    end = datetime.strptime(h.settings.signals.upload_window_end, "%H:%M")
-    assert end - start >= timedelta(hours=1)
+    """A random upload time is only cover if the window is wide (SPEC §6.11, D4).
+
+    Minutes-of-day arithmetic rather than datetimes: these are wall-clock times in the
+    configured timezone, not instants, and parsing them into naive datetimes would invite
+    exactly the timezone confusion CLAUDE.md §6 warns about.
+    """
+    width = _minutes(h.settings.signals.upload_window_end) - _minutes(
+        h.settings.signals.upload_window_start
+    )
+    assert width >= 60
 
 
 if __name__ == "__main__":  # pragma: no cover - convenience for a one-off measurement
