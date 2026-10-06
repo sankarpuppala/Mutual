@@ -1648,3 +1648,46 @@ under invariant 9.
   Tier 1's `random` ranking runs.
 - No real-user data exists, and none may be collected until the four conditions
   in invariant 9 all hold.
+
+### 2026-10-06 — the build finished: AC-T2-1 and AC-T2-3 upgraded
+Correcting and completing the Tier 2 entry above, which was written while the
+build was still running.
+
+- **`BUILD SUCCESSFUL in 12m 30s`**, 754 tasks. A 321 MB debug APK at
+  `app/android/app/build/outputs/apk/debug/app-debug.apk`, package
+  `app.mutual`. The Kotlin BLE module compiles — all six files.
+- **AC-T2-3 is now verified against the *merged* manifest, not the prebuild
+  one.** `aapt2 dump permissions` on the APK itself confirms the two things
+  that matter: `BLUETOOTH_SCAN` carries
+  `usesPermissionFlags='neverForLocation'`, and there is **no location
+  permission of any kind**. Invariant 3 and claim C4 hold in an artefact that
+  could actually be installed.
+- **Two defects the build exposed, both in the checking rather than the app**
+  (DECISIONS_LOG 26):
+  1. `check-privacy-invariants.ts` guessed hard-coded paths under
+     `merged_manifests/` and none matched this AGP version's task directory, so
+     it silently fell back to the weaker prebuild manifest while printing a
+     note. **A check that verifies something weaker than it claims is worse
+     than one that fails.** It now searches for the merged manifest and prefers
+     a debug variant.
+  2. The config plugin's deletion of `SYSTEM_ALERT_WINDOW` was invisible in the
+     built APK, because Gradle merges library manifests after Expo's plugins
+     run. Moving it to `blockedPermissions` fixed `CAMERA` but not
+     `SYSTEM_ALERT_WINDOW`: `react-android`'s **debug** AAR declares it for
+     LogBox, and a library's own declaration beats an application-level
+     `tools:node="remove"`. It is now reported as expected in debug and
+     **asserted absent in release**, which is the build anyone would install.
+- **A workaround the next person will need:** the C++ build fails with
+  `Filename longer than 260 characters` from this project path. Windows
+  `LongPathsEnabled` is 1 but ninja and CMake ignore it. Build via a junction:
+  `mklink /J C:\mtl "<project>"`, then `C:\mtl\app\android\gradlew.bat`.
+- Also smoke-tested the server live this session: `alembic upgrade head`, then
+  uvicorn in dev mode. `GET /v1/config` returns exactly the shape the app's
+  `ServerConfig` type expects, including the `match_batch_time` field that
+  SPEC §11's prose had been missing, and `POST /v1/dev/clock` answers 204 in
+  dev mode.
+- Still not done, unchanged: nothing has been **run** on a device or emulator.
+  AC-T2-1's "produces a working dev build" is satisfied as far as producing the
+  build goes; installing and launching it needs an emulator image and an AVD.
+- Revised Tier 2 tally: **five of seven** criteria met (T2-1 lint, T2-2, T2-3,
+  T2-4, and T2-1's build half). T2-5 needs emulators; T2-6 needs two phones.

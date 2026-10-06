@@ -11,15 +11,16 @@
  * Mutual keeps that promise: it never computes a position, and the only thing it does with
  * a scan result is hash it with a secret (SPEC §6.13).
  *
- * The second half of the plugin removes `SYSTEM_ALERT_WINDOW`, which `expo-dev-client`
- * pulls in for its dev menu overlay. It is harmless in a dev build and has no business in
- * anything a participant installs, so it is stripped here rather than being noticed later.
+ * It does **only** that. An earlier version also deleted `SYSTEM_ALERT_WINDOW` from the
+ * manifest, which looked right at prebuild and was useless in the built APK: Gradle merges
+ * library manifests afterwards, and `expo-dev-client` re-added it. Permissions that must be
+ * absent belong in `android.blockedPermissions` (which emits `tools:node="remove"`), not in
+ * a plugin that edits the element. See DECISIONS_LOG 26.
  */
 
 const { AndroidConfig, withAndroidManifest } = require('expo/config-plugins');
 
 const SCAN = 'android.permission.BLUETOOTH_SCAN';
-const OVERLAY = 'android.permission.SYSTEM_ALERT_WINDOW';
 
 /** @type {import('expo/config-plugins').ConfigPlugin} */
 const withBleNeverForLocation = (config) =>
@@ -33,10 +34,7 @@ const withBleNeverForLocation = (config) =>
       permissions.push(scan);
     }
     scan.$['android:usesPermissionFlags'] = 'neverForLocation';
-
-    manifest['uses-permission'] = permissions.filter(
-      (p) => p.$?.['android:name'] !== OVERLAY,
-    );
+    manifest['uses-permission'] = permissions;
 
     // Keep `tools:` usable: blockedPermissions already relies on it, but a fresh manifest
     // template may not declare the namespace.

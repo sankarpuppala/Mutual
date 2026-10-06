@@ -928,3 +928,92 @@ it still is, with one option removed.
 
 Also added `app/modules/*/android/build/` to `.gitignore` — the local module's
 Gradle output had been left untracked-but-visible.
+
+### 26. The first built APK, and two things only it could reveal — Adopted
+
+The Android build succeeded (`BUILD SUCCESSFUL in 12m 30s`, a 321 MB debug APK,
+package `app.mutual`). Inspecting the **built artefact** rather than the
+prebuild output immediately found two problems that every earlier check had
+passed.
+
+**Getting there needed two workarounds worth recording:**
+
+- `in` is a Kotlin keyword and Expo's autolinking generator writes package
+  names unquoted — entry 25. Renamed to `app.mutual` / `app.mutual.ble`.
+- The C++ native build failed with
+  `Filename longer than 260 characters` while compiling
+  `react-native-gesture-handler`'s codegen output. Windows
+  `LongPathsEnabled` is already 1, but ninja and CMake do not honour it, and
+  the project path (`C:\Users\sanka\Desktop\STUDIES\AIDS\Project 2\`) is long
+  and contains a space. **Fix:** a directory junction,
+  `mklink /J C:\mtl "<project>"`, and build from `C:\mtl\app\android`. This is
+  a property of where the repository lives, not of the repository, so it is
+  recorded for whoever clones it into a deep path next.
+
+**Finding 1 — the good news, confirmed on the real artefact.** The merged
+manifest contains **zero location permissions**. `aapt2 dump permissions` on
+the APK shows `BLUETOOTH_SCAN` carrying
+`usesPermissionFlags='neverForLocation'`, and no `ACCESS_*_LOCATION` of any
+kind. Invariant 3 and claim C4 hold in a thing that could actually be
+installed, not just in a generated file.
+
+**Finding 2 — the config plugin was doing nothing useful.**
+`withBleNeverForLocation.js` deleted `SYSTEM_ALERT_WINDOW` from the manifest at
+prebuild, and the built APK **still carried it**. The reason is the order of
+operations: Expo's plugins edit the app's own manifest, and *then* Gradle merges
+every library's manifest into it. `expo-dev-client` re-adds the permission
+after the plugin has run, so the plugin's deletion is invisible in anything
+that ships.
+
+**Attempted fix, and what it actually achieved.** Permissions that must be
+absent were moved to `android.blockedPermissions`, which Expo turns into
+`tools:node="remove"`. That **worked for `CAMERA`** (declared by
+`expo-image-picker`, which Mutual does not need because it only ever reads from
+the photo library) — gone from the merged manifest.
+
+It **did not work for `SYSTEM_ALERT_WINDOW`**, and chasing down why is the more
+useful finding. The manifest-merger report shows our remove directive being
+applied, and the permission still appears in all three merge stages. The source
+is `react-android-0.86.3-**debug**`'s own manifest, which declares it for the
+dev overlay (LogBox) — and a library's own declaration wins over an
+application-level `tools:node="remove"`. Only the *debug* AAR declares it;
+there is no release variant carrying it.
+
+So the honest resolution, rather than either hiding it or leaving the check
+broken: `check-privacy-invariants.ts` now treats `SYSTEM_ALERT_WINDOW` as
+**expected in a debug manifest and forbidden in a release one**, and prints the
+source as a note. A release build is the only build a participant would ever
+install, so that is where the assertion bites. `blockedPermissions` keeps the
+entry — it costs nothing and may take effect in a release build — and the
+plugin keeps the one job only it can do: the `neverForLocation` flag, which
+`blockedPermissions` cannot express.
+
+**Worth being explicit about what was *not* done here:** the check was not
+simply relaxed until it passed. `SYSTEM_ALERT_WINDOW` is not one of the 13
+invariants and was not in the spec's requirements — it is an assertion added
+during this review an hour earlier. Narrowing a self-imposed assertion to the
+build where it is true and enforceable is different from weakening a specified
+guarantee, and every specified guarantee (no location permission,
+`neverForLocation` present, no denylisted SDK, no `fetch` outside
+`src/api/client.ts`) passes against the **merged** manifest now.
+
+**Finding 3 — the privacy check was reading the wrong file, and said so
+quietly.** `check-privacy-invariants.ts` guessed at hard-coded paths under
+`merged_manifests/`. The real directory is named after the Gradle task
+(`processDebugManifest`), which has changed between AGP versions, so none of the
+guesses matched and the script silently fell back to the weaker prebuild
+manifest — printing a note nobody would read as a failure.
+
+That is the worse of the two bugs: a check that verifies a weaker thing than it
+claims is more dangerous than one that fails. **Fix:** the script now *searches*
+`merged_manifests/` for any `AndroidManifest.xml`, prefers a debug variant, and
+only falls back to the prebuild manifest when no merged one exists. It also now
+asserts the two unwanted permissions, so the SYSTEM_ALERT_WINDOW class of
+problem cannot recur silently.
+
+**What this says about the earlier phases.** Phase 8 recorded AC-T2-3 as
+passing "against the prebuild manifest", which was true and weaker than it
+sounded. The criterion's own wording allows it ("may be against the prebuild
+output"), but the stronger check was available all along and is now the one that
+runs. Lint, typecheck and 174 jest tests could not have found any of this: it
+needed a JDK, the Android SDK, a 12-minute build and a look at the output.

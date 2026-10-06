@@ -28,6 +28,29 @@ const FORBIDDEN_PERMISSIONS = [
   'android.permission.ACCESS_BACKGROUND_LOCATION',
 ];
 
+/**
+ * Permissions that must be absent for product reasons rather than invariant 3, and which
+ * a dependency declares on our behalf. Checked here because the first real APK carried
+ * both of these despite a config plugin deleting them at prebuild (DECISIONS_LOG 26).
+ */
+const UNWANTED_PERMISSIONS = [
+  // expo-image-picker declares it even though Mutual only reads from the photo library.
+  'android.permission.CAMERA',
+];
+
+/**
+ * Permissions that React Native's **debug** AAR declares and that
+ * `android.blockedPermissions` cannot remove, because a library's own declaration wins
+ * over `tools:node="remove"` in the merge.
+ *
+ * `SYSTEM_ALERT_WINDOW` is declared by `react-android-<version>-debug`'s manifest for the
+ * dev overlay (LogBox). It is expected in a debug build and reported as a note there. It
+ * must **not** appear in a release manifest, and the check fails if it does -- which is the
+ * build a participant would ever install. Investigated and recorded in DECISIONS_LOG 26
+ * rather than quietly tolerated.
+ */
+const DEBUG_ONLY_PERMISSIONS = ['android.permission.SYSTEM_ALERT_WINDOW'];
+
 /** Analytics, crash-reporting and ad SDKs (invariant 6). */
 const DENYLISTED_SDKS = [
   '@amplitude/',
@@ -93,19 +116,30 @@ function exists(path: string): boolean {
  */
 function manifestCandidates(): { path: string; merged: boolean }[] {
   const base = join(APP_ROOT, 'android', 'app');
-  const merged = [
-    join(base, 'build', 'intermediates', 'merged_manifests', 'debug', 'AndroidManifest.xml'),
-    join(
-      base,
-      'build',
-      'intermediates',
-      'merged_manifests',
-      'debug',
-      'processDebugMainManifest',
-      'AndroidManifest.xml',
-    ),
-    join(base, 'build', 'intermediates', 'merged_manifests', 'release', 'AndroidManifest.xml'),
-  ];
+  const mergedRoot = join(base, 'build', 'intermediates', 'merged_manifests');
+
+  // Searched rather than guessed: Gradle's task directory under merged_manifests/<variant>
+  // is named after the task (processDebugManifest, processDebugMainManifest, ...) and has
+  // changed between AGP versions. A hard-coded path silently falls through to the weaker
+  // prebuild manifest, which is what happened the first time.
+  const merged: string[] = [];
+  const walkForManifests = (dir: string): void => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walkForManifests(path);
+      else if (entry.name === 'AndroidManifest.xml') merged.push(path);
+    }
+  };
+  walkForManifests(mergedRoot);
+  // Prefer a debug variant, which is what a dev build produces.
+  merged.sort((a, b) => Number(b.includes('debug')) - Number(a.includes('debug')));
+
   return [
     ...merged.map((path) => ({ path, merged: true })),
     { path: join(base, 'src', 'main', 'AndroidManifest.xml'), merged: false },
@@ -136,6 +170,34 @@ function checkManifest(): void {
     if (found.merged && xml.includes(permission)) {
       // After merging, a removed permission should be gone entirely.
       fail(`${where} still contains ${permission} after merging.`);
+    }
+  }
+
+  for (const permission of UNWANTED_PERMISSIONS) {
+    if (declares(permission)) {
+      fail(
+        `${where} declares ${permission}, which no build should carry. Add it to ` +
+          'android.blockedPermissions in app.config.ts -- a config plugin that deletes the ' +
+          'element is undone by the library-manifest merge (DECISIONS_LOG 26).',
+      );
+    }
+  }
+
+  // React Native's debug AAR declares the dev-overlay permission and wins over
+  // tools:node="remove". Expected in debug, forbidden in release.
+  const isDebugManifest = found.path.toLowerCase().includes('debug');
+  for (const permission of DEBUG_ONLY_PERMISSIONS) {
+    if (!declares(permission)) continue;
+    if (isDebugManifest) {
+      notes.push(
+        `${permission} is present, declared by react-android's debug AAR for the dev ` +
+          'overlay. Expected in a debug build; this check fails on it in a release build.',
+      );
+    } else {
+      fail(
+        `${where} declares ${permission}. A release build must not carry the dev-overlay ` +
+          'permission (DECISIONS_LOG 26).',
+      );
     }
   }
 

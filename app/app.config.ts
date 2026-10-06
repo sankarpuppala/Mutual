@@ -9,11 +9,25 @@
 
 import type { ConfigContext, ExpoConfig } from 'expo/config';
 
-/** Permissions that may never appear in the merged manifest, whatever a library asks for. */
+/**
+ * Permissions that may never appear in the merged manifest, whatever a library asks for.
+ *
+ * Expo turns this list into `tools:node="remove"` entries, which is the only mechanism that
+ * survives Gradle's library-manifest merge. A config plugin that deletes the element instead
+ * wins only until a dependency re-adds it -- which is exactly what happened with
+ * SYSTEM_ALERT_WINDOW, found by inspecting the first real APK (DECISIONS_LOG 26).
+ */
 const BLOCKED_PERMISSIONS = [
+  // Location: invariant 3, absolutely.
   'android.permission.ACCESS_FINE_LOCATION',
   'android.permission.ACCESS_COARSE_LOCATION',
   'android.permission.ACCESS_BACKGROUND_LOCATION',
+  // Draw-over-other-apps, pulled in by expo-dev-client's dev menu. Nothing a participant
+  // installs has any business holding it.
+  'android.permission.SYSTEM_ALERT_WINDOW',
+  // expo-image-picker declares CAMERA even though Mutual only ever reads from the photo
+  // library (`launchImageLibraryAsync`) and never takes a photo in-app.
+  'android.permission.CAMERA',
 ];
 
 type PluginEntry = NonNullable<ExpoConfig['plugins']>[number];
