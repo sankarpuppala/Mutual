@@ -16,9 +16,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type PressableProps,
   type StyleProp,
+  type TextInputProps,
   type TextProps,
   type TextStyle,
   type ViewProps,
@@ -26,6 +28,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Icon } from './icons';
 import { useTheme } from './theme';
 import { hitSize, radius, space } from './tokens';
 import { type, type TypeName } from './typography';
@@ -330,4 +333,161 @@ const styles = StyleSheet.create({
   card: { borderRadius: radius.card, padding: space.xl - space.xs, gap: space.lg },
   header: { gap: space.xs + 2, paddingTop: space.md + 2, paddingBottom: space.xl - 2 },
   sectionHeading: { marginTop: space.xxl - 2, marginBottom: space.sm },
+  field: { gap: space.sm - 2 },
+  input: {
+    minHeight: 52,
+    borderRadius: radius.sm + 2,
+    borderWidth: 1,
+    paddingHorizontal: space.lg,
+  },
+  pill: {
+    paddingHorizontal: space.sm + 2,
+    paddingVertical: space.xs - 1,
+    borderRadius: radius.pill,
+  },
+  timeChip: {
+    paddingHorizontal: space.sm + 2,
+    paddingVertical: space.xs + 1,
+    borderRadius: radius.pill,
+  },
+  lockNote: { flexDirection: 'row', gap: space.sm + 2, alignItems: 'flex-start' },
+  bar: { flexDirection: 'row', marginHorizontal: -GUTTER + space.sm, marginTop: -space.sm },
+  barButton: {
+    width: hitSize,
+    height: hitSize,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
+
+// --------------------------------------------------------------- TextField
+
+interface TextFieldProps extends Omit<TextInputProps, 'style'> {
+  label: string;
+  /** Shown under the field in muted type. */
+  hint?: string;
+  /** Shown under the field in danger type, replacing the hint. */
+  error?: string | null;
+  /** Extra style for the input itself, e.g. a taller box for a multiline answer. */
+  inputStyle?: StyleProp<TextStyle>;
+}
+
+/**
+ * A labelled text input (`.composer input` in the prototype, extended with a label and a
+ * hint for the onboarding forms).
+ *
+ * The label is a real label rather than a placeholder: a placeholder disappears as soon as
+ * someone types, which fails anyone who looks away mid-answer, and screen readers treat it
+ * inconsistently (SPEC §13.7).
+ */
+export function TextField({
+  label,
+  hint,
+  error,
+  inputStyle,
+  ...rest
+}: TextFieldProps): ReactNode {
+  const theme = useTheme();
+  return (
+    <View style={styles.field}>
+      <AppText variant="smallSemiBold">{label}</AppText>
+      <TextInput
+        accessibilityLabel={label}
+        placeholderTextColor={theme.colors.inkMuted}
+        style={[
+          type.body as TextStyle,
+          styles.input,
+          {
+            color: theme.colors.ink,
+            backgroundColor: theme.colors.surface,
+            borderColor: error ? theme.colors.danger : theme.colors.hairline,
+          },
+          inputStyle,
+        ]}
+        {...rest}
+      />
+      {error ? (
+        <AppText variant="small" tone="danger">
+          {error}
+        </AppText>
+      ) : hint ? (
+        <AppText variant="small" tone="muted">
+          {hint}
+        </AppText>
+      ) : null}
+    </View>
+  );
+}
+
+// ------------------------------------------------------------------- misc
+
+/** An intent or state pill (`.pill`). `mutual` tints it indigo for a matched intent. */
+export function Pill({
+  label,
+  tint = 'signal',
+}: {
+  label: string;
+  tint?: 'signal' | 'mutual';
+}): ReactNode {
+  const theme = useTheme();
+  return (
+    <View
+      style={[
+        styles.pill,
+        {
+          backgroundColor: tint === 'mutual' ? theme.colors.mutualSoft : theme.colors.signalSoft,
+        },
+      ]}
+    >
+      <AppText variant="tinySemiBold">{label}</AppText>
+    </View>
+  );
+}
+
+/** The coarse time chip on a crossing card (`.chip-time`). Computed on-device (§6.13). */
+export function TimeChip({ label }: { label: string }): ReactNode {
+  const theme = useTheme();
+  return (
+    <View style={[styles.timeChip, { backgroundColor: theme.colors.surfaceSunk }]}>
+      <AppText variant="tiny" tone="muted">
+        {label}
+      </AppText>
+    </View>
+  );
+}
+
+/** A note with a lock icon, for the places where the app explains a privacy rule. */
+export function LockNote({ children }: { children: ReactNode }): ReactNode {
+  const theme = useTheme();
+  return (
+    <View style={styles.lockNote}>
+      <Icon name="lock" size={16} color={theme.colors.inkMuted} />
+      <AppText variant="small" tone="muted" style={{ flex: 1 }}>
+        {children}
+      </AppText>
+    </View>
+  );
+}
+
+/** A back or close button in a screen's top bar (`.bar .icon-btn`). */
+export function BarButton({
+  kind,
+  onPress,
+}: {
+  kind: 'back' | 'close';
+  onPress: () => void;
+}): ReactNode {
+  return (
+    <View style={styles.bar}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={kind === 'close' ? 'Close' : 'Back'}
+        onPress={onPress}
+        style={styles.barButton}
+      >
+        <Icon name={kind} />
+      </Pressable>
+    </View>
+  );
+}

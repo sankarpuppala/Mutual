@@ -20,6 +20,7 @@ the reason), **Parked** (good idea, not now), **Open** (waiting for an answer).
 | Q4 | Will you run the real-user pilot? Which ethics body approves it? | Phase 12 |
 | Q6 | Where will the server run for a demo with more than one phone? | Phase 11 |
 | Q8 | In a pilot, who has server (operator) access? They cannot also hold accounts. | Phase 12 |
+| Q9 | On a study campus the server will not create an account without consent, so declining means not using Mutual at all. Is that acceptable to the approving body, or is a non-participating mode needed? | Phase 12 |
 
 ### Parked ideas
 | Idea | Why parked | Where |
@@ -588,3 +589,79 @@ An independent reviewer saw only the protocol sections and attacked them.
   compiled, because there is no Android SDK or JDK on this machine. It is
   reviewed code, not working code, until Phase 9a runs. The TypeScript wrapper
   *is* tested (10 tests).
+
+### 21. Phase 10 (onboarding and profile) — Adopted
+
+- **The consent screen exposed a real ethics question, which is being raised
+  rather than quietly resolved.** The server refuses to create an account on a
+  study campus without a `consent_version` (`POST /account` → 422
+  `consent_required`), because the reveal policy being studied changes for the
+  whole campus at once. So on a study campus, declining to take part means not
+  being able to use Mutual at all. **Open question for the human (ethics, not
+  engineering):** is that acceptable to the approving body, or does the design
+  need a non-participating mode? The screen now says the position plainly and
+  offers "Not now" (which creates nothing) instead of a fake opt-out link that
+  would have failed with a server error. Added to the Board at the top of this file as Q9.
+- **The consent step had to move.** SPEC §13.2 lists it in the onboarding
+  group but not in an order, and it has to come *before* `POST /account`
+  because that is the request carrying `consent_version`. **Decision:** the
+  code step always routes to the consent screen, which checks
+  `GET /config.study_enabled` and forwards straight to the age check when no
+  study is running. That keeps the gate in one place instead of duplicating
+  the study check in two screens.
+- **Identity key generation is idempotent on purpose.** `ensureIdentity()`
+  returns the existing key if there is one. Onboarding can be interrupted
+  (a code that arrives late, a backgrounded app), and generating a second
+  keypair after the first was registered would silently invalidate every token
+  the device had built — a failure that produces no error, just matches that
+  never happen. Tested.
+- **The generated public key is validated before being stored**, even though
+  X25519 generation cannot produce a low-order point. Storing first and
+  discovering the server rejects it later would leave the device holding a key
+  it can never use, with no way to tell.
+- **The date of birth and the email live in memory only.** The onboarding store
+  is plain Zustand with no persistence middleware, and the file says why: both
+  are things invariant 5 forbids keeping. A future "resume where you left off"
+  feature would have to persist everything *except* those two fields, so the
+  reason is written next to the state rather than left to be rediscovered.
+- **Validation lives in pure functions, not in the screens.**
+  `src/onboarding/store.ts` exports `validateEmail`, `validateDateOfBirth`,
+  `validatePrompts` and the rest, which is what let the age rule be tested at
+  the boundary: someone who turns 18 today is accepted, someone who turns 18
+  tomorrow is not. Calendar arithmetic, not days divided by 365.25.
+- **Email validation deliberately stops at the shape of the address.** Only
+  the server knows which domains map to an open campus (SPEC §4.1), so
+  checking the domain here would either duplicate that list or reject valid
+  addresses. The screen explains the three server answers
+  (`not_a_college_email`, `campus_not_open`, and a code on its way) in plainer
+  words than the API does.
+- **The avatar palette moved into `tokens.ts`, because the lint rule was
+  right.** Twelve hex literals in `GenerativeAvatar.tsx` tripped the
+  no-raw-colours rule. They are design tokens, so they now live with the other
+  tokens — annotated as deliberately theme-independent, since a person's
+  avatar changing colour when the phone switches to dark mode would make it
+  useless as a way to recognise someone.
+- **The avatar hashes with BLAKE2b, not the prototype's FNV.** SPEC §13.5 asks
+  for BLAKE2b of `identity_pk`; the prototype's 32-bit FNV hash is fine for a
+  browser mock but collides often enough that two people on one campus would
+  share a blob. The palette and the blob construction are the prototype's,
+  unchanged. A malformed key still renders something, because a blank avatar
+  would show which rows are malformed.
+- **A voice answer never replaces a written one** (decision D8), so
+  `VoiceRecorder` is always rendered beneath a filled text field and says so in
+  its own helper text. It also stops itself at 30 seconds rather than letting
+  someone record for a minute and then rejecting the file.
+- **`VoicePlayer` cannot reach the network, structurally.** It takes a local
+  file URI and renders nothing playable when that URI is null. A fetch at the
+  moment someone pressed play would tell the server which card they were
+  interested in — the exact leak invariant 1 exists to prevent — so the
+  component has no way to ask for the file.
+- **New files, added to SPEC §20 in the same change:**
+  `app/src/api/types.ts`, `app/src/api/endpoints.ts`,
+  `app/src/onboarding/store.ts`, `app/src/onboarding/identity.ts`.
+  `types.ts` was written against `server/mutual_server/schemas.py` field by
+  field, which caught four places where the client's first guess was wrong
+  (`AccountMe.profile` is nested and nullable; the prompt library is
+  `{looking_for, prompts:[{id, text, kind}]}`; a message carries `sender_id`
+  and `created_at`, not `from_me`; and `ReportReason` has six values, not the
+  five guessed).

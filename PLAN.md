@@ -1332,3 +1332,55 @@ Add an entry at the end of every session. Newest at the bottom.
         stop: `docs/THREAT_MODEL.md` 3.3 needs weakening in writing before
         anyone relies on the rotation.
 - Next session starts with: Phase 10 (onboarding and profile).
+
+### 2026-10-06 — Phase 10 — done (emulator checks pending a toolchain)
+- Done:
+  - Components: `GenerativeAvatar.tsx` (BLAKE2b of `identity_pk`, the
+    prototype's palette and blob construction), `VoicePlayer.tsx` (48 bars
+    from the stored waveform, plays from the local cache only, structurally
+    unable to reach the network), `VoiceRecorder.tsx` (<= 30 s, stops itself
+    at the limit, 48 waveform values averaged from metering).
+  - API layer: `src/api/types.ts` written field by field against
+    `server/mutual_server/schemas.py`, and `src/api/endpoints.ts` with one
+    typed function per route, collected in one readable file so the
+    invariant-1 check ("nothing here can be called because a user looked at
+    something") can actually be made.
+  - Onboarding: `src/onboarding/store.ts` (in-memory only, plus every
+    validation rule as a pure function) and `src/onboarding/identity.ts`
+    (idempotent X25519 key generation into secure storage).
+  - Screens built in full: welcome, how-it-works (3 panels), email, code, age,
+    basics (where the account is created), prompts, photos, permissions,
+    consent (study mode only), and the You tab with the profile preview,
+    discovery switch, photos row, privacy row, notifications row and inline
+    delete-account confirmation.
+  - Primitives extended with `TextField`, `Pill`, `TimeChip`, `LockNote`,
+    `BarButton`; the avatar palette moved into `tokens.ts`.
+- Tests: `npm test -w app` -> **67 passed** (7 suites; +33 this phase: 26
+  onboarding/identity, 7 avatar). `npm run typecheck -w app`,
+  `npm run lint -w app`, `npm run check:privacy -w app`,
+  `npm run check:contrast -w app` all clean.
+- Verify item resolved: the current Expo audio package is **`expo-audio`**, and
+  its recording metering is read through `recorder.getStatus().metering` in
+  dBFS after `prepareToRecordAsync({ isMeteringEnabled: true })`. Mapped to the
+  0-100 scale the server stores, averaged into 48 buckets.
+- Raised, not resolved: on a study campus the server will not create an account
+  without consent, so declining means not being able to use Mutual. That is an
+  ethics question for the human, recorded as **Q9** on the decisions-log Board
+  and stated plainly on the consent screen.
+- Deviations from this plan and why:
+  - The consent screen sits between the code step and the age step rather than
+    at the end of onboarding, because `consent_version` is carried by
+    `POST /account`, which happens on the basics screen.
+  - Four files added beyond SPEC §20 and recorded there in the same change.
+- **Not verified:** "a new synthetic user can onboard on an emulator in under
+  3 minutes" and the both-themes screenshots. Both need an emulator, which
+  needs the Android SDK and a JDK.
+- Human review checklist (Phase 10):
+  - [ ] Once the toolchain is installed, onboard a synthetic user end to end
+        and time it.
+  - [ ] Open `docs/design/prototype.html` beside the emulator for Welcome,
+        How it works, You and Privacy, in both themes.
+  - [ ] Answer Q9 (the study-campus consent question above) before any pilot.
+  - [ ] Confirm the consent text in `app/app/(onboarding)/consent.tsx` matches
+        whatever the approving body ends up requiring; it is version "1".
+- Next session starts with: Phase 11 (the core loop and end to end).

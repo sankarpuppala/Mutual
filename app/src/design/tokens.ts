@@ -79,6 +79,29 @@ const dark: Colors = {
 
 export const colors: Record<ThemeName, Colors> = { light, dark };
 
+/**
+ * The GenerativeAvatar palette (SPEC §13.5), from the prototype's `PAL`. Warm and muted,
+ * with no primary colours, so a wall of avatars stays calm.
+ *
+ * Deliberately theme-independent: an avatar is how you recognise a person before a reveal,
+ * and it would be disorienting for it to change colour when the phone switches to dark mode.
+ * Every entry is light enough to sit under the dark blob shapes drawn on top of it.
+ */
+export const avatarPalette = [
+  '#F2B880',
+  '#E58F73',
+  '#C9A3D6',
+  '#8FB3E0',
+  '#86C9B7',
+  '#EBCF7A',
+  '#A99BE8',
+  '#F4A7A0',
+  '#9FD08F',
+  '#73B4C9',
+  '#E7A3C4',
+  '#B9C98A',
+] as const;
+
 /** Spacing scale in points (SPEC §13.4). Nothing in the app uses a value outside it. */
 export const space = {
   xs: 4,

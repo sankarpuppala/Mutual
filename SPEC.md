@@ -1327,7 +1327,7 @@ sim/results/report.md  sim/results/figures/            (generated)
 app/{package.json,app.json,app.config.ts,tsconfig.json,eslint.config.js,jest.config.js,babel.config.js,metro.config.js,index.ts}
 app/plugins/withBleNeverForLocation.js                   (local Expo config plugin, §14.1)
 app/app/...                                              (routes listed in §13.2)
-app/src/api/client.ts
+app/src/api/{client,endpoints,types}.ts
 app/src/design/{tokens,typography,motion,theme,primitives,icons}.ts(x)
 app/src/dev/protocolSelfTest.ts                          (in-app vector check, §13.1)
 app/src/components/{CrossingCard,VoicePlayer,VoiceRecorder,SignalSheet,SignalDots,GenerativeAvatar,RevealMoment,ChatBubble,IntentChip,EmptyState,PrivacyRow}.tsx
@@ -1335,6 +1335,7 @@ app/src/signals/{db,ttl,setBuilder,scheduler,upload}.ts
 app/src/presence/{bleAdapter,nativeBle,fakeBle,dailyKeys,schedule,drain,encounters,upload}.ts
 app/src/digest/{prefetch,cache}.ts
 app/src/matches/resolve.ts
+app/src/onboarding/{store,identity}.ts                     (signup state and keys, §6.4)
 app/src/storage/{secure,localDb}.ts
 app/modules/mutual-ble/                                  (Expo local module: index.ts, expo-module.config.json, android/…Kotlin)
 app/scripts/{check-privacy-invariants,check-contrast}.ts
