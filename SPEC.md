@@ -1324,10 +1324,12 @@ sim/{pyproject.toml,config.yaml}
 sim/mutual_sim/{__init__,population,copresence,policies,behaviour,metrics,run,sweep,report}.py
 sim/tests/{test_metrics,test_determinism,test_policies}.py
 sim/results/report.md  sim/results/figures/            (generated)
-app/{package.json,app.config.ts,tsconfig.json,eslint.config.js,jest.config.js,babel.config.js,metro.config.js}
+app/{package.json,app.json,app.config.ts,tsconfig.json,eslint.config.js,jest.config.js,babel.config.js,metro.config.js,index.ts}
+app/plugins/withBleNeverForLocation.js                   (local Expo config plugin, §14.1)
 app/app/...                                              (routes listed in §13.2)
 app/src/api/client.ts
-app/src/design/{tokens,typography,motion,theme}.ts(x)
+app/src/design/{tokens,typography,motion,theme,primitives,icons}.ts(x)
+app/src/dev/protocolSelfTest.ts                          (in-app vector check, §13.1)
 app/src/components/{CrossingCard,VoicePlayer,VoiceRecorder,SignalSheet,SignalDots,GenerativeAvatar,RevealMoment,ChatBubble,IntentChip,EmptyState,PrivacyRow}.tsx
 app/src/signals/{db,ttl,setBuilder,scheduler,upload}.ts
 app/src/presence/{bleAdapter,nativeBle,fakeBle,dailyKeys,schedule,drain,encounters,upload}.ts

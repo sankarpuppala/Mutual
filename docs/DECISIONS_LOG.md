@@ -465,3 +465,73 @@ An independent reviewer saw only the protocol sections and attacked them.
   end**, covering both tiers, because this session continues straight through
   Tier 2 and a mid-way walkthrough would be rewritten in full a few hours
   later.
+
+### 19. Phase 8 (app foundation) — Adopted
+
+- **Version pins, verified against the installed SDK** (PLAN.md's ⚠ verify item):
+  Expo SDK **57.0.26**, React Native **0.86.3**, React **19.2.3**, Node 24.19.0.
+  The two packages SPEC §13.1 said to check by name resolved to **`expo-audio`**
+  (not the old `expo-av`) and **`expo-background-task`** (not
+  `expo-background-fetch`). Also added: `expo-screen-capture` for the Reveal
+  moment's `FLAG_SECURE`, `expo-system-ui` (Expo asks for it before it will
+  honour `userInterfaceStyle`), and `expo-build-properties` to pin minSdk 31.
+- **A real privacy bug, found and fixed, not noticed later.** Expo's
+  `android.permissions` list can only name a permission; it cannot attach
+  `usesPermissionFlags="neverForLocation"`. The first prebuild therefore
+  produced a manifest with a bare `BLUETOOTH_SCAN` — which Android treats as a
+  possible location inference and which would eventually have pushed someone
+  toward adding a location permission, the one thing invariant 3 forbids
+  absolutely. **Fix:** a local Expo config plugin,
+  `app/plugins/withBleNeverForLocation.js`, that edits the manifest directly.
+  It also strips `SYSTEM_ALERT_WINDOW`, which `expo-dev-client` adds for its
+  dev menu overlay and which has no business in anything a participant
+  installs. Applied without asking, per the human's standing security
+  delegation (2026-10-05), and logged here as that delegation requires.
+- **The privacy check was initially wrong in a way that mattered.** Expo
+  implements `blockedPermissions` by *declaring* the permission with
+  `tools:node="remove"`, so a naive substring search for
+  `ACCESS_FINE_LOCATION` fails on a correct manifest. **Fix:**
+  `check-privacy-invariants.ts` now parses each `<uses-permission>` element and
+  treats a `tools:node="remove"` declaration as the removal it is; it prefers
+  Gradle's merged manifest when a build has produced one, and holds it to the
+  stricter rule that the name must be absent entirely.
+- **A TypeScript version clash broke eslint.** `packages/protocol-ts` pins
+  TypeScript 7.0.2, which npm hoisted to the repo root; `@typescript-eslint`'s
+  `ts-api-utils` cannot read TypeScript 7's AST and crashed on every lint run.
+  **Fix:** TypeScript ~6.0.3 is now a root devDependency (so tooling resolves
+  it), leaving 7.0.2 nested under `packages/protocol-ts` for its own typecheck.
+  Both suites still pass. No source change was needed.
+- **`app.json` kept coming back.** `expo install` writes autolinked config
+  plugins into `app.json`, and `app.config.ts` spreading `...config` then
+  replacing `plugins` silently discarded them — a trap for the next person who
+  runs `expo install`. **Decision:** `app.config.ts` merges the two lists, ours
+  winning on configuration, and `app.json` stays in the repo as the file Expo
+  maintains.
+- **Two files added to SPEC §20 that the spec had not anticipated:**
+  `app/src/design/primitives.tsx` (Screen, AppText, Button, Card and the rest —
+  without it, each screen would re-derive the prototype's spacing and type by
+  hand and drift) and `app/src/design/icons.tsx` (the prototype's icon paths
+  transcribed exactly, rather than a lookalike icon library). Also
+  `app/src/dev/protocolSelfTest.ts` and the config plugin above.
+- **Design tokens are taken from the prototype, not re-invented.** Every value
+  in `tokens.ts` traces to a CSS rule in `docs/design/prototype.html`, and the
+  type styles in `typography.ts` are named after the prototype's own classes
+  (`.h-title`, `.a`, `.q`, `.reassure`) so the two can be compared line by
+  line. Sizes the prototype uses that fall between SPEC §13.4's scale steps
+  (42, 38, 30, 27, 26, 23, 19 pt) are collected in a `displaySize` map with
+  the element each one came from, rather than written inline — which keeps the
+  no-magic-numbers lint rule honest instead of making it a fiction.
+- **Contrast measured, not assumed:** 20 text/background pairs x 2 themes all
+  pass WCAG AA. The tightest is `signal` on `bg` in light mode at 4.48:1,
+  which is why that colour is only ever used for large display text (the
+  italic word in the welcome title) or as a fill behind `onSignal`, never as
+  body text. No token needed changing.
+- **Deliberately not done in this phase:** the real screens. Phase 8's job per
+  the plan is the foundation, so the 17 route files are honest placeholders
+  that already use the design system; the privacy screen and the dev panel are
+  the two exceptions, built in full because their content is final.
+- **Blocked, and the reason recorded rather than worked around:**
+  `npx expo run:android` (AC-T2-1's build half) cannot run on this laptop yet
+  — there is no JDK and no Android SDK installed. Everything that does not need
+  them passes: lint, typecheck, 24 jest tests, both privacy scripts, and a
+  successful `expo prebuild` producing the manifest the privacy check verifies.

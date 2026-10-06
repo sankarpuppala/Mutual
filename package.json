@@ -4,9 +4,13 @@
   "private": true,
   "description": "Mutual: campus co-presence matching research prototype. See SPEC.md.",
   "workspaces": [
-    "packages/protocol-ts"
+    "packages/protocol-ts",
+    "app"
   ],
   "engines": {
     "node": ">=24"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3"
   }
 }

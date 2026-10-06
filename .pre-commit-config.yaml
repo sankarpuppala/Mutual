@@ -39,4 +39,41 @@ repos:
         pass_filenames: false
         files: ^packages/(protocol-ts|protocol-spec|protocol_py)/
 
-      # App hooks (lint, check:privacy, check:contrast) are added in Phase 8.
+      # App hooks (added Phase 8). They run only when app/ or the protocol changes, because
+      # eslint and jest on the React Native tree are the slowest checks in the repo.
+      - id: app-lint
+        name: npm run lint -w app
+        entry: npm run lint -w app
+        language: system
+        pass_filenames: false
+        files: ^app/
+
+      - id: app-test
+        name: npm test -w app
+        entry: npm test -w app
+        language: system
+        pass_filenames: false
+        files: ^(app|packages/protocol-ts|packages/protocol-spec)/
+
+      - id: app-typecheck
+        name: npm run typecheck -w app
+        entry: npm run typecheck -w app
+        language: system
+        pass_filenames: false
+        files: ^app/
+
+      # The two privacy scripts (AC-T2-3, AC-T2-4). check:privacy also scans every
+      # package.json in the repo for a denylisted SDK, so it always runs.
+      - id: app-check-privacy
+        name: npm run check:privacy -w app
+        entry: npm run check:privacy -w app
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: app-check-contrast
+        name: npm run check:contrast -w app
+        entry: npm run check:contrast -w app
+        language: system
+        pass_filenames: false
+        files: ^app/

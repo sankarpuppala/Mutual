@@ -1219,3 +1219,69 @@ Add an entry at the end of every session. Newest at the bottom.
   - The RQ4 section (§8) is the written deliverable for research question 4;
     read it as your examiner would.
 - Next session starts with: Phase 8 (app foundation).
+
+### 2026-10-06 — Phase 8 — done (one item blocked: see below)
+- Done:
+  - Expo app created in `app/` and added to the npm workspaces; Metro
+    configured for the monorepo (watch the repo root, resolve from both
+    node_modules trees, `disableHierarchicalLookup`).
+  - `index.ts` entry imports the CSPRNG polyfill **before**
+    `expo-router/entry`, so no protocol code can run without it.
+  - Design system from `docs/design/prototype.html`: `tokens.ts`,
+    `typography.ts` (Fraunces + Inter via expo-font), `motion.ts` (durations
+    collapse to 0 under OS reduce-motion), `theme.tsx`, plus `primitives.tsx`
+    and `icons.tsx`.
+  - Navigation skeleton per SPEC §13.2: onboarding group (9 screens), tabs
+    group (4), `profile/[id]`, `match/[id]`, `reveal/[id]`, `privacy`, `dev`.
+    The privacy screen and the dev panel are built in full; the other 17 are
+    placeholders that already render in both themes.
+  - `api/client.ts` as the single network boundary, `storage/secure.ts`,
+    TanStack Query provider with focus/reconnect refetching off (a refetch
+    caused by the user opening the app on a particular card would be
+    attention-dependent traffic).
+  - `presence/bleAdapter.ts` and `presence/fakeBle.ts` (deterministic,
+    respects the midnight rule, produces sub-threshold brush-pasts).
+  - `app/dev.tsx` runs 20 real vectors from `vectors.json` in-app and shows
+    "Protocol OK" (PLAN Phase 8 task 3, risks R4/R5).
+  - `scripts/check-privacy-invariants.ts` and `scripts/check-contrast.ts`.
+  - Five app hooks added to `.pre-commit-config.yaml`.
+- Version pins (⚠ verify, resolved): Expo SDK **57.0.26**, React Native
+  **0.86.3**, React **19.2.3**, TypeScript 6.0.3 (app) / 7.0.2 (protocol-ts),
+  Node 24.19.0. Audio = **`expo-audio`**; background tasks =
+  **`expo-background-task`**.
+- Tests: `npm test -w app` → **24 passed** (4 suites).
+  `npm run typecheck -w app` → clean. `npm run lint -w app` → clean.
+  `npm run check:privacy -w app` → OK. `npm run check:contrast -w app` → 20
+  pairs x 2 themes, all at or above WCAG AA. Nothing else regressed:
+  `pytest packages/protocol_py server sim -q` → 272 passed,
+  `npm test -w packages/protocol-ts` → 29 passed.
+- Security fix applied under the standing delegation:
+  `BLUETOOTH_SCAN` was generated **without**
+  `usesPermissionFlags="neverForLocation"` because Expo's `permissions` list
+  cannot express the flag. Fixed with a local config plugin
+  (`app/plugins/withBleNeverForLocation.js`), which also strips
+  `SYSTEM_ALERT_WINDOW` from `expo-dev-client`. Verified in the prebuild
+  manifest. Logged as DECISIONS_LOG entry 19.
+- Deviations from this plan and why:
+  - Three files added beyond SPEC §20 and recorded there in the same change:
+    `src/design/primitives.tsx`, `src/design/icons.tsx`,
+    `plugins/withBleNeverForLocation.js` (plus `src/dev/protocolSelfTest.ts`
+    and `index.ts`).
+  - TypeScript ~6.0.3 added as a root devDependency to stop eslint crashing on
+    protocol-ts's TypeScript 7. No source change.
+- **Blocked: AC-T2-1's `npx expo run:android` half.** This laptop has no JDK
+  and no Android SDK, so no emulator build can be produced yet. Everything
+  else in AC-T2-1 (lint, including the fetch restriction and the
+  no-hex-literal rule) passes, and `expo prebuild` succeeds, which is what
+  AC-T2-3 is verified against. The in-app protocol self-test is covered by a
+  jest test; running it on a device still needs the toolchain.
+- Human review checklist (Phase 8):
+  - [ ] Install Android Studio (or the command-line tools + a JDK 17), then
+        run `npx expo run:android` from `app/` and confirm the dev build
+        starts and the dev panel shows "Protocol OK".
+  - [ ] Open `docs/design/prototype.html` beside the emulator and compare the
+        tab bar, gutters and type in both themes.
+  - [ ] Confirm you are comfortable with `in.mutual.app` as the Android
+        package name (it is baked into a build's identity).
+- Next session starts with: Phase 9b (the native BLE module, written against
+  the spike's open questions), then Phase 10.
