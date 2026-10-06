@@ -643,9 +643,9 @@ approved yet; each needs a spec change when picked up.
 
 | Quantity | Value | Where measured | Date |
 |---|---|---|---|
-| Signal upload size (bytes) | | AC-T1-8 | |
-| Presence upload size, 50 / 500 sightings (bytes) | | AC-T1-8 | |
-| Worst-case match latency (hours) | | AC-T1-8 | |
+| Signal upload size (bytes) | 932 (fixed, any number of real signals) | AC-T1-8 (`server/tests/test_costs.py`) | 2026-10-06 |
+| Presence upload size, 50 / 500 sightings (bytes) | 11,792 / 23,568 (1 sighting = same as 50) | AC-T1-8 (`server/tests/test_costs.py`) | 2026-10-06 |
+| Worst-case match latency (hours) | 38 tap→both told; 24 digest→told; 56 crossing→told | AC-T1-8 (`server/tests/test_costs.py`) | 2026-10-06 |
 | Simulation main-experiment runtime (min, one core) | 0.17 min (10.2 s), 3 policies × 30 seeds | Phase 6 | 2026-10-06 |
 | Sweep runtime (min) | 7.7 min (460.8 s), 4050 runs | Phase 6 | 2026-10-06 |
 | BLE detection with neverForLocation | | Phase 9a | |
@@ -1158,3 +1158,64 @@ Add an entry at the end of every session. Newest at the bottom.
     upload bytes, worst-case match latency) still need computing from the
     real server, not estimated by hand.
 
+
+### 2026-10-06 — Phase 7 — done
+- Done:
+  - `docs/THREAT_MODEL.md` — assets ranked by harm, every adversary from
+    SPEC §7.2 explained with its actual defence, trust assumptions stated
+    *as* assumptions, and residual risks collected in one ranked list. The
+    headline limitation is named plainly: an **active** server that
+    substitutes a public key breaks everything, and key transparency is
+    future work, not present.
+  - `docs/SECURITY_ARGUMENT.md` — C1–C5 each mapped to named tests (file ::
+    test function) and/or a labelled argument, with "test" and "argument"
+    kept visibly distinct so a claim resting only on prose is obvious. Each
+    claim also carries an "honest limits" subsection. Includes §7 measured
+    costs and §8, the RQ4 section.
+  - `server/tests/test_costs.py` (new; added to SPEC §20's file list) —
+    measures AC-T1-8's costs from real uploads through the real app, and
+    asserts the `measured-costs` block in `docs/SECURITY_ARGUMENT.md` still
+    equals a fresh measurement, so the document cannot drift from the code.
+- Tests: `pytest packages/protocol_py server sim -q` → **272 passed**
+  (was 268; +4 from `test_costs.py`). `npm test -w packages/protocol-ts` →
+  29 passed. `npm run typecheck -w packages/protocol-ts` → clean.
+- Measured (AC-T1-8), all from real requests, none by hand:
+  - signal upload **932 bytes**, identical for 0 or 20 real signals;
+  - presence upload **11,792 bytes** (50 sightings) / **23,568 bytes**
+    (500); 1 sighting costs exactly the same as 50 — padding verified by
+    `test_padding_hides_how_many_sightings_a_small_night_had`;
+  - worst-case match latency **38 h** (tap → both told), **24 h** (digest →
+    told), **56 h** worst case (crossing → told).
+- Tier 1 verification (Prompt 6) — every row from a command run this session:
+
+  | AC | Command | Result |
+  |---|---|---|
+  | T1-1 | `pytest packages/protocol_py -q` | 130 passed |
+  | T1-2 | `python -m mutual_protocol.vectors --out <tmp>` + byte compare | 135 cases, identical to committed |
+  | T1-3 | `npm test -w packages/protocol-ts` | 29 passed (2 files) |
+  | T1-4 | `pytest server -q` | 127 passed |
+  | T1-5 | `pytest server/tests/test_leak_two_worlds.py -q` | 1 passed (world C non-vacuity included) |
+  | T1-6 | `pytest server/tests/test_route_audit.py -q` | 6 passed |
+  | T1-7 | `pytest server/tests/test_retention.py server/tests/test_digest.py -q` | 17 passed |
+  | T1-8 | `pytest server/tests/test_costs.py -q` | 4 passed; numbers above |
+  | T1-9 | `pytest sim -q`; `python -m mutual_sim.run --seeds 30` | 15 passed; run 8.4 s (< 15 min), `main_experiment.csv` byte-identical to the committed run — determinism confirmed a second time |
+  | T1-10 | both documents exist, C1–C5 mapped, RQ4 present | pass |
+
+  **Tier 1 is complete.** Every Tier 1 acceptance criterion passes.
+- Deviations from this plan and why:
+  - Prompt 9 (Phase 13 walkthrough + interview questions) is specified to
+    run after Phase 7 *and* after Phase 11. Run **once at the end** instead,
+    covering both tiers, because this session continues into Tier 2 and a
+    mid-way walkthrough would be rewritten within hours.
+  - The Tier 1 gate ("stop and show your professor") is **not** being used
+    as a stop this session: the human asked for the whole project to be
+    carried through in one run. The gate's artefacts all exist, so the
+    review can still happen at any point.
+- Human review checklist (Phase 7):
+  - `docs/THREAT_MODEL.md` §5 lists the residual risks you are willing to
+    stand behind in a viva. If any feels understated, say so.
+  - `docs/SECURITY_ARGUMENT.md` §2 "honest limits of C1" — confirm you are
+    comfortable stating the active-server limitation that prominently.
+  - The RQ4 section (§8) is the written deliverable for research question 4;
+    read it as your examiner would.
+- Next session starts with: Phase 8 (app foundation).

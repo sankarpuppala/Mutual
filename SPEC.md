@@ -1319,7 +1319,7 @@ server/mutual_server/{__init__,main,config,clock,ids,db,models,security,errors,d
 server/mutual_server/data/prompts.json
 server/mutual_server/routers/{auth,account,profile,presence,digest,signals,matches,messages,safety,config_route,dev}.py
 server/mutual_server/services/{campus,resolution,matching,ranking,digest,arms,cards,retention,email,media}.py
-server/tests/{conftest,test_app,test_auth,test_account,test_profile,test_presence,test_digest,test_signals,test_matches,test_reveal,test_messages,test_safety,test_retention,test_leak_two_worlds,test_route_audit,test_study_gate}.py
+server/tests/{conftest,test_app,test_auth,test_account,test_profile,test_presence,test_digest,test_signals,test_matches,test_reveal,test_messages,test_safety,test_retention,test_leak_two_worlds,test_route_audit,test_study_gate,test_costs}.py
 sim/{pyproject.toml,config.yaml}
 sim/mutual_sim/{__init__,population,copresence,policies,behaviour,metrics,run,sweep,report}.py
 sim/tests/{test_metrics,test_determinism,test_policies}.py

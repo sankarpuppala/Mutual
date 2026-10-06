@@ -410,3 +410,58 @@ An independent reviewer saw only the protocol sections and attacked them.
 - **Not implemented, out of this phase's scope:** the field-pilot's own
   switchback scheduling (Tier 3, gated) and `reciprocal_content` ranking
   (Phase 11) — unrelated to this simulation.
+
+### 18. Phase 7 (Tier 1 documents) — Adopted
+
+- **The costs in AC-T1-8 had to come from somewhere real.** The plan says
+  "compute them from real uploads in a test or script, not by hand".
+  **Decision:** a new test module, `server/tests/test_costs.py`, that sends
+  genuine signal and presence uploads through the real app and measures the
+  bytes the server received, then computes the latencies from the configured
+  schedule using the same clock helpers the server uses.
+- **The document could still drift from the code.** A number written into
+  `docs/SECURITY_ARGUMENT.md` by hand is correct on the day it is written and
+  wrong the first time anyone changes the padding or the schedule.
+  **Decision:** the document carries a fenced `measured-costs` block, and
+  `test_security_argument_records_the_measured_costs` asserts that the block
+  equals a fresh measurement. Change the config and the test fails with the
+  new numbers in the message. The acceptance criterion now enforces itself.
+- **`server/tests/test_costs.py` was not in `SPEC.md` §20's file list.** §20
+  enumerates test modules explicitly, and this one is new.
+  **Decision:** added to §20 in the same change. This is a documentation sync
+  (the plan already authorised the file), not a behavioural spec change.
+- **Measured, so recorded here too:** a signal upload is 932 bytes of request
+  body, every day, whether the user signalled nobody or twenty people. A
+  presence upload is 11,792 bytes for a quiet day and 23,568 for a very
+  social one — and 1 sighting costs *exactly* the same as 50, which is the
+  padding doing its job. Worst-case match latency is 38 hours from tap to
+  both sides being told; 24 hours is the typical path from digest to
+  notification.
+- **The 38-hour figure needed a definition.** "Worst-case match latency" is
+  ambiguous between several start points. **Decision:** measured from the
+  moment a user taps a signal, with the worst case being a tap that lands a
+  moment after that epoch's single upload has already gone out — so the
+  signal waits for the next night's upload, that night's batch and the
+  following morning's release. Two companion figures are reported beside it
+  (digest-to-notification, crossing-to-notification) so the number cannot be
+  quoted out of context.
+- **RQ4 is the section that cost the most thought.** It names what the
+  privacy design makes *impossible*: interest-trained recommendation,
+  measuring one-sided attention at all (including for this project's own
+  research — which is exactly why the simulation exists), real-time
+  discovery, the whole category of engagement mechanics, and third-party
+  analytics. One distinction is drawn explicitly: friend-of-friend
+  suggestions from the crossing graph are excluded by *product decision*,
+  not by the protocol, so a future operator could reverse them — an argument
+  for keeping crossing retention short.
+- **Determinism re-checked while verifying AC-T1-9:** re-running the 30-seed
+  main experiment reproduced `main_experiment.csv` with zero content
+  differences (8.4 s this time versus 10.2 s before — wall-clock only). The
+  committed results were restored rather than re-running the 7.7-minute
+  sweep for a runtime line.
+- **Deviation from the plan, recorded:** Prompt 9 (the design-decision
+  walkthrough and interview questions, Phase 13) is specified to run once
+  after Phase 7 and again after Phase 11. It is being run **once, at the
+  end**, covering both tiers, because this session continues straight through
+  Tier 2 and a mid-way walkthrough would be rewritten in full a few hours
+  later.
