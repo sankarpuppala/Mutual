@@ -1527,3 +1527,124 @@ Add an entry at the end of every session. Newest at the bottom.
         is the one most worth distrusting.
   - [ ] Try answering the fifteen questions out loud without the repository
         open. The ones you cannot answer are the sections to re-read.
+
+### 2026-10-06 — Tier 2 verification (Prompt 6) and the Android toolchain
+- Toolchain installed this session, so that AC-T2-1 could be attempted at all:
+  **JDK 17** (`%LOCALAPPDATA%\Programs\Microsoft\jdk-17.0.10.7-hotspot` —
+  winget installs to the *user* scope, not `C:\Program Files\Microsoft`), and
+  the **Android SDK** at `%LOCALAPPDATA%\Android\Sdk` with cmdline-tools,
+  platform-tools, platforms/android-36, build-tools/36.0.0 and the NDK.
+  Licences need stdin piped through
+  `cmd /c "type yes.txt | sdkmanager.bat --licenses"`; PowerShell's pipe into
+  the .bat does not feed it.
+- **The first real build found a blocking bug no test could have found.**
+  `in` is a reserved keyword in Kotlin, and Expo's autolinking *generates* a
+  Kotlin file that writes the module's package name unquoted, so
+  `in.mutual.ble.MutualBleModule::class.java` is a syntax error and no build
+  with an `in.mutual.*` package could ever succeed. Renamed to `app.mutual`
+  and `app.mutual.ble`, with the reason recorded in `app.config.ts` and the
+  module's `build.gradle`. DECISIONS_LOG entry 25.
+- **The Kotlin BLE module now compiles.** All six source files
+  (`BleRadio`, `BootReceiver`, `MutualBleModule`, `MutualBleService`,
+  `Schedule`, `SightingStore`) produce classes under
+  `app/mutual/ble/`. Up to this session the Kotlin had never been compiled at
+  all; it was reviewed code, and now it is at least code that builds.
+- **A second obstacle, which is the laptop and not the project:** the C++
+  native build fails with
+  `Filename longer than 260 characters` in `react-native-gesture-handler`'s
+  codegen output. Windows `LongPathsEnabled` is already 1, but ninja/CMake do
+  not honour it. The project path
+  (`C:\Users\sanka\Desktop\STUDIES\AIDS\Project 2\`) is long and contains a
+  space. Worked around with a directory junction: `mklink /J C:\mtl "<project>"`
+  and build from `C:\mtl\app\android`. Recorded here because anyone who
+  re-clones into a deep path will hit it again.
+
+#### Tier 2 acceptance criteria, as they actually stand
+
+| AC | What it needs | Status |
+|---|---|---|
+| T2-1 build | `npx expo run:android` produces a working dev build | **Partly.** `expo prebuild` succeeds, the Kotlin module compiles, and the APK builds from the short path. Installing and running it on an emulator still needs an emulator image and an AVD |
+| T2-1 lint | `npm run lint -w app`, incl. the fetch restriction and the no-hex rule | **Passes** |
+| T2-2 | `npm test -w app` | **Passes — 174 tests**, including the padded set through protocol-ts, the scheduler's four rules, withdrawal sending no request, match verification, encounter tokens, and "rendering a CrossingCard and a VoicePlayer performs no network call" |
+| T2-3 | `npm run check:privacy -w app` | **Passes**, against the prebuild manifest: no location permission, `BLUETOOTH_SCAN` carries `neverForLocation`, no denylisted SDK anywhere in the repo, no `fetch` outside `src/api/client.ts` |
+| T2-4 | `npm run check:contrast -w app` | **Passes** — 20 pairs x 2 themes at or above WCAG AA |
+| T2-5 | Every item in `docs/E2E_CHECKLIST.md` ticked with a date | **Not met.** 60 steps written, every date column blank. Needs two emulators |
+| T2-6 | `docs/BLE_SPIKE.md` recorded on two physical phones | **Not met.** The protocol is written, every results table blank. Needs two Android 12+ phones (Q3) |
+
+So Tier 2 is **four of seven criteria met**, with the three gaps each blocked
+on something specific and named rather than on more code.
+
+### 2026-10-06 — end of the autonomous session — where the project stands
+
+The human asked for the whole project to be carried through in one run, and
+explicitly waived the usual stop-for-review at each phase. **Every phase of
+this plan (0–13) is now implemented and on `main`.** The one-phase-per-session
+rule in `CLAUDE.md` §8 is still the default; it was overridden for this session
+only, by name.
+
+#### Totals
+
+| | |
+|---|---|
+| Commits on `main` | 13, one per phase plus the security-review fixes |
+| Tracked files | 265 |
+| Python tests (protocol_py + server + sim) | **272 passing** |
+| protocol-ts tests | **29 passing** |
+| App jest tests | **174 passing** |
+| ruff (repo-wide), eslint, typecheck, check:privacy, check:contrast | all clean |
+| `pre-commit run --all-files` | all 11 hooks pass (from an activated venv) |
+
+#### Tier 1 — complete
+
+Every Tier 1 acceptance criterion passes; the verification table is in the
+Phase 7 entry above. Measured, not estimated: a signal upload is 932 bytes a
+day whatever the real signal count, a presence upload is 11,792 / 23,568 bytes,
+and the worst-case match latency is 38 hours. `server/tests/test_costs.py`
+asserts that `docs/SECURITY_ARGUMENT.md` still matches the code, so the
+document cannot drift.
+
+#### Tier 2 — four of seven criteria
+
+Code complete. The gaps are the Tier 2 verification entry above: an emulator
+run-through of `docs/E2E_CHECKLIST.md` (AC-T2-5) and the two-phone BLE spike
+(AC-T2-6).
+
+#### Tier 3 — prepared as far as the gate allows
+
+Pre-registration, information sheet, consent form, ethics draft, and the whole
+analysis pipeline running on synthetic data (AC-T3-3 passes).
+`study/analysis/export.py` and `study/APPROVAL.md` are **deliberately absent**
+under invariant 9.
+
+#### What a human has to do next, in order
+
+1. **Review the diff.** Thirteen commits; `docs/DECISIONS_LOG.md` entries
+   17–25 explain every judgement call made along the way, and
+   `docs/design-decisions/09-spec-drift.md` lists every place the code and the
+   spec disagree.
+2. **Answer the Board questions**, especially the new **Q9**: on a study campus
+   the server refuses an account without consent, so declining means not using
+   Mutual at all. That is an ethics question and it blocks any pilot.
+3. **Re-run Prompt 7** as a fresh subagent. The one launched this session was
+   killed by the account's session rate limit partway through; an inline audit
+   replaced it and found two real issues, but inline is weaker evidence.
+4. **Create an emulator and work through `docs/E2E_CHECKLIST.md`**, filling in
+   the date columns. §2.7 and §3.2 are the rows that matter most — they are
+   claim C1 observed from the client side.
+5. **Open `docs/design/prototype.html` beside the emulator** for every screen,
+   in both themes. The interface is the human's stated first priority, and no
+   screen has yet been seen rendered.
+6. **Show the professor.** Tier 1 is the complete research result; the Tier 1
+   gate has not been used as a stop in this session, but all of its artefacts
+   exist.
+
+#### What is NOT done, stated plainly
+
+- Nothing in `app/` has ever been seen running. It compiles, it is tested, and
+  it has never been looked at.
+- `docs/BLE_SPIKE.md` and `docs/E2E_CHECKLIST.md` are empty of results, on
+  purpose.
+- `reciprocal_content` ranking (Phase 11 task 8, marked optional) is not built;
+  Tier 1's `random` ranking runs.
+- No real-user data exists, and none may be collected until the four conditions
+  in invariant 9 all hold.
