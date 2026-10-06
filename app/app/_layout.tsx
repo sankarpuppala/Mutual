@@ -12,12 +12,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ThemeProvider, useTheme } from '@/design/theme';
 import { useAppFonts } from '@/design/typography';
+import { registerNightlyTask } from '@/presence/schedule';
 
 function makeQueryClient(): QueryClient {
   return new QueryClient({
@@ -60,6 +61,13 @@ function Navigator(): ReactNode {
 export default function RootLayout(): ReactNode {
   const fontsLoaded = useAppFonts();
   const queryClient = useMemo(() => makeQueryClient(), []);
+
+  // The nightly presence and signal uploads run from a background task (SPEC §6.11,
+  // §13.8). Registering is idempotent, and a failure here is not fatal: the same work also
+  // runs whenever the app is opened before the cutoff.
+  useEffect(() => {
+    void registerNightlyTask().catch(() => undefined);
+  }, []);
 
   return (
     <SafeAreaProvider>

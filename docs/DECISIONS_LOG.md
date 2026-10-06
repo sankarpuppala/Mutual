@@ -665,3 +665,83 @@ An independent reviewer saw only the protocol sections and attacked them.
   `{looking_for, prompts:[{id, text, kind}]}`; a message carries `sender_id`
   and `created_at`, not `from_me`; and `ReportReason` has six values, not the
   five guessed).
+
+### 22. Phase 11 (core loop) — Adopted
+
+- **Logic and tests before UI, as the plan insists**, and it paid for itself:
+  the signal, presence, digest and match modules were written and tested
+  (105 new tests) before a single screen, which is why the screens are thin.
+- **A real privacy bug caught while building the Signals tab.** The first
+  version showed `peerId.slice(0, 8)` as the name, because the local signal
+  store had no name in it. The obvious fix — fetch the peer's profile — would
+  have been a **per-peer request triggered by opening a tab**, i.e. a direct
+  breach of invariant 1, and there is no such endpoint anyway (invariant 10).
+  **Fix:** the peer's first name and identity key are copied from the digest
+  card at the moment the signal is made and stored beside it. The Signals tab
+  now needs no network at all.
+- **A test that was passing for the wrong reason.** The presence test asserted
+  that the upload body did not match `/interval|window|rssi|dbm|time|minute/i`.
+  It failed intermittently — because the padding is random base64url and can
+  contain any letter sequence by chance. The check was unsound, not flaky.
+  **Fix:** assert the structure instead (exactly one field; every entry an
+  opaque 32-byte string; no nested objects), which is the real property, and
+  say in the test why the substring search was wrong.
+- **Two copies of React broke every rendering test.** `react@19.2.3` nested
+  under `app/` and `react@19.3.0` hoisted at the root, so the test renderer
+  resolved a different copy than the components did and every hook threw.
+  **Fix:** `react` is a root devDependency pinned to Expo SDK 57's version, so
+  one copy is hoisted and every workspace resolves it. (An `overrides` entry
+  was tried first; npm refuses to have both an override and a direct
+  dependency on the same package.)
+- **`expo-file-system`'s API changed in SDK 54+**: `documentDirectory` and
+  `writeAsStringAsync` are gone in favour of `File`/`Directory`/`Paths`. The
+  media cache was rewritten against the new API, which is also better here --
+  `Uint8Array` goes straight to `write()` with no base64 round trip.
+- **What happens at the media prefetch cap** was a documented spec gap
+  (PLAN.md deferred item 5). **Decision:** items are dropped **from the end of
+  the digest's own order**, never by what the user has looked at, so the set
+  fetched still depends only on the digest. Any other rule (most recent first,
+  smallest first, the ones the user opened) either changes nothing or breaks
+  invariant 1. Written into `prefetch.ts` with the reasoning.
+- **Match resolution reports what it cannot explain.** A matched token this
+  device has no record of uploading is returned as `unverified`, never
+  displayed as a default intent. The honest case does happen -- a reinstall
+  loses `sent_tokens` -- and showing "study" for what was really a date signal
+  would be worse than showing nothing. A token recorded against a *different*
+  peer is also refused.
+- **`decide()` distinguishes "wait" from "skip"**, and the difference matters:
+  past the batch time the epoch is gone, and a caller that treated a closed
+  window as a retryable failure would keep trying -- which the server rejects
+  and which is itself evidence that something was pending.
+- **The background task does not aim at a minute.** Android coalesces
+  background work and will not honour "at 21:47". The task wakes periodically
+  and the scheduler decides on each wake whether this is the chosen minute. The
+  random minute is the privacy property; the wake cadence is just how often the
+  device gets a chance to notice.
+- **Chat polls instead of using a socket**, and has no typing indicator or read
+  receipt. A held socket's timing reflects attention; a five-second poll is
+  indistinguishable from idle traffic.
+- **The photo endpoint is loaded by the image pipeline, not `api/client.ts`.**
+  `src/matches/photo.ts` builds an `Image` source with the bearer token as a
+  header. Routing megabytes of JPEG through a JSON client would be worse on
+  both memory and caching, and it does not weaken invariant 1: that invariant
+  governs traffic **before a match exists**, and these requests happen only
+  inside a notified, revealed match where both parties already know about each
+  other. Noted in the file so the exception is explicit rather than silent.
+- **Not implemented, and recorded as not implemented:** PLAN.md Phase 11 task 8
+  (`reciprocal_content` ranking on the server) is marked optional there and
+  parked on the decisions Board; Tier 1's default `random` ranking is what runs.
+- **New files added to SPEC §20 in the same change:**
+  `app/src/digest/useDigest.ts`, `app/src/matches/photo.ts`,
+  `app/src/components/SafetySheet.tsx`.
+- **The jest SQLite mock is a real engine.** `__tests__/support/sqliteMock.ts`
+  implements expo-sqlite over Node 24's built-in `node:sqlite`, with real
+  BEGIN/COMMIT/ROLLBACK. The local database's rules are written *in SQL*
+  (`INSERT OR IGNORE` for the TTL anchor, `ON CONFLICT ... MAX(windows)` for
+  merged drains, `PRAGMA user_version` for migrations), and a hand-written fake
+  would have let every one of them be wrong while the tests passed.
+- **The independent security review (Prompt 7) could not be completed.** The
+  subagent hit the account's session rate limit partway through and was
+  terminated. An inline review was done instead, and it is weaker evidence than
+  an independent one: it should be re-run as a fresh subagent before Tier 2 is
+  presented.

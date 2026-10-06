@@ -3,21 +3,43 @@
  * it renders a refusal otherwise, and `/v1/dev/*` does not exist on a non-dev server anyway
  * (CLAUDE.md invariant 11).
  *
- * Phase 8 ships the part that proves the stack works: the protocol self-test running inside
- * Hermes. Clock travel, simulated crossings and the epoch/policy readout are added in
- * Phase 11 once there is a server session to use them with.
+ * What it is for: driving the parts of the loop that normally take a day. Travelling the
+ * clock past a release time, manufacturing a crossing, and running the nightly work on
+ * demand are what make `docs/E2E_CHECKLIST.md` runnable in an afternoon instead of a week.
+ *
+ * It also shows tonight's randomly chosen upload minute. That is dev-only on purpose:
+ * knowing the minute in advance is exactly the predictable schedule the random draw exists
+ * to prevent (SPEC §6.11).
  */
 
+import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useCallback, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { isDev } from '@/api/client';
+import { dev, getConfig } from '@/api/endpoints';
 import { runProtocolSelfTest, type SelfTestResult } from '@/dev/protocolSelfTest';
 import { Icon } from '@/design/icons';
-import { AppText, Button, Card, GUTTER, Screen, SectionHeading } from '@/design/primitives';
+import {
+  AppText,
+  BarButton,
+  Button,
+  Card,
+  Screen,
+  ScreenHeader,
+  SectionHeading,
+  Stack,
+  TextField,
+} from '@/design/primitives';
 import { useTheme } from '@/design/theme';
-import { hitSize, radius, space } from '@/design/tokens';
+import { space } from '@/design/tokens';
+import { FakeBle } from '@/presence/fakeBle';
+import { buildSchedule, ensureLookahead } from '@/presence/dailyKeys';
+import { drainInto } from '@/presence/drain';
+import { plannedUploadMinute, runNightlyWork } from '@/presence/schedule';
+import { localDay } from '@/signals/scheduler';
+import { getUserId } from '@/storage/secure';
 
 interface SelfTestState {
   result: SelfTestResult | null;
@@ -33,12 +55,24 @@ function runSafely(): SelfTestState {
   }
 }
 
+/** "21:47" from a minute-of-day. */
+function formatMinute(minute: number): string {
+  return `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+}
+
 export default function DevScreen(): ReactNode {
   const theme = useTheme();
   // The self-test is synchronous and pure, so it runs as the initial state rather than in
   // an effect: no cascading render, and the panel is correct on its very first frame.
   const [{ result, error }, setState] = useState(runSafely);
   const run = useCallback(() => setState(runSafely()), []);
+
+  const config = useQuery({ queryKey: ['config'], queryFn: getConfig, enabled: isDev() });
+  const [offsetHours, setOffsetHours] = useState('24');
+  const [peerId, setPeerId] = useState('');
+  const [log, setLog] = useState<string[]>([]);
+
+  const say = (line: string): void => setLog((previous) => [line, ...previous].slice(0, 8));
 
   if (!isDev()) {
     return (
@@ -52,23 +86,62 @@ export default function DevScreen(): ReactNode {
   }
 
   const failures = result?.cases.filter((c) => !c.passed) ?? [];
+  const planned = plannedUploadMinute();
+
+  const actions = {
+    travel: async () => {
+      const hours = Number(offsetHours);
+      if (!Number.isFinite(hours)) {
+        say('Offset must be a number of hours.');
+        return;
+      }
+      await dev.setClockOffset(hours * 3600);
+      await config.refetch();
+      say(`Clock offset set to ${hours} h.`);
+    },
+    reset: async () => {
+      await dev.setClockOffset(0);
+      await config.refetch();
+      say('Clock offset cleared.');
+    },
+    crossing: async () => {
+      const me = await getUserId();
+      if (!me) {
+        say('No account on this device yet.');
+        return;
+      }
+      if (!peerId.trim()) {
+        say('Paste the other account’s user id first.');
+        return;
+      }
+      // Yesterday: a crossing for today would not be visible until tomorrow anyway (C5).
+      const yesterday = localDay(new Date(Date.now() - 86_400_000));
+      await dev.makeCrossing(me, peerId.trim(), yesterday);
+      say(`Crossing created for ${yesterday}.`);
+    },
+    fakeSightings: async () => {
+      const today = localDay(new Date());
+      await ensureLookahead(today);
+      const ble = new FakeBle({ seed: Date.now() % 100000, peers: 6 });
+      await ble.setSchedule(await buildSchedule(today));
+      const produced = ble.generateDay(today);
+      const stored = await drainInto(ble);
+      say(`Generated ${produced.length} fake sightings, stored ${stored}.`);
+    },
+    nightly: async () => {
+      const outcome = await runNightlyWork();
+      say(
+        `Nightly work: signals ${outcome.signals}; presence ${
+          outcome.presence?.presence.map((p) => `${p.day}:${p.status}`).join(', ') ?? 'none'
+        }.`,
+      );
+    },
+  };
 
   return (
     <Screen testID="dev">
-      <View style={styles.bar}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          onPress={() => router.back()}
-          style={styles.iconButton}
-        >
-          <Icon name="back" />
-        </Pressable>
-      </View>
-
-      <AppText variant="title" accessibilityRole="header">
-        Dev panel
-      </AppText>
+      <BarButton kind="back" onPress={() => router.back()} />
+      <ScreenHeader title="Dev panel" />
 
       <SectionHeading>Protocol self-test</SectionHeading>
       <Card>
@@ -106,31 +179,93 @@ export default function DevScreen(): ReactNode {
               ))}
             </View>
           </>
-        ) : (
-          <AppText variant="body" tone="muted">
-            Running…
-          </AppText>
-        )}
+        ) : null}
         <Button label="Run again" kind="ghost" onPress={run} />
       </Card>
 
-      <SectionHeading>Added in Phase 11</SectionHeading>
-      <AppText variant="small" tone="muted">
-        Clock travel, a simulated crossing, the current epoch and the active reveal policy.
-      </AppText>
+      <SectionHeading>Server state</SectionHeading>
+      <Card>
+        <AppText variant="small" tone="muted">
+          {config.data
+            ? [
+                `epoch ${config.data.epoch}`,
+                `policy ${config.data.reveal_policy}`,
+                `release ${config.data.digest_release_time}`,
+                `batch ${config.data.match_batch_time}`,
+                `signals ${config.data.signal_upload_window.start}–${config.data.signal_upload_window.end}`,
+                `study ${config.data.study_enabled ? 'on' : 'off'}`,
+                `server time ${config.data.server_time}`,
+              ].join('\n')
+            : 'Fetching…'}
+        </AppText>
+        <AppText variant="small" tone="muted">
+          {planned === null
+            ? 'Tonight’s upload minute has not been drawn yet. Run the nightly work once.'
+            : `Tonight’s upload minute: ${formatMinute(planned)} (dev only — this is deliberately unknowable in a real build).`}
+        </AppText>
+      </Card>
+
+      <SectionHeading>Clock travel</SectionHeading>
+      <Card>
+        <TextField
+          label="Offset in hours"
+          value={offsetHours}
+          onChangeText={setOffsetHours}
+          keyboardType="numbers-and-punctuation"
+          hint="Travel past a release time or a batch time to see the next step of the loop."
+        />
+        <Stack gap={space.sm}>
+          <Button label="Apply offset" kind="ink" onPress={() => void actions.travel()} />
+          <Button label="Back to real time" kind="ghost" onPress={() => void actions.reset()} />
+        </Stack>
+      </Card>
+
+      <SectionHeading>Crossings and uploads</SectionHeading>
+      <Card>
+        <TextField
+          label="Other account’s user id"
+          value={peerId}
+          onChangeText={setPeerId}
+          autoCapitalize="none"
+          autoCorrect={false}
+          hint="From the other emulator's dev panel, or POST /v1/dev/seed."
+        />
+        <Stack gap={space.sm}>
+          <Button
+            label="Create a crossing for yesterday"
+            kind="ink"
+            onPress={() => void actions.crossing()}
+          />
+          <Button
+            label="Generate fake BLE sightings"
+            kind="ghost"
+            onPress={() => void actions.fakeSightings()}
+          />
+          <Button
+            label="Run the nightly work now"
+            kind="ghost"
+            onPress={() => void actions.nightly()}
+          />
+        </Stack>
+      </Card>
+
+      {log.length > 0 ? (
+        <>
+          <SectionHeading>Log</SectionHeading>
+          <Card>
+            {log.map((line, i) => (
+              <AppText key={`${i}-${line}`} variant="tiny" tone="muted">
+                {line}
+              </AppText>
+            ))}
+          </Card>
+        </>
+      ) : null}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  bar: { flexDirection: 'row', marginHorizontal: -GUTTER + space.sm, marginTop: -space.sm },
-  iconButton: {
-    width: hitSize,
-    height: hitSize,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   list: { gap: space.xs + 2 },
   caseRow: { flexDirection: 'row', gap: space.sm, alignItems: 'flex-start' },
   flex: { flex: 1 },

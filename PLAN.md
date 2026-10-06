@@ -1384,3 +1384,67 @@ Add an entry at the end of every session. Newest at the bottom.
   - [ ] Confirm the consent text in `app/app/(onboarding)/consent.tsx` matches
         whatever the approving body ends up requiring; it is version "1".
 - Next session starts with: Phase 11 (the core loop and end to end).
+
+### 2026-10-06 — Phase 11 — done (device verification still pending)
+- Done, in the plan's order (logic and tests before UI):
+  - `src/storage/localDb.ts` — the device's own database, with a table-by-table
+    note of what each table holds and why the server does not have it.
+  - `src/signals/{db,ttl,setBuilder,scheduler,upload}.ts` — the local signal
+    store (now carrying the peer's name and key so the Signals tab needs no
+    network), the TTL counted from the last crossing, the padded set built
+    through protocol-ts, the random-minute once-per-epoch scheduler as pure
+    functions, and the upload that claims the epoch before it sends.
+  - `src/presence/{dailyKeys,encounters,drain,upload,schedule}.ts` — keys two
+    days ahead and deleted after upload, the dwell rule and midnight rule, the
+    destructive drain, the nightly upload that deletes raw sightings only after
+    the request succeeds, and the coordinator plus the background task.
+  - `src/digest/{cache,prefetch,useDigest}.ts` — the eager prefetch of every
+    listed media item in the digest's own order, the hash-checked cache, and
+    the hook that assembles the morning letter from the digest plus everything
+    device-local.
+  - `src/matches/{resolve,photo}.ts` — token to (peer, intent) locally, with
+    unexplained tokens reported rather than guessed.
+  - Components: `CrossingCard`, `SignalSheet`, `SignalDots`, `IntentChip`,
+    `EmptyState`, `ChatBubble`, `RevealMoment` (FLAG_SECURE, instant under
+    reduce-motion), `SafetySheet`.
+  - Screens: Today (three states, "Earlier this week"), Signals, Mutuals,
+    `profile/[id]`, `match/[id]`, `reveal/[id]`, and the dev panel with clock
+    travel, a simulated crossing, fake sightings, "run the nightly work now"
+    and the server-state readout.
+  - `docs/E2E_CHECKLIST.md` — 60 steps across 10 sections, every date column
+    blank.
+- Tests: `npm test -w app` → **167 passed** (12 suites; +100 this phase).
+  `npm run typecheck -w app`, `npm run lint -w app`,
+  `npm run check:privacy -w app`, `npm run check:contrast -w app` all clean.
+  `pytest packages/protocol_py server sim -q` → 272 passed.
+  `npm test -w packages/protocol-ts` → 29 passed.
+- Verify item resolved: the current Expo background-task package is
+  **`expo-background-task`**, registered through `expo-task-manager` with
+  `minimumInterval` in minutes (15 is the floor Android will honour).
+- Security fix applied under the standing delegation: the Signals tab's first
+  version would have required a per-peer profile fetch, breaching invariant 1.
+  The peer's name and key are now copied from the digest into the local signal
+  row. Logged as DECISIONS_LOG entry 22.
+- Deviations from this plan and why:
+  - Task 8 (`reciprocal_content` ranking) not done. It is marked optional in
+    this plan and parked on the decisions Board; Tier 1's `random` ranking runs.
+  - Three files added beyond SPEC §20 and recorded there in the same change.
+  - **Prompt 7 (independent security review) did not complete**: the subagent
+    hit the account's session rate limit and was terminated partway through. An
+    inline review was done instead. That is weaker evidence, and re-running it
+    as a fresh subagent is on the human review checklist below.
+- **Not verified:** everything in `docs/E2E_CHECKLIST.md`, which needs two
+  emulators. A JDK 17 and the Android command-line tools were installed during
+  this session; the remaining SDK packages and a build are the next step.
+- Human review checklist (Phase 11):
+  - [ ] Re-run Prompt 7 as a fresh subagent on `app/src` and
+        `app/modules`, and read the findings.
+  - [ ] Work through `docs/E2E_CHECKLIST.md` on two emulators, filling in the
+        date columns. §2.7 and §3.2 are the two rows that matter most: they are
+        claim C1 observed from the client side.
+  - [ ] Open `docs/design/prototype.html` beside the emulator for Today,
+        Profile, SignalSheet, Signals, Mutuals, RevealMoment and Chat, in both
+        themes.
+  - [ ] Decide whether `reciprocal_content` ranking is wanted at all (Board).
+- Next session starts with: Phase 12's preparable half (study materials and the
+  synthetic analysis pipeline), then Phase 13.
