@@ -1,0 +1,7 @@
+# Dependencies for the study analysis pipeline (study/analysis/analyze.py).
+# Install into the repository's venv:  pip install -r study/analysis/requirements.txt
+#
+# numpy, pandas and matplotlib are already pinned by sim/pyproject.toml; statsmodels is
+# needed only here, for the mixed-effects model in study/PREREGISTRATION.md section 6
+# step 3. analyze.py declines to fit, with a reason, rather than failing if it is absent.
+statsmodels==0.15.0

@@ -673,7 +673,7 @@ unhandled error, never echoing the underlying write.
 | `POST /blocks` | `{peer_id}` (allowed pre-match; explicit user disclosure). Acts only on ids in the caller's current digest window or notified matches; any other id gets the same 204 with no effect. The request only records the block; its effect on pending tokens is applied at release (§6.9) |
 | `POST /reports` | `{peer_id, reason, message_ids?}`. Same id rule and uniform 204 as blocks |
 | `POST /discovery/pause`, `POST /discovery/resume` | S6 |
-| `GET /config` | `{campus:{id, name}?, server_time, epoch, protocol_version, reveal_policy, next_policy_change?, signal_upload_window, presence_upload_window, digest_release_time, interest_ttl_days, ble:{...}, study_enabled}` |
+| `GET /config` | `{campus:{id, name}?, server_time, epoch, protocol_version, reveal_policy, next_policy_change?, signal_upload_window, presence_upload_window, match_batch_time, digest_release_time, interest_ttl_days, ble:{...}, study_enabled}` |
 | `POST /dev/clock` | `{offset_seconds}` — **dev only** |
 | `POST /dev/crossing` | `{user_a, user_b, day}` — **dev only**, creates a confirmed crossing |
 | `POST /dev/seed` | Creates N synthetic users with profiles — **dev only** |
@@ -1346,7 +1346,9 @@ docs/DECISIONS_LOG.md                                    (every question, issue,
 docs/design-decisions/                                   (generated walkthrough, Phase 13)
 study/{PREREGISTRATION,CONSENT,PARTICIPANT_INFO,ETHICS_APPLICATION_DRAFT}.md       (Tier 3)
 study/APPROVAL.md                                        (written by the human, only after approval)
-study/analysis/{export,analyze,make_synthetic_export}.py  study/analysis/synthetic_export.csv
+study/analysis/{analyze,make_synthetic_export}.py  study/analysis/synthetic_export.csv
+study/analysis/requirements.txt                          (statsmodels, for the model in §16)
+study/analysis/export.py                                 (GATED: written only after approval exists, invariant 9)
 ```
 
 ---

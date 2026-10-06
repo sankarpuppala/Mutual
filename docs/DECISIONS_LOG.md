@@ -745,3 +745,102 @@ An independent reviewer saw only the protocol sections and attacked them.
   terminated. An inline review was done instead, and it is weaker evidence than
   an independent one: it should be re-run as a fresh subagent before Tier 2 is
   presented.
+
+### 23. Phase 12 (field pilot package) — Adopted, deliberately incomplete
+
+- **One file was not written, on purpose.** `study/analysis/export.py` reads
+  the real database. `CLAUDE.md` invariant 9 forbids writing code that exports
+  real-user data for analysis unless `study.approval_reference` is set and
+  `study/APPROVAL.md` exists, and neither is true. PLAN.md Phase 12 lists it as
+  a task, but every task in that phase is gated by the phase's own precondition
+  (written approval), so **not writing it is following the plan, not deviating
+  from it**. `study/PREREGISTRATION.md` §10 records what is missing and why.
+  Everything the invariant permits — the synthetic generator and the full
+  analysis pipeline — is built and runs.
+- **`study/APPROVAL.md` was not created either.** SPEC §20 marks it "written by
+  the human, only after approval". Creating even a template would make the
+  server's study gate start passing its file-exists check, which is the
+  mechanism that stops a study running without approval. Left absent.
+- **The synthetic generator builds in an effect on purpose, and says so
+  loudly.** `make_synthetic_export.py` produces data where C has lower match
+  concentration and fewer unmatches-after-reveal, so the analysis has something
+  to find and the code paths are exercised. Every table `analyze.py` prints
+  from it is headed with "SYNTHETIC DATA. Every number below is invented." and
+  footed with a reminder. The risk being managed is obvious: a pipeline test
+  whose output looks like a result is one copy-paste away from being quoted.
+- **The analysis prints the pre-registered outcome number beside every table.**
+  Eight tables, each labelled with the numbered outcome in
+  `PREREGISTRATION.md` §5 it implements. The temptation in a small pilot is to
+  go looking, find something, and present it as the plan; printing the mapping
+  makes an unregistered table visibly out of place.
+- **No p-values anywhere, by design.** The pre-registration says intervals
+  only, because a pilot of tens of participants cannot support a decision rule.
+  `analyze.py` does not compute one, so there is nothing to be tempted by.
+- **The mixed-effects model declines rather than overreaching.** It refuses to
+  fit below 30 revealed matches and says so as a pre-registered limitation. An
+  estimate from 12 matches would be worse than no estimate.
+- **A real environment limitation, recorded rather than worked around.** The
+  model could not run on this laptop: `scipy`'s compiled `_alternative` module
+  is blocked by the machine's Windows Application Control policy
+  (`DLL load failed ... An Application Control policy has blocked this file`).
+  `analyze.py` now distinguishes an ImportError from a convergence failure and
+  reports it as an environment problem, not a null result. The eight
+  descriptive tables are unaffected, so **AC-T3-3 passes**; the model is step 3
+  of the analysis, not a table.
+- **`statsmodels` is declared in `study/analysis/requirements.txt`** rather than
+  added to `sim`'s dependencies, because it belongs to the study and nothing
+  else needs it. Added to SPEC §20.
+- **A GEE with an exchangeable correlation per participant, not a full GLMM.**
+  One participant contributes several matches, so the uncertainty has to
+  account for clustering. On pilot-sized binary data a full random-intercept
+  GLMM frequently fails to converge; a binomial GEE grouped by participant is
+  the estimator that reliably fits the same question. Named in the code so the
+  substitution is visible.
+- **The consent form and the in-app consent screen are kept deliberately
+  redundant**, and the form says which one wins: "If the two ever disagree, the
+  form is what the participant agreed to and the screen is the bug."
+- **The ethics draft volunteers its own weakest point.** §4.2 names the
+  voluntariness problem (on a study campus, declining consent means not using
+  the app at all — open question Q9), says why the design causes it, and
+  proposes a concrete remedy if the committee finds it unacceptable: shorten
+  the pilot to a single policy period and lose the within-campus comparison.
+  Raising it rather than hoping it is not noticed is the point.
+- **Housekeeping note:** the four study Markdown files were written before the
+  Phase 11 commit and were swept into it by `git add -A`. The content is
+  unchanged; only the commit they landed in is wrong. Not rewritten, since
+  rewriting shared history is worse than an untidy attribution
+  (`CLAUDE.md` §9).
+
+### 24. Phase 13 (close the loop) — Adopted
+
+- **Run once, at the end, covering both tiers.** PLAN.md specifies Prompt 9
+  after Phase 7 and again after Phase 11. Running it twice in one continuous
+  session would have meant writing a Tier 1 walkthrough and rewriting it in
+  full a few hours later. Recorded as a deviation in the Phase 7 progress-log
+  entry when the decision was made, not retrospectively.
+- **The walkthrough has a page for disagreements, and it is not empty.**
+  `docs/design-decisions/09-spec-drift.md` lists thirteen items: two fixed in
+  the same commit, eight spec gaps resolved by documented decisions, two left
+  deliberately open, and a short list of things that look like drift and are
+  not. PLAN.md's own instruction for this prompt is that "an agent's
+  explanation of its own choices can be fluent and wrong", so the page is
+  written to be checkable rather than reassuring.
+- **Two genuine spec/code divergences were found by writing the walkthrough,**
+  which is the best argument for doing it at all:
+  1. `GET /config` returns `match_batch_time`, which SPEC §11's prose did not
+     list. The app needs it — hard-coding 23:45 would break when the server's
+     config changed — so the code was right and the prose was incomplete.
+     **Fixed in SPEC §11.**
+  2. SPEC §13.4's type scale (12/14/16/18/22/28/36) is not the scale the app
+     uses: the approved prototype uses eleven intermediate display sizes, and
+     §13.9 makes the prototype authoritative on look and feel. So the spec
+     resolves its own conflict — but it is named, because "no magic numbers in
+     components" would otherwise be a fiction. The intermediate sizes live in a
+     `displaySize` map, each annotated with the prototype class it came from.
+- **`docs/INTERVIEW_QUESTIONS.md` contains no answers**, as the prompt
+  requires, and says why: an examiner's second question goes somewhere a
+  memorised answer does not reach. Each question carries a pointer to the
+  section to re-read instead. Three extra questions are listed at the end as
+  ones to expect — including "would anyone actually use this?", whose honest
+  answer is that nobody knows and which pre-registered outcome is meant to find
+  out.

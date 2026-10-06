@@ -1448,3 +1448,82 @@ Add an entry at the end of every session. Newest at the bottom.
   - [ ] Decide whether `reciprocal_content` ranking is wanted at all (Board).
 - Next session starts with: Phase 12's preparable half (study materials and the
   synthetic analysis pipeline), then Phase 13.
+
+### 2026-10-06 — Phase 12 — the preparable half done; the gated half not written
+- Done (everything invariant 9 permits before approval):
+  - `study/PREREGISTRATION.md` — the ABAB block order fixed, six outcomes with
+    their definitions pinned, the analysis and the stopping rules, and a §2
+    that states what a pilot of this size cannot show before any data exists.
+  - `study/PARTICIPANT_INFO.md` — plain-language information sheet, including
+    the three limitations most projects leave out: chat is not end-to-end
+    encrypted, the design assumes an honest server, and ending a match leaves
+    it visible as ended to the other person.
+  - `study/CONSENT.md` — consent form, version 1, matching the in-app screen.
+  - `study/ETHICS_APPLICATION_DRAFT.md` — draft application that volunteers its
+    own weakest point (§4.2, the voluntariness problem) and proposes a remedy.
+  - `study/analysis/make_synthetic_export.py` — the synthetic generator and the
+    schema `export.py` will have to produce.
+  - `study/analysis/analyze.py` — the whole pre-registered analysis: eight
+    tables plus the clustered logistic model.
+  - `study/analysis/synthetic_export.csv` — 525 generated rows (40
+    participants, 320 user-weeks, 101 matches, 104 survey responses).
+  - `study/analysis/requirements.txt` — statsmodels 0.15.0.
+- **Deliberately not written:** `study/analysis/export.py`, which reads the
+  real database, and `study/APPROVAL.md`. Invariant 9 forbids the first until
+  approval exists; creating the second would make the server's study gate start
+  passing its file-exists check, which is the mechanism that stops a study
+  running unapproved. Recorded in `study/PREREGISTRATION.md` §10.
+- Tests: `python study/analysis/analyze.py --input
+  study/analysis/synthetic_export.csv` → **all eight pre-registered tables**,
+  so **AC-T3-3 passes**. `ruff check study/` and `ruff format --check study/`
+  clean. Nothing else regressed.
+- Measured limitation of this laptop, recorded rather than worked around: the
+  mixed-effects model cannot run here. `scipy`'s compiled `_alternative` module
+  is blocked by the machine's Windows Application Control policy. `analyze.py`
+  distinguishes that from a convergence failure and reports it as an
+  environment problem. The eight tables are unaffected.
+- Deviations from this plan and why: the plan lists `export.py` as a Phase 12
+  task. Every task in that phase is gated by the phase's own precondition
+  (written approval), so not writing it follows the plan rather than deviating
+  from it.
+- **AC-T3-1 and AC-T3-2 are not met, and cannot be yet.** T3-1's study gate
+  test passes (`pytest server/tests/test_study_gate.py`), but T3-2 requires the
+  pre-registration commit to predate the first study day, and there is no study.
+- Human review checklist (Phase 12):
+  - [ ] Answer Q4 (will the pilot run, and which body approves it?) and Q9 (the
+        voluntariness question in `ETHICS_APPLICATION_DRAFT.md` §4.2).
+  - [ ] Fill in every *(to be completed)* field in the information sheet and
+        the ethics draft — there are 11, all names, contacts and references.
+  - [ ] Read `PARTICIPANT_INFO.md` as a student would, not as its author.
+  - [ ] Nothing in `study/` may be used with a real person until
+        `study/APPROVAL.md` exists.
+
+### 2026-10-06 — Phase 13 — done
+- Done:
+  - `docs/design-decisions/` — nine linked pages: the architecture with a
+    diagram of how the four components connect, the threat model in one page,
+    why twenty signals once a night at a random time, why the server resolves
+    crossings and what it learns, why the digest arrives tomorrow, how the leak
+    test is built and why world C is what makes it worth anything, why policy P
+    exists only in the simulation, what the simulation can and cannot tell us,
+    and where the code and the spec disagree.
+  - `docs/INTERVIEW_QUESTIONS.md` — fifteen questions, no answers, each with a
+    pointer to the section to re-read.
+- Writing the walkthrough found two real spec/code divergences, both now fixed
+  or named in `SPEC.md`:
+  1. `GET /config` returns `match_batch_time`, which §11's prose did not list.
+     The app needs it; the prose was incomplete. **Fixed.**
+  2. §13.4's type scale is not the scale the app uses, because §13.9 makes the
+     approved prototype authoritative on look and feel. Named in page 9 rather
+     than silently accepted, since "no magic numbers in components" would
+     otherwise be a fiction.
+- Deviations from this plan and why: run **once at the end** covering both
+  tiers, rather than after Phase 7 and again after Phase 11. Recorded in the
+  Phase 7 entry when the decision was made.
+- Human review checklist (Phase 13):
+  - [ ] Check `docs/design-decisions/09-spec-drift.md` against the code
+        yourself. The plan's own warning for this prompt is that an agent's
+        explanation of its own choices can be fluent and wrong, and that page
+        is the one most worth distrusting.
+  - [ ] Try answering the fifteen questions out loud without the repository
+        open. The ones you cannot answer are the sections to re-read.
