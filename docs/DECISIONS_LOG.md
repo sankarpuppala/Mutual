@@ -535,3 +535,56 @@ An independent reviewer saw only the protocol sections and attacked them.
   — there is no JDK and no Android SDK installed. Everything that does not need
   them passes: lint, typecheck, 24 jest tests, both privacy scripts, and a
   successful `expo prebuild` producing the manifest the privacy check verifies.
+
+### 20. Phase 9b (native BLE module) — Adopted, with one honest gap
+
+- **Phase 9a could not be run.** It needs two physical Android 12+ phones
+  (open question Q3) and a working Android toolchain; this laptop has neither
+  yet. **Decision:** write Phase 9b's module in full, implementing *both*
+  advertisement layouts so whichever the spike turns out to support is already
+  there, and write `docs/BLE_SPIKE.md` as a complete measurement protocol with
+  **every results table left blank**. A guessed detection rate would be worse
+  than no detection rate: it would make AC-T2-6 look satisfied when nothing
+  has been measured.
+- **The module reports what it achieved rather than what it attempted.**
+  `BleRadio` tries BLE 5 extended advertising first, falls back to the legacy
+  split (advertisement carries `EID[0:24]`, scan response carries
+  `EID[24:32]`), and resolves to `UNSUPPORTED` if neither starts.
+  `NativeBle.status()` then refuses to report `advertising: true` when the
+  layout is `UNSUPPORTED`, even though the service is running — so the app
+  cannot tell a user discovery is on when nothing is on air.
+- **One count per peer per scan window, not per packet.** A phone emits many
+  advertisements inside an 8-second window. Counting packets would inflate
+  `windows` and let a brush-past clear the dwell threshold, which is exactly
+  what the threshold exists to prevent. `BleRadio` keeps a per-window set of
+  peers heard and counts each once.
+- **The midnight rule lives in the store, not in the caller.**
+  `SightingStore.addWindow` silently drops intervals 0 and 95 (SPEC §6.13), so
+  no future caller can forget it. The alternative — checking at each call site
+  — is the kind of rule that holds until someone adds a second call site.
+- **`drain()` clears what it returns, as a contract rather than a convention.**
+  Documented on both sides and asserted in the fake adapter's tests. A drain
+  that returned without clearing would leave raw (own EID, heard EID, windows)
+  rows on the device after the upload, which SPEC §14.4 forbids.
+- **The wrapper refuses a location permission at runtime, not only at build
+  time.** `NativeBle.requestPermissions()` compares the native module's
+  requested list against the three location permissions and *throws* rather
+  than requesting them. That is a third layer after `blockedPermissions` and
+  the manifest check: the one that would catch a future dependency widening
+  the list. Tested.
+- **A stray native field cannot reach the upload path.** `drain()` copies the
+  five allowed fields explicitly instead of spreading the native object, and a
+  test feeds it an extra `rssi` field to prove it is dropped. Without that, a
+  future native change could carry RSSI or a timestamp into
+  `src/presence/upload.ts` and break invariant 3 invisibly.
+- **`SYSTEM_ALERT_WINDOW` and the foreground-service type were checked against
+  current Android rules**, as PLAN.md's verify item for this phase asks:
+  Android 14+ requires a declared `foregroundServiceType`, and
+  `connectedDevice` plus `FOREGROUND_SERVICE_CONNECTED_DEVICE` is the correct
+  pair for Bluetooth work. `POST_NOTIFICATIONS` is requested alongside the
+  Bluetooth permissions because the service cannot run without its
+  notification on Android 13+.
+- **Not verified, and recorded as not verified:** the Kotlin has never been
+  compiled, because there is no Android SDK or JDK on this machine. It is
+  reviewed code, not working code, until Phase 9a runs. The TypeScript wrapper
+  *is* tested (10 tests).

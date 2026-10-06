@@ -1,0 +1,19 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- The foreground service that keeps advertising and duty-cycled scanning alive
+       (SPEC.md §14.5). `connectedDevice` is the type Android requires for Bluetooth work;
+       there is deliberately no location permission anywhere in this module. -->
+  <application>
+    <service
+      android:name=".MutualBleService"
+      android:exported="false"
+      android:foregroundServiceType="connectedDevice" />
+
+    <receiver
+      android:name=".BootReceiver"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+      </intent-filter>
+    </receiver>
+  </application>
+</manifest>

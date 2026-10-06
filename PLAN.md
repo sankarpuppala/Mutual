@@ -1285,3 +1285,50 @@ Add an entry at the end of every session. Newest at the bottom.
         package name (it is baked into a build's identity).
 - Next session starts with: Phase 9b (the native BLE module, written against
   the spike's open questions), then Phase 10.
+
+### 2026-10-06 — Phase 9a — blocked / Phase 9b — code complete, not verified on hardware
+- Phase 9a (BLE spike): **blocked.** It needs two physical Android 12+ phones
+  (Q3) and an Android toolchain. Instead of guessing, `docs/BLE_SPIKE.md` is
+  written as a complete measurement protocol — the gating `neverForLocation`
+  question, both layouts, detection rates at 1/3/10 m on desks and in pockets,
+  screen-off, the 20-pass walk-past test, device-address rotation, and the
+  8-hour battery comparison — with **every results table deliberately blank**
+  and a note at the top saying why a blank row is a true statement and a
+  guessed one is not. AC-T2-6 is therefore **not** satisfied, and says so.
+- Phase 9b (native module): done as code, unverified on hardware.
+  - `app/modules/mutual-ble/`: `expo-module.config.json`, `index.ts` (typed
+    native surface), `android/build.gradle`,
+    `android/src/main/AndroidManifest.xml` (foreground service and boot
+    receiver), and Kotlin — `Schedule.kt` (schedule, sighting and payload
+    types, both layouts' byte formats as pure functions), `SightingStore.kt`
+    (per-interval window counts, destructive drain, midnight rule),
+    `BleRadio.kt` (extended advertising with a legacy-split fallback, filtered
+    duty-cycled scanning, own-EID filtering, one count per peer per window),
+    `MutualBleService.kt` (foreground service, 15-minute rotation with an
+    advertising restart, fail-safe when the schedule runs out, pause from the
+    notification), `BootReceiver.kt` (restart only if discovery was on),
+    `MutualBleModule.kt` (the Expo surface: schedule in, counts out, nothing
+    else).
+  - `app/src/presence/nativeBle.ts` implements the same `BleAdapter` interface
+    as `fakeBle.ts`, plus `pickAdapter()`.
+- Tests: `npm test -w app` → **34 passed** (5 suites; +10 for the wrapper).
+  `npm run typecheck -w app`, `npm run lint -w app`,
+  `npm run check:privacy -w app` all clean.
+- Verify item resolved: Android 14+ needs a declared `foregroundServiceType`;
+  `connectedDevice` with `FOREGROUND_SERVICE_CONNECTED_DEVICE` is the correct
+  pair for Bluetooth work. `POST_NOTIFICATIONS` is requested with the
+  Bluetooth permissions (Android 13+).
+- Deviations from this plan and why: 9b is specified to follow an approved 9a.
+  It was written first because 9a cannot run on this hardware, and because
+  implementing both layouts means the spike's answer needs no new code — only
+  a decision about which fallback stays.
+- **Not verified:** the Kotlin has never been compiled (no Android SDK, no
+  JDK). Treat it as reviewed code, not working code, until Phase 9a runs.
+- Human review checklist (Phase 9b):
+  - [ ] Answer Q3: do you have two Android 12+ phones?
+  - [ ] Install the Android toolchain, build, then run `docs/BLE_SPIKE.md`
+        section 3 top to bottom and fill in section 4 as you go.
+  - [ ] If 4.6 shows the device address does **not** rotate with the EID,
+        stop: `docs/THREAT_MODEL.md` 3.3 needs weakening in writing before
+        anyone relies on the rotation.
+- Next session starts with: Phase 10 (onboarding and profile).

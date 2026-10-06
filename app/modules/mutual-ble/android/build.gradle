@@ -1,0 +1,32 @@
+// Local Expo module: BLE advertise + scan + foreground service (SPEC.md §14).
+// No cryptography here -- ephemeral ids arrive from TypeScript as a schedule
+// (CLAUDE.md invariant 7).
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+group = 'in.mutual.ble'
+version = '0.1.0'
+
+android {
+  namespace 'in.mutual.ble'
+  compileSdk 36
+
+  defaultConfig {
+    minSdk 31
+    targetSdk 36
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+  kotlinOptions {
+    jvmTarget = '17'
+  }
+}
+
+dependencies {
+  implementation project(':expo-modules-core')
+  implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlinVersion"
+  implementation 'androidx.core:core-ktx:1.15.0'
+}
