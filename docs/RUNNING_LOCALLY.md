@@ -54,10 +54,37 @@ entries and not one.
 
 Verified: `272 passed`.
 
-**This also breaks the pre-commit hooks**, which shell out to bare `python`
-and `pytest`. Until the policy is changed, either commit with
-`--no-verify` **and run the checks by hand first**, or create a shim directory
-early on `PATH` whose `python`/`pytest` call the allowed interpreter.
+### The pre-commit gate is currently broken, and this is the state of it
+
+**The Python pre-commit hooks do not run on this machine.** They shell out to
+bare `python`/`pytest`, and under pre-commit's sanitised environment the venv's
+compiled extensions fail to load (`No module named '_cffi_backend'`) even with
+the allowed interpreter and `PYTHONPATH` in place.
+
+What was done about it, so the position is clear:
+
+- `%LOCALAPPDATA%\mutual-dev-shim` holds `python`, `pytest`, `ruff`, `alembic`
+  and `uvicorn` shims that route through the allowed interpreter. **Put it first
+  on `PATH`** and those commands work in a normal shell.
+- `.git/hooks/pre-commit` was patched to use the allowed interpreter and to put
+  that shim directory on `PATH`.
+- Even so, the four **Python** hooks still fail. The five **JavaScript** hooks
+  (lint, app tests, typecheck, check:privacy, check:contrast) pass.
+
+**Until the policy is fixed, run the Python side by hand before committing:**
+
+```bash
+export PATH="/c/Users/sanka/AppData/Local/mutual-dev-shim:$PATH"
+pytest packages/protocol_py server sim -q      # expect 272 passed
+ruff check . && ruff format --check .
+git commit --no-verify -m "..."
+```
+
+**The proper fix is yours to make, not a workaround to keep.** Ask whoever
+administers this machine to allow the `.venv\Scripts\` directory under the
+Device Guard / WDAC policy. A research project whose whole point is privacy
+should not be committing with its test gate disabled. Delete the shim directory
+once that is done.
 
 **The proper fix is yours to make, not a workaround:** ask whoever administers
 this machine to allow the venv, or add an exclusion. A research project whose
