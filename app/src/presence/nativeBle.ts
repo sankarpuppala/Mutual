@@ -131,7 +131,6 @@ export class NativeBle implements BleAdapter {
     if (!native.bluetoothOn) reason = 'bluetooth_off';
     else if (native.scheduleSize === 0) reason = 'schedule_exhausted';
     else if (native.layout === 'UNSUPPORTED') reason = 'unsupported_device';
-    else if (native.layout === 'LEGACY_SPLIT') reason = 'legacy_fallback_unverified';
     else if (!MutualBle.hasPermissions()) reason = 'permissions_missing';
 
     return {

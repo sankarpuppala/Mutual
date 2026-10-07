@@ -567,7 +567,29 @@ rounded up to a multiple of 256; silence is not a size.
 | Matches | Server | Until unmatch, block or account deletion; then kept as `ended` for the other party until fetched or 30 days (§6.9) |
 | Messages | Server | Deleted on unmatch/block/deletion (report excerpts retained) |
 | Reports | Server | Until resolved + 90 days |
-| Signals, peer keys, sightings, encounter → time-block map, own daily keys | Device (`expo-sqlite`, keys in `expo-secure-store`) | Signals: TTL; sightings: until that day's encounter set is uploaded; encounter map: 7 days; daily keys: deleted after that day's upload |
+| Signals, peer keys, sightings, encounter → time-block map, own daily keys | Device, in the app-private `expo-sqlite` database (§9.1) | Signals: TTL; sightings: until that day's encounter set is uploaded; encounter map: 7 days; daily keys: deleted after that day's upload |
+| Session token, identity private key, user id | Device, `expo-secure-store` (Android Keystore) | Until logout or account deletion |
+
+### 9.1 What is in the keystore, and what is not
+
+`expo-secure-store` holds the session token, the device's X25519 **identity**
+private key and the user id. Everything else on the device — including the
+**daily** keys from which EIDs and ephemeral keys are derived — is in
+`mutual.db`, an ordinary app-private SQLite database.
+
+This is stated rather than fixed. Device compromise is out of scope (§7.2):
+an attacker with the app's private storage has the database and the keystore
+alike, since the app must be able to read both. Moving the daily keys would
+buy only resistance to an attacker who can read app-private files but not use
+the app's own keystore access, and it would cost a durable index —
+SecureStore is a key-value store with no enumeration, and `forgetStaleKeys`
+has to be able to list the days it holds. A clear description of where the
+keys actually live is worth more than an inaccurate one that sounds stronger.
+
+The identity private key is the exception and is in the keystore, because it
+is the one secret whose disclosure is not merely a device compromise: it is
+what makes one-sided interest unreadable to the server (claim C1), and it
+outlives every daily key. (Decided 2026-10-07, Board Q12; DECISIONS_LOG 30.)
 
 A retention job (`mutual_server.services.retention`) runs at startup and every
 hour. Request-path logging is off unless `MUTUAL_ENV=dev`. **Client IP
@@ -933,15 +955,31 @@ Non-connectable advertisement with manufacturer-specific data: company id
 for a research prototype, decision D17). Payload =
 `magic(0x4D 0x55) || payload_version(1) || EID(32)` = 35 bytes. That is more
 than a legacy advertisement can carry (at most 27 bytes of manufacturer data),
-so the spike (Phase 9a) must confirm one of these layouts (D23):
-1. **Preferred:** BLE 5 extended advertising (Android `AdvertisingSet`,
-   `setLegacyMode(false)`), carrying the full 35-byte payload.
-2. **Fallback:** a scannable legacy advertisement carrying
-   `magic || version || EID[0:24]`, with the scan response carrying
-   `EID[24:32]` under the same company id. The scanner uses active scanning
-   and joins the two halves.
+so **BLE 5 extended advertising is the only supported layout** (Android
+`AdvertisingSet`, `setLegacyMode(false)`), carrying the full 35-byte payload.
+A device that cannot do extended advertising is **not supported**: the app says
+so plainly on the You screen and takes no further part in discovery.
 
-If neither works reliably on two Android 12+ phones, stop and escalate.
+The split-advertisement fallback that v1.0–v1.3 specified here — `magic ||
+version || EID[0:24]` in the advertisement, `EID[24:32]` in the scan response,
+joined by the scanner — **is withdrawn**, because it cannot be received.
+Android parses manufacturer-specific data into a map keyed by company id, and
+both halves used `0xFFFF`, so the scan response overwrote the advertisement and
+the scanner never saw a 32-byte id. A device on that path advertised correctly
+and heard nothing, silently (DECISIONS_LOG 29 and 30).
+
+It is withdrawn rather than repaired because repairing it means changing what
+goes on air — a different company id for the tail, or moving the tail into a
+service-data element — which is a protocol change under invariant 8, for a
+fallback whose purpose was to support phones older than the ones this is for.
+Android 12 is already the floor (D1), and BLE 5 reached mid-range Android some
+years before Android 12 did. The honest cost is stated in
+`docs/THREAT_MODEL.md` §5 and on the You screen rather than hidden behind a
+path that does not work.
+
+The spike (Phase 9a) still measures whether extended advertising is delivered
+under `neverForLocation` without a location permission. If it is not, stop and
+escalate.
 Low-power advertise mode; TX power from config. On each 15-minute EID rotation the
 module stops advertising, waits for the new random device address, and
 restarts. Whether the address really changes with the EID is verified in the
@@ -1059,6 +1097,22 @@ in `study/PREREGISTRATION.md` before the first study day and committed to
 git). Participants: consenting adults with verified college email. Users are
 told the active policy in-app. Participants can withdraw at any time from
 settings, which deletes their data.
+
+**Declining is not a barrier to using Mutual.** On a study campus, someone who
+does not consent still gets an account and the ordinary app; the server records
+no `consent_version` for them and they are absent from every study outcome.
+`POST /account` therefore does **not** require a consent version — an earlier
+version of this spec made an account impossible without one, which would have
+made consent a condition of using a campus social app, and consent obtained
+that way is not freely given.
+
+Two things follow, and both are stated on the consent screen rather than
+implied. The reveal policy is a **campus-wide** setting, so it changes during
+the study for everyone on that campus, participant or not; that is a change to
+the product they are using and they are told about it either way. And a person
+who declines is not asked again during the block — the app does not re-prompt,
+because repeated asking is pressure. (Decided 2026-10-07, Board Q9;
+DECISIONS_LOG 30.)
 
 **Outcomes (observable server-side, per block).** Gini of matches received
 among active users; matches per active user-week; messages per match; share
@@ -1401,7 +1455,7 @@ study/analysis/export.py                                 (GATED: written only af
 | D20 | No per-intent limits; all five intents share the 20-signal cap (§6.10) | Considered and withdrawn the same day (2026-10-05): "date one person at a time", and "hold other date signals while a date mutual is active". Signals are free and withdrawable, so there is nothing to protect. Any per-intent limit could only be enforced by the app, and simplicity wins. The hold idea is parked in PLAN.md "Deferred improvements" |
 | D21 | Pair keys bind both account ids; identity keys must be valid and unique (§6.5) | A copied public key could otherwise redirect signals meant for its owner |
 | D22 | The server never logs client IP addresses or user agents (§9) | Campus Wi-Fi addresses map to buildings, which would leak location |
-| D23 | EIDs are 32-byte one-time X25519 public keys, carried by extended advertising or an advertisement plus scan response (§6.8, §14.2) | Required for keyed encounter tokens (D5). If the Phase 9a spike shows neither layout works, the fallback is the v1.0 server-side resolution with its operator visibility stated honestly — a spec decision for the human |
+| D23 | EIDs are 32-byte one-time X25519 public keys, carried by **BLE 5 extended advertising only** (§6.8, §14.2) | Required for keyed encounter tokens (D5). The legacy split-advertisement fallback was withdrawn on 2026-10-07: it cannot be received, because Android collapses two manufacturer-data structures that share a company id. Repairing it would change the bytes on air for the sake of phones older than the Android 12 floor. If the Phase 9a spike shows extended advertising is not delivered under `neverForLocation`, the fallback is the v1.0 server-side resolution with its operator visibility stated honestly — a spec decision for the human (DECISIONS_LOG 30) |
 
 ---
 
@@ -1413,17 +1467,33 @@ needs them. The agent must not guess them.
 - **Q1 (resolved 2026-10-05)** All colleges, each its own closed campus;
   a new college opens after one operator approval (§4.1, D24).
 - **Q2 (resolved 2026-10-05)** Timezone `Asia/Kolkata` confirmed.
-- **Q8 (before Phase 5)** In a pilot, who holds operator access? Under §7.2
-  those people may not hold an account in that deployment.
+- **Q8 (resolved 2026-10-07)** Operator access in a pilot is held by the
+  student running it and the supervisor, and **neither holds a participant
+  account on that deployment**. §7.2 records why no technical fix is possible:
+  an operator who is also a user can test interest directed at themselves,
+  silently, until the batch deletes the epoch's tokens. It is therefore a rule,
+  written into `study/ETHICS_APPLICATION_DRAFT.md` §6 as a commitment the
+  committee can hold the applicant to, and stated rather than pretended away.
+  If the pilot needs the person running it to use the app, they use a separate
+  deployment — not a separate account.
 - **Q7 (resolved 2026-10-05)** Python version: 3.11 is used. On the
   development laptop it is provided by uv (`uv venv --seed --python 3.11`),
   because `py -3.11` does not find uv-managed interpreters.
 - **Q3 (before Phase 9)** Do you have access to two physical Android 12+
   phones for the BLE spike? If not, Tier 2 ships with the fake adapter only and
   AC-T2-6 is deferred.
-- **Q4 (before Phase 12)** Will you pursue the field pilot? Which ethics body
-  approves research with students at your institution, and what is its
-  timeline?
+- **Q4 (open, before Phase 12 — only the human can answer this)** Will you
+  pursue the field pilot? Which ethics body approves research with students at
+  your institution, and what is its timeline? This cannot be answered from
+  inside the project: it names a real committee at a real institution, and
+  invariant 9 turns on `study/APPROVAL.md` recording that committee's actual
+  reference. Nothing in this repository may stand in for it.
+
+- **Q9 (resolved 2026-10-07)** Declining consent on a study campus no longer
+  costs the account. See §16: `POST /account` records a `consent_version` when
+  one is given and creates the account either way, and the consent screen
+  offers "Use Mutual without taking part". Consent that is the price of using a
+  campus social app is not freely given.
 - **Q5 (resolved 2026-10-05)** The five intents are confirmed as study,
   project, fitness, friend, date, with the codes in §6.2. They are protocol
   constants; changing them later means a protocol version bump.

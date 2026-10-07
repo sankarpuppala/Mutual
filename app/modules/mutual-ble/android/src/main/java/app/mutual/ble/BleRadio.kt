@@ -21,11 +21,12 @@ import android.util.Log
  * The radio itself: advertising Mutual's 35-byte payload and duty-cycled filtered scanning
  * (SPEC.md §14.2, §14.3).
  *
- * Two layouts are supported because one of them may not work (decision D23, risk R12):
- * BLE 5 extended advertising carries all 35 bytes, and if the device cannot do that, a
- * legacy advertisement carries `EID[0:24]` with the tail in the scan response. Which one a
- * device actually manages is a measured question, answered in the Phase 9a spike
- * (`docs/BLE_SPIKE.md`) -- this class reports what it achieved rather than assuming.
+ * **BLE 5 extended advertising only** (decision D23, risk R12): it carries all 35 bytes in
+ * one advertisement. A device that cannot manage it is reported as UNSUPPORTED, and this
+ * class reports what it achieved rather than assuming. The split-advertisement fallback
+ * that used to live here was withdrawn on 2026-10-07 -- it could never be received, because
+ * both of its halves used company id 0xFFFF and Android keeps only one structure per
+ * company id (SPEC §14.2, DECISIONS_LOG 30).
  *
  * Scanning is filtered on manufacturer id `0xFFFF` plus the magic+version prefix. The
  * filter is mandatory, not an optimisation: Android pauses unfiltered scans while the
@@ -36,8 +37,8 @@ class BleRadio(private val context: Context) {
 
     interface Listener {
         /**
-         * One qualifying scan window: [heardEid] is either 32 bytes (extended) or the
-         * 24-byte head (legacy), already above the RSSI threshold.
+         * One qualifying scan window: [heardEid] is a 32-byte ephemeral id, already above
+         * the RSSI threshold.
          */
         fun onQualifyingWindow(heardEid: ByteArray)
 
@@ -56,7 +57,6 @@ class BleRadio(private val context: Context) {
     private val adapter: BluetoothAdapter? get() = manager?.adapter
 
     private var advertisingSetActive = false
-    private var legacyAdvertiseActive = false
     private var scanning = false
     private var layout = AdvertiseLayout.UNSUPPORTED
 
@@ -69,7 +69,7 @@ class BleRadio(private val context: Context) {
      */
     private val heardThisWindow = linkedSetOf<String>()
 
-    val isAdvertising: Boolean get() = advertisingSetActive || legacyAdvertiseActive
+    val isAdvertising: Boolean get() = advertisingSetActive
     val isScanning: Boolean get() = scanning
     val currentLayout: AdvertiseLayout get() = layout
 
@@ -83,9 +83,16 @@ class BleRadio(private val context: Context) {
     // ---------------------------------------------------------------- advertising
 
     /**
-     * Starts advertising [eid], trying extended advertising first and falling back to the
-     * legacy split layout. Restarting is how a rotation happens: the caller stops, waits for
-     * a new random device address, and starts again (SPEC §14.2).
+     * Starts advertising [eid] using BLE 5 extended advertising, the only layout Mutual
+     * supports (SPEC §14.2). Restarting is how a rotation happens: the caller stops, waits
+     * for a new random device address, and starts again.
+     *
+     * A device without extended advertising is reported as UNSUPPORTED rather than put on
+     * the old split layout. That fallback advertised correctly and could never be received
+     * -- both halves shared company id 0xFFFF, and Android collapses manufacturer-specific
+     * data into a map keyed by it -- so a phone on that path looked healthy and heard
+     * nobody, for good. Saying "not supported" is the only honest answer available without
+     * changing what goes on air (DECISIONS_LOG 29 and 30).
      */
     fun startAdvertising(eid: ByteArray) {
         stopAdvertising()
@@ -94,7 +101,8 @@ class BleRadio(private val context: Context) {
         if (a.isLeExtendedAdvertisingSupported) {
             startExtended(eid)
         } else {
-            startLegacySplit(eid)
+            Log.w(TAG, "no BLE 5 extended advertising on this device; discovery cannot run")
+            resolveLayout(AdvertiseLayout.UNSUPPORTED)
         }
     }
 
@@ -116,36 +124,7 @@ class BleRadio(private val context: Context) {
         runCatching {
             advertiser.startAdvertisingSet(parameters, data, null, null, null, extendedCallback)
         }.onFailure {
-            Log.w(TAG, "extended advertising rejected; falling back to the legacy layout")
-            startLegacySplit(eid)
-        }
-    }
-
-    private fun startLegacySplit(eid: ByteArray) {
-        val advertiser = adapter?.bluetoothLeAdvertiser ?: run {
-            resolveLayout(AdvertiseLayout.UNSUPPORTED)
-            return
-        }
-        val settings = AdvertiseSettings.Builder()
-            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_POWER)
-            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
-            .setConnectable(false)
-            .setTimeout(0)
-            .build()
-        val advertisement = AdvertiseData.Builder()
-            .setIncludeDeviceName(false)
-            .setIncludeTxPowerLevel(false)
-            .addManufacturerData(BleConstants.COMPANY_ID, Payload.legacyHead(eid))
-            .build()
-        val scanResponse = AdvertiseData.Builder()
-            .setIncludeDeviceName(false)
-            .addManufacturerData(BleConstants.COMPANY_ID, Payload.legacyTail(eid))
-            .build()
-
-        runCatching {
-            advertiser.startAdvertising(settings, advertisement, scanResponse, legacyCallback)
-        }.onFailure {
-            Log.w(TAG, "legacy advertising rejected; discovery cannot run on this device")
+            Log.w(TAG, "extended advertising rejected; discovery cannot run on this device")
             resolveLayout(AdvertiseLayout.UNSUPPORTED)
         }
     }
@@ -155,10 +134,6 @@ class BleRadio(private val context: Context) {
         if (advertisingSetActive) {
             runCatching { advertiser?.stopAdvertisingSet(extendedCallback) }
             advertisingSetActive = false
-        }
-        if (legacyAdvertiseActive) {
-            runCatching { advertiser?.stopAdvertising(legacyCallback) }
-            legacyAdvertiseActive = false
         }
     }
 
@@ -176,18 +151,6 @@ class BleRadio(private val context: Context) {
                 Log.w(TAG, "extended advertising failed with status $status")
                 resolveLayout(AdvertiseLayout.UNSUPPORTED)
             }
-        }
-    }
-
-    private val legacyCallback = object : AdvertiseCallback() {
-        override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
-            legacyAdvertiseActive = true
-            resolveLayout(AdvertiseLayout.LEGACY_SPLIT)
-        }
-
-        override fun onStartFailure(errorCode: Int) {
-            Log.w(TAG, "legacy advertising failed with error $errorCode")
-            resolveLayout(AdvertiseLayout.UNSUPPORTED)
         }
     }
 
@@ -211,8 +174,8 @@ class BleRadio(private val context: Context) {
         val filter = ScanFilter.Builder()
             .setManufacturerData(BleConstants.COMPANY_ID, Payload.filterPrefix(), Payload.filterMask())
             .build()
-        // Active scanning so the legacy layout's scan response arrives; low latency inside a
-        // short window gives the best chance of catching a low-power advertiser.
+        // Low latency inside a short window gives the best chance of catching a low-power
+        // advertiser without leaving the radio on between windows.
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)

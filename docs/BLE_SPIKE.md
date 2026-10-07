@@ -42,7 +42,20 @@ The code already implements both and reports which one it achieved
 `NativeBle.advertiseLayout()`). The spike records the answer rather than
 assuming it.
 
-### 1a. A known defect in layout 2, to be settled first
+### 1a. (Superseded 2026-10-07) The defect that withdrew layout 2
+
+**Nothing in this section needs measuring any more.** Layout 2 was withdrawn
+rather than repaired (SPEC §14.2, `DECISIONS_LOG.md` 30): BLE 5 extended
+advertising is now the only supported layout, and a device without it is told
+so. The section is kept because it records why, and because the reasoning
+matters if anyone proposes reinstating a split advertisement.
+
+What the spike still has to measure is in §2 onwards — above all whether an
+extended advertisement is delivered to a scanner holding `BLUETOOTH_SCAN` with
+`neverForLocation` and no location permission. That question is unchanged and
+is the one Tier 2 rests on.
+
+#### The defect, for the record
 
 **The receiving half of the legacy split is believed not to work at all**, and
 settling this is the first thing to do with the two phones — before any

@@ -40,7 +40,6 @@ const MESSAGES: Record<string, string> = {
     'That identity key is already registered. Reinstalling? Delete the app data and start again.',
   invalid_identity_key: 'The app could not create a valid key. Try again.',
   account_exists: 'This device already has an account.',
-  consent_required: 'This campus is running a study, so the consent step comes first.',
 };
 
 export default function BasicsScreen(): ReactNode {

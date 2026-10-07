@@ -8,12 +8,13 @@
  *     device: it is what makes one-sided interest unreadable to the server);
  *   - the user id.
  *
- * What is **not** here, despite what this comment used to claim: the daily keys. They live
- * in `mutual.db` (`storage/localDb.ts`, table `daily_keys`) until the night they are
- * uploaded as encounter tokens and deleted. Device compromise is out of scope (SPEC §7.2),
- * so that is not an invariant break -- but SPEC §9's retention row reads as if the keys
- * were secured, and a comment that asserts a property the code does not have is worse than
- * no comment. Moving them here is a small change and is recorded as an open question.
+ * What is **not** here: the daily keys. They live in `mutual.db`
+ * (`storage/localDb.ts`, table `daily_keys`) until the night they are uploaded as encounter
+ * tokens and deleted. That is deliberate and is now written into SPEC §9.1: device
+ * compromise is out of scope (§7.2), and SecureStore has no enumeration, so keeping a set
+ * of per-day keys here would need a second index to list them. The identity key is the
+ * exception because it outlives every daily key and is what makes one-sided interest
+ * unreadable to the server (claim C1).
  *
  * What must never live here, or anywhere on the device: a plaintext email address, a date
  * of birth, or an OTP code (invariant 5).

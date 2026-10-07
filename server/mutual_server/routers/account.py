@@ -84,8 +84,10 @@ def create_account(
     if campus is None or campus.status != "open":
         raise ApiError(403, "campus_not_open", "Mutual isn't open at your college yet.")
     study_here = ctx.settings.study.enabled and campus.key in ctx.settings.study.campuses
-    if study_here and not body.consent_version:
-        raise ApiError(422, "consent_required", "Please review the research consent first.")
+    # No consent gate here, deliberately (SPEC §16, Board Q9). Declining must not cost
+    # someone the use of a campus social app: consent given to get an account is not freely
+    # given, and an ethics committee would be right to say so. A user with no
+    # `consent_version` has the ordinary app and appears in no study outcome.
     name = check_name_and_year(body.first_name, body.year_of_study, ctx)
     pk = parse_identity_key(body.identity_pk, db)
 

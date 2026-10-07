@@ -228,12 +228,13 @@ Ranked by how much they would worry a reviewer:
     for every future dependency: a privacy property enforced only in our own
     code is not enforced, because the platform has defaults of its own.
     Found in the review recorded as `docs/DECISIONS_LOG.md` 29.
-11. **A device without BLE 5 currently discovers nobody.** The legacy split
-    advertisement advertises correctly but cannot be received (both halves
-    share company id `0xFFFF`, so Android's parser collapses them). The app
-    now reports `legacy_fallback_unverified` rather than claiming discovery
-    works. Whether this is fixable without a format change is the first
-    question of the Phase 9a spike (`docs/BLE_SPIKE.md` §1a, Board item Q10).
+11. **A device without BLE 5 cannot use Mutual's discovery at all**, and is
+    told so (`unsupported_device`). The split-advertisement fallback was
+    withdrawn on 2026-10-07 rather than repaired, because repairing it meant
+    changing the bytes on air for the sake of phones older than the Android 12
+    floor the project already sets. The honest statement — "this phone cannot
+    take part" — replaces a path that advertised correctly and heard nothing.
+    (SPEC §14.2, `DECISIONS_LOG.md` 30, Board Q10.)
 
 ---
 

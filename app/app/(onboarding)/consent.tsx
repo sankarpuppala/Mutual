@@ -3,10 +3,16 @@
  * running in study mode on this campus**.
  *
  * The gate is mechanical on the server: it refuses to start in study mode without an
- * approval reference and `study/APPROVAL.md`, and `POST /account` then refuses an account
- * on a study campus without a `consent_version`. This screen is the user-facing half of
- * that gate, and it is deliberately not persuasive: it states what is collected, what is
- * not, that taking part is optional, and that withdrawal deletes the data.
+ * approval reference and `study/APPROVAL.md`. This screen is the user-facing half of that
+ * gate, and it is deliberately not persuasive: it states what is collected, what is not,
+ * that taking part is optional, and that withdrawal deletes the data.
+ *
+ * **Declining leads somewhere.** Both buttons go to the same next screen; the only
+ * difference is whether a `consent_version` is carried forward. An earlier version made an
+ * account impossible without consenting, which would have made consent the price of using
+ * a campus social app -- and consent obtained that way is not freely given (SPEC §16,
+ * DECISIONS_LOG 30). Nothing re-asks later in the block, because repeated asking is
+ * pressure.
  *
  * If the server is not in study mode, the screen says so and sends the user on. It never
  * records consent that was not asked for.
@@ -54,6 +60,12 @@ export default function ConsentScreen(): ReactNode {
 
   const next = (): void => {
     router.push('/(onboarding)/age');
+  };
+
+  /** Carry no consent version forward, and carry on. */
+  const decline = (): void => {
+    setConsentVersion(null);
+    next();
   };
 
   if (config.data && !config.data.study_enabled) {
@@ -115,12 +127,12 @@ export default function ConsentScreen(): ReactNode {
         {accepted ? <Button label="Continue" kind="ink" wide onPress={next} /> : null}
 
         <AppText variant="small" tone="muted">
-          While a study is running on this campus, an account cannot be created without
-          agreeing to take part, because the setting being studied changes for everyone on
-          the campus at once. If you would rather not, stop here — nothing has been
-          created, and you can come back when the study has finished.
+          One thing that is true either way: the photo setting being studied is a campus
+          setting, so it changes for everyone here during the study, whether or not you
+          take part. Taking part only decides whether counts about your use are included
+          in the research.
         </AppText>
-        <LinkButton label="Not now" center onPress={() => router.back()} />
+        <LinkButton label="Use Mutual without taking part" center onPress={decline} />
       </View>
     </Screen>
   );

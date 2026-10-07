@@ -70,11 +70,6 @@ object BleConstants {
     const val EID_BYTES = 32
     const val PAYLOAD_BYTES = 35
 
-    /** Legacy advertisements carry at most 27 bytes of manufacturer data (SPEC §14.2, D23). */
-    const val LEGACY_MANUFACTURER_LIMIT = 27
-    const val LEGACY_EID_HEAD = 24
-    val LEGACY_EID_TAIL = EID_BYTES - LEGACY_EID_HEAD
-
     const val INTERVALS_PER_DAY = 96
     const val INTERVAL_MINUTES = 15
 
@@ -86,9 +81,6 @@ object BleConstants {
 enum class AdvertiseLayout {
     /** BLE 5 extended advertising carrying all 35 bytes. Preferred. */
     EXTENDED,
-
-    /** Legacy advertisement with `EID[0:24]`, scan response with `EID[24:32]`. */
-    LEGACY_SPLIT,
 
     /** Neither worked on this device: advertising is off and the app must say so. */
     UNSUPPORTED,
@@ -102,42 +94,24 @@ object Payload {
         return BleConstants.MAGIC + byteArrayOf(BleConstants.PAYLOAD_VERSION) + eid
     }
 
-    /** The advertisement half of the legacy split layout: magic, version, `EID[0:24]`. */
-    fun legacyHead(eid: ByteArray): ByteArray {
-        require(eid.size == BleConstants.EID_BYTES) { "EID must be 32 bytes" }
-        return BleConstants.MAGIC +
-            byteArrayOf(BleConstants.PAYLOAD_VERSION) +
-            eid.copyOfRange(0, BleConstants.LEGACY_EID_HEAD)
-    }
-
-    /** The scan-response half of the legacy split layout: `EID[24:32]`. */
-    fun legacyTail(eid: ByteArray): ByteArray {
-        require(eid.size == BleConstants.EID_BYTES) { "EID must be 32 bytes" }
-        return eid.copyOfRange(BleConstants.LEGACY_EID_HEAD, BleConstants.EID_BYTES)
-    }
-
     /** The scan filter prefix: magic + version, which every Mutual advertisement starts with. */
     fun filterPrefix(): ByteArray = BleConstants.MAGIC + byteArrayOf(BleConstants.PAYLOAD_VERSION)
 
     fun filterMask(): ByteArray = byteArrayOf(-1, -1, -1)
 
     /**
-     * Extracts an EID from received manufacturer data.
-     *
-     * Returns the 32-byte id for a full payload, the 24-byte head for a legacy
-     * advertisement, or null for anything else -- including a payload of some other length.
+     * Extracts a 32-byte EID from received manufacturer data, or null for anything that is
+     * not exactly Mutual's 35-byte payload.
      *
      * The length check is not cosmetic. Without it a crafted advertisement of any size
-     * carrying Mutual's magic produced a "EID" of that size, and the only thing stopping it
-     * from being counted was a `length !== 32` test on the TypeScript side. A radio parser
-     * should not depend on a later layer to reject what it hands over.
+     * carrying Mutual's magic produced an "EID" of that size, and the only thing stopping
+     * it from being counted was a `length !== 32` test on the TypeScript side. A radio
+     * parser should not depend on a later layer to reject what it hands over.
      */
     fun extractEid(data: ByteArray?): ByteArray? {
         if (data == null) return null
         val prefix = filterPrefix()
-        val full = prefix.size + BleConstants.EID_BYTES
-        val head = prefix.size + BleConstants.LEGACY_EID_HEAD
-        if (data.size != full && data.size != head) return null
+        if (data.size != prefix.size + BleConstants.EID_BYTES) return null
         for (i in prefix.indices) if (data[i] != prefix[i]) return null
         return data.copyOfRange(prefix.size, data.size)
     }

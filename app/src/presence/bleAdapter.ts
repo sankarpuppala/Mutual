@@ -44,18 +44,15 @@ export interface Sighting {
 export type BleUnavailableReason =
   | 'permissions_missing'
   | 'bluetooth_off'
-  | 'unsupported_device'
-  | 'schedule_exhausted'
   /**
-   * This device fell back to the legacy split advertisement (SPEC §14.2, D23) and so is
-   * advertising, but the receiving half of that fallback is **known not to work**: Android
-   * parses manufacturer-specific data into a map keyed by company id, and the two halves
-   * share company id 0xFFFF, so the scan response overwrites the advertisement and the
-   * scanner never sees a 32-byte id. Reported rather than hidden, because a device that
-   * advertises and hears nothing looks exactly like a device that nobody walked past.
-   * Resolving this needs two physical phones (AC-T2-6) -- see docs/BLE_SPIKE.md.
+   * No BLE 5 extended advertising on this device, so Mutual cannot put its 35-byte payload
+   * on air at all and takes no part in discovery (SPEC §14.2). The split-advertisement
+   * fallback that used to cover this case was withdrawn: it advertised correctly and could
+   * never be received, so a phone on it looked healthy and heard nobody (DECISIONS_LOG 30).
+   * Saying so is the point -- a silent nothing is indistinguishable from a quiet day.
    */
-  | 'legacy_fallback_unverified';
+  | 'unsupported_device'
+  | 'schedule_exhausted';
 
 export interface BleStatus {
   advertising: boolean;

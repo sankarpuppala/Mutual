@@ -1826,3 +1826,68 @@ match `docs/design/prototype.html`.
         they were in the keystore. Move them, or correct §9.
   - [ ] Confirm the SPEC §14.1 and CLAUDE.md §6 wording changes above; they were
         applied under the standing delegation rather than waiting.
+
+### 2026-10-07 (evening) — the Board answered; five questions closed, one left open
+
+The human answered the Board and delegated three of the five decisions. Full
+reasoning in `docs/DECISIONS_LOG.md` 30; what it changed in the project:
+
+**The Bluetooth fallback is gone, not fixed (Q10).** The human's call: "most
+people use latest phones". BLE 5 extended advertising is now the only supported
+layout (SPEC §14.2, D23). Removed `startLegacySplit`, its callback and flag,
+`Payload.legacyHead`/`legacyTail`, `AdvertiseLayout.LEGACY_SPLIT` and the four
+`LEGACY_*` constants; `extractEid` now accepts exactly the 35-byte payload.
+A device without BLE 5 is told `unsupported_device` and takes no part in
+discovery — which is the point, because the previous behaviour (advertise
+correctly, hear nothing, for good) is indistinguishable from a quiet campus.
+`kotlin-constants.test.ts` asserts no `LEGACY` identifier survives, so the
+withdrawn layout cannot come back as dead constants.
+
+**Declining research consent no longer costs the account (Q9).** This is the
+one that mattered. `POST /account` required a `consent_version` on a study
+campus, so for those weeks the only way to use a campus social app was to agree
+to be in a study — consent as the price of ordinary student life, which is not
+freely given. The gate is removed; the consent screen's dead end ("Not now",
+which went *back*) is now "Use Mutual without taking part", which goes forward;
+and the screen states what is true either way, that the reveal policy is a
+campus setting and changes for everyone during the study. The test that
+asserted the old behaviour was rewritten as two tests with the reasoning in the
+docstring, not deleted.
+
+**SPEC §9 now describes where the keys actually are (Q12).** New §9.1: the
+keystore holds the session token, the identity private key and the user id;
+daily keys are in the app-private SQLite database. Moving them would buy
+nothing against a threat that is out of scope (§7.2) and would cost a durable
+index SecureStore cannot provide. The accurate description is the deliverable.
+
+**Operator access is a written commitment (Q8).** The student and supervisor
+hold it; neither holds a participant account on that deployment. SPEC §19 now
+records it as resolved.
+
+**The presence upload window stays as specified (Q11).** A night missed is a
+night lost. First thing to look at if the pilot's crossing counts come out low;
+a spec change to §6.11, not a bug.
+
+**Q4 stays open and is the human's alone.** Which ethics body approves research
+with students at the institution. It cannot be answered from inside the
+project — invariant 9 turns on `study/APPROVAL.md` recording a real committee's
+real reference, and a plausible-looking answer written here would be a forged
+approval.
+
+**The Device Guard problem has a name:** Smart App Control, enforced
+(`VerifiedAndReputablePolicyState = 1`). The human administers the laptop, so
+it is theirs to switch off — and it is a one-way door, recorded as such in
+`docs/RUNNING_LOCALLY.md` along with the fact that the shim already works and
+the only thing it cannot fix is `scipy`.
+
+Tests: **273 Python** (one more: the consent change split a test in two),
+**206 app**, **29 protocol-ts**. Lint, typecheck, ruff, `check:privacy` and
+`check:contrast` all clean.
+
+- Human review checklist (this entry):
+  - [ ] The consent screen now has two ways forward. Look at it beside
+        `docs/design/prototype.html` — it is the screen an ethics committee
+        will read most closely.
+  - [ ] `docs/BLE_SPIKE.md` §1a is now history (it was written to settle the
+        legacy join, which no longer exists). What the spike still measures is
+        whether extended advertising is delivered under `neverForLocation`.

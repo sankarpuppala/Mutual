@@ -21,7 +21,7 @@
 import { requireOptionalNativeModule } from 'expo-modules-core';
 
 /** Which advertisement layout the radio managed (SPEC §14.2, decision D23). */
-export type NativeAdvertiseLayout = 'EXTENDED' | 'LEGACY_SPLIT' | 'UNSUPPORTED';
+export type NativeAdvertiseLayout = 'EXTENDED' | 'UNSUPPORTED';
 
 export interface NativeScheduleEntry {
   day: string;

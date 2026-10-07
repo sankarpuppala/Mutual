@@ -16,14 +16,18 @@ the reason), **Parked** (good idea, not now), **Open** (waiting for an answer).
 ### Open questions
 | # | Question | Needed before |
 |---|---|---|
-| Q3 | Do you have two Android 12+ phones for the Bluetooth test? | Phase 9 |
-| Q4 | Will you run the real-user pilot? Which ethics body approves it? | Phase 12 |
+| Q3 | Do you have two Android 12+ phones for the Bluetooth test? | Phase 9 — **answered 2026-10-07: yes, but it is the last thing to be done** |
+| Q4 | Which ethics body approves research with students at your institution, and what is its timeline? **Only you can answer this**: it names a real committee, and invariant 9 turns on `study/APPROVAL.md` recording its actual reference. Nothing in this repository may stand in for it. | Phase 12 |
 | Q6 | Where will the server run for a demo with more than one phone? | Phase 11 |
-| Q8 | In a pilot, who has server (operator) access? They cannot also hold accounts. | Phase 12 |
-| Q9 | On a study campus the server will not create an account without consent, so declining means not using Mutual at all. Is that acceptable to the approving body, or is a non-participating mode needed? | Phase 12 |
-| Q10 | The legacy split advertisement (§14.2, D23) cannot be received: Android collapses the two halves because they share company id `0xFFFF`. Fix the parser, change the format, or drop the fallback and say so? Needs two phones to decide. | Phase 9a (DECISIONS_LOG 29) |
-| Q11 | §6.11 now costs a whole night of crossings when the phone is off through the upload window, because a missed window is not retried. Is that the right trade for the pilot, or should §6.11 allow a late upload? | Phase 12 (DECISIONS_LOG 29) |
-| Q12 | Daily keys live in plaintext SQLite, while SPEC §9's retention row reads as if they were in the keystore. Move them to `expo-secure-store`, or correct §9? Device compromise is out of scope (§7.2), so this is about the spec telling the truth. | Before the report (DECISIONS_LOG 29) |
+
+### Resolved since 2026-10-07
+| # | Question | How it was settled |
+|---|---|---|
+| Q8 | Who holds operator access in a pilot? | The student and the supervisor, and **neither holds a participant account on that deployment**. A rule, not a fix — §7.2 says why no technical fix exists. In SPEC §19 and `study/ETHICS_APPLICATION_DRAFT.md` §6. |
+| Q9 | Does declining consent mean not using Mutual at all? | **No, and that is now enforced.** `POST /account` creates the account either way; the consent screen offers "Use Mutual without taking part". Consent that is the price of using a campus social app is not freely given. SPEC §16. |
+| Q10 | How to fix the legacy BLE split advertisement? | **Withdrawn, not fixed** (user's call, 2026-10-07: "most people use latest phones"). BLE 5 extended advertising is the only supported layout; a device without it is told so plainly. SPEC §14.2, D23. |
+| Q11 | Should a missed presence-upload window cost a whole night? | Kept as specified — a missed window loses the night. The user read the trade and did not object. Revisit if the pilot's crossing counts come out low. SPEC §6.11. |
+| Q12 | Daily keys in plaintext SQLite vs. the keystore | **SPEC §9 corrected to describe what the code does**, with the reasoning: device compromise is out of scope (§7.2) and SecureStore has no enumeration, so per-day keys would need a second index. The identity key stays in the keystore because it outlives every daily key. New SPEC §9.1. |
 
 ### Parked ideas
 | Idea | Why parked | Where |
@@ -1357,3 +1361,138 @@ and it now says so. Tests: **272 Python, 206 app (was 174), 29 protocol-ts**.
 **Still open, and on the Board:** the legacy-split join (needs two phones); the
 daily keys living in plaintext SQLite while SPEC §9 reads as if they were in the
 keystore; and whether §6.11's window should cost a night when the phone was off.
+
+### 30. Five Board questions answered, and one that cannot be — Adopted
+
+The human answered the Board on 2026-10-07, delegating three of the five to me
+("do whatever is good", "follow common ethics and answer them yourself"). What
+each turned into.
+
+**Q10 — the legacy Bluetooth advertisement. Withdrawn, not repaired.**
+
+The human's answer was "no issue, since most people use latest phones", which
+settles it: the split layout goes rather than being fixed.
+
+That is the right call and worth recording why, because withdrawing a fallback
+sounds like losing something. Repairing it meant changing what goes on air —
+a different company id for the tail, or moving the tail into a service-data
+element — which is a protocol change under invariant 8, with a
+`protocol_version` bump and regenerated vectors, for the sake of phones older
+than the Android 12 floor the project already sets (D1). BLE 5 reached
+mid-range Android years before Android 12 did. The fallback was insurance
+against a population that this project has already excluded.
+
+What was removed: `startLegacySplit`, the legacy advertise callback and flag,
+`Payload.legacyHead`/`legacyTail`, `AdvertiseLayout.LEGACY_SPLIT`, and the four
+`LEGACY_*` constants in `BleConstants`. `extractEid` now accepts exactly the
+35-byte payload and nothing else, which is simpler than accepting two lengths
+and safer than accepting any. `kotlin-constants.test.ts` gained a case
+asserting that no `LEGACY` identifier survives in `Schedule.kt`, so the
+withdrawn layout cannot creep back as dead constants.
+
+What a device without BLE 5 now gets: `unsupported_device`, said plainly, and
+no part in discovery. That is the whole point of the change. The previous state
+— advertising correctly and hearing nothing, for good — was the worst of both,
+because it is indistinguishable from a quiet campus.
+
+**Q11 — the presence upload window. Left as specified.**
+
+The human said they did not follow this one and that it is not an issue for
+now. Restating it as plainly as it can be put: the app waits for a random
+minute between 00:05 and 06:00 to send the night's encounter tokens, because
+sending them the moment the phone happens to wake up would tell the server
+roughly when its owner is asleep. The cost is that a phone switched off through
+that whole window never sends that night, and the server's cutoff then refuses
+it — so that day produces no crossings for that person.
+
+Kept as it is. The alternative (upload late, outside the window) hands the
+server exactly the sleep-and-routine signal the window exists to remove. If the
+pilot's crossing counts come out low, this is the first thing to look at, and
+it is a spec change to §6.11, not a bug.
+
+**Q12 — daily keys in plaintext SQLite. The spec was corrected, not the code.**
+
+"Do whatever is good." The good thing here is the accurate description.
+
+Moving the daily keys into `expo-secure-store` sounds stronger and buys almost
+nothing. Device compromise is out of scope (§7.2): an attacker with the app's
+private storage has both the database and the keystore, because the app itself
+must be able to read both. What it would cost is real — SecureStore is a
+key-value store with no enumeration, and `forgetStaleKeys` has to list the days
+it holds, so a second index would have to be maintained and kept correct, and
+an index that drifts loses keys that are still needed.
+
+So SPEC §9 now says what is true, in a new §9.1: the keystore holds the session
+token, the identity private key and the user id; everything else, daily keys
+included, is in the app-private SQLite database. The identity key is the
+exception that stays, because it is the one secret whose disclosure is not
+merely a device compromise — it is what makes one-sided interest unreadable to
+the server (claim C1), and it outlives every daily key.
+
+`secure.ts`'s docstring, which had been corrected once already in entry 29 to
+stop claiming the daily keys were there, now explains why they are not.
+
+**Q9 — declining consent. The design was wrong, and is changed.**
+
+"Follow common ethics and answer them yourself." The answer is that the
+previous design would not have survived an ethics committee, and should not
+have.
+
+It required a `consent_version` to create an account on a study campus. So on
+that campus, for those weeks, the only way to use a campus social app was to
+agree to be in a study. That is consent obtained as the price of participation
+in ordinary student life, and it is not freely given. The in-app copy even said
+so out loud — "an account cannot be created without agreeing to take part" —
+which is the kind of sentence that reads fine while writing it and badly in an
+application form.
+
+What changed:
+
+- `POST /account` no longer rejects a missing consent version. A user without
+  one has the ordinary app and appears in no study outcome.
+- The consent screen's dead end ("Not now", which went *back*) is now
+  **"Use Mutual without taking part"**, which goes forward.
+- The screen states the thing that is true either way: the reveal policy is a
+  campus setting, so it changes during the study for everyone on that campus,
+  participant or not. They are told because it is a change to the product they
+  use, not because they are subjects.
+- Nothing re-asks during the block. Repeated asking is pressure.
+- `test_consent_required_only_on_study_campus` asserted the old behaviour. It
+  was rewritten rather than deleted, as two tests, with the reasoning in the
+  docstring: an account is created either way, and the `consent_version` column
+  is what differs.
+
+**Q8 — operator access. Written down as a commitment.**
+
+The student running the pilot and the supervisor hold operator access, and
+**neither holds a participant account on that deployment**. §7.2 already
+recorded why there is no technical fix: an operator who is also a user can test
+interest directed at themselves, silently, until the batch deletes that epoch's
+tokens. So it is a governance rule, and the right place for a governance rule
+is somewhere a committee can hold you to it —
+`study/ETHICS_APPLICATION_DRAFT.md` §6 already carried it, and SPEC §19 now
+records it as resolved rather than open. If the person running the pilot needs
+to use the app, they use a separate deployment, not a separate account.
+
+**Q4 — the one that stays open.**
+
+Which ethics body approves research with students at the institution, and on
+what timeline. This cannot be answered from inside the project, and it would be
+a serious thing to pretend otherwise: invariant 9 turns on `study/APPROVAL.md`
+recording a real committee's real reference, and the server refuses to start in
+study mode without it. A plausible-looking answer written here would be a
+forged approval. It stays on the Board, marked as the human's alone.
+
+**Q3 — two phones: yes, and last.** The human has them; the spike is the final
+task. `docs/BLE_SPIKE.md` §1a — the section written in entry 29 to settle the
+legacy join — is now moot and should be read as history; what the spike still
+has to measure is whether extended advertising is delivered under
+`neverForLocation` without a location permission.
+
+**The Device Guard problem has a name.** It is Smart App Control, and it is
+enforced (`VerifiedAndReputablePolicyState = 1`). The human administers this
+laptop, so it is theirs to switch off — in Windows Security → App & browser
+control. **That is a one-way door**: it cannot be turned back on without
+resetting Windows. Recorded in `docs/RUNNING_LOCALLY.md` with the trade stated,
+because the shim directory already works and the only thing it cannot fix is
+`scipy`, which Tier 3's model needs and which can be run elsewhere for free.

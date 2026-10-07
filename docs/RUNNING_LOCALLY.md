@@ -31,6 +31,29 @@ npm test -w app                                          # 174 tests
 
 ## The Device Guard problem (the important one)
 
+**It is Smart App Control, and it is on.** Checked on 2026-10-07:
+
+```powershell
+(Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy).VerifiedAndReputablePolicyState
+# 1 = enforced, 2 = evaluation, 0 = off
+```
+
+It returned **1**. Smart App Control blocks executables it does not consider
+signed and reputable, which is exactly what a freshly created virtualenv's
+`python.exe` is — a copy with no signature of its own.
+
+**Turning it off is a one-way door.** Windows Security → App & browser control
+→ Smart App Control settings → Off. Once off it cannot be switched back on
+without resetting or reinstalling Windows, so it is worth deciding deliberately
+rather than in the middle of a build. Defender's real-time protection is
+separate and stays on either way.
+
+The alternative is the shim directory below, which works and costs nothing but
+having to remember it. The one thing the shim cannot fix is `scipy`'s compiled
+module, so the study's mixed-effects model cannot be fitted on this machine
+while Smart App Control is on; that analysis can be run elsewhere (it needs no
+paid service) and the eight descriptive tables print regardless.
+
 **`.venv\Scripts\python.exe` is blocked by this machine's Device Guard / WDAC
 policy.** Running it gives:
 

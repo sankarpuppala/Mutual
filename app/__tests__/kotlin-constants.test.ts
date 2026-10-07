@@ -70,12 +70,9 @@ describe('BleConstants mirrors constants.json (SPEC §6.2, invariant 8)', () => 
     expect(Number(kotlinValue('PAYLOAD_BYTES'))).toBe(magicBytes + 1 + CONSTANTS.eid_bytes);
   });
 
-  it('the legacy split covers the whole EID', () => {
-    const head = Number(kotlinValue('LEGACY_EID_HEAD'));
-    expect(kotlinValue('LEGACY_EID_TAIL')).toBe('EID_BYTES - LEGACY_EID_HEAD');
-    // The head plus its magic and version must fit a legacy advertisement.
-    const magicBytes = CONSTANTS.ble.magic_hex.length / 2;
-    expect(magicBytes + 1 + head).toBeLessThanOrEqual(Number(kotlinValue('LEGACY_MANUFACTURER_LIMIT')));
-    expect(head).toBeLessThan(CONSTANTS.eid_bytes);
+  it('names no constant for a layout that no longer exists', () => {
+    // The split advertisement was withdrawn on 2026-10-07 (SPEC §14.2, DECISIONS_LOG 30).
+    // Its constants going stale in Kotlin is exactly the drift this file exists to catch.
+    expect(KOTLIN).not.toMatch(/LEGACY/);
   });
 });
