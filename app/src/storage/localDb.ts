@@ -22,7 +22,7 @@
 import * as SQLite from 'expo-sqlite';
 
 const DATABASE_NAME = 'mutual.db';
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 let handle: SQLite.SQLiteDatabase | null = null;
 
@@ -141,6 +141,24 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
     `);
   }
 
+  if (current < 2) {
+    await database.execAsync(`
+      -- The minute of day each night's *presence* upload is due, one row per day being
+      -- uploaded. Separate from epoch_plans rather than sharing it with a 'kind' column:
+      -- the two are pruned on different horizons, and a shared primary key would have had
+      -- to be a composite, which is a migration for no benefit.
+      --
+      -- SPEC §6.11 draws this minute uniformly inside presence_upload_window and calls it
+      -- "a privacy property, not a convenience": without it the upload lands whenever
+      -- Android happens to wake the background task, which correlates with when the phone
+      -- is being used.
+      CREATE TABLE IF NOT EXISTS presence_plans (
+        day    TEXT PRIMARY KEY NOT NULL,
+        minute INTEGER NOT NULL
+      );
+    `);
+  }
+
   await database.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
 }
 
@@ -158,6 +176,7 @@ export async function wipeLocalDatabase(): Promise<void> {
     DELETE FROM daily_keys;
     DELETE FROM seen_reveals;
     DELETE FROM epoch_plans;
+    DELETE FROM presence_plans;
   `);
 }
 
@@ -260,6 +279,42 @@ export async function storedPlannedMinute(epoch: string): Promise<number | null>
 export async function pruneEpochPlans(before: string): Promise<void> {
   const database = await db();
   await database.runAsync('DELETE FROM epoch_plans WHERE epoch < ?', [before]);
+}
+
+/**
+ * The minute-of-day this night's presence upload is due, drawing one if none exists yet.
+ *
+ * The same once-per-period rule as `plannedMinuteFor`, for the same reason: re-drawing on
+ * every app start would take the minimum of several uniform draws and pull the effective
+ * distribution towards the start of the window.
+ */
+export async function plannedPresenceMinuteFor(
+  day: string,
+  draw: () => number,
+): Promise<number> {
+  const database = await db();
+  const existing = await database.getFirstAsync<{ minute: number }>(
+    'SELECT minute FROM presence_plans WHERE day = ?',
+    [day],
+  );
+  if (existing) return existing.minute;
+
+  const minute = draw();
+  await database.runAsync('INSERT OR IGNORE INTO presence_plans (day, minute) VALUES (?, ?)', [
+    day,
+    minute,
+  ]);
+  const settled = await database.getFirstAsync<{ minute: number }>(
+    'SELECT minute FROM presence_plans WHERE day = ?',
+    [day],
+  );
+  return settled?.minute ?? minute;
+}
+
+/** Drops presence plans for days that have passed. */
+export async function prunePresencePlans(before: string): Promise<void> {
+  const database = await db();
+  await database.runAsync('DELETE FROM presence_plans WHERE day < ?', [before]);
 }
 
 // --------------------------------------------------------------- seen reveals

@@ -57,7 +57,10 @@ export default function AgeScreen(): ReactNode {
         <TextField
           label="Date of birth"
           value={value}
-          onChangeText={(text) => setValue(text.replace(/[^\d-]/g, '').slice(0, 10))}
+          onChangeText={(text) => {
+            setValue(text.replace(/[^\d-]/g, '').slice(0, 10));
+            setError(null); // the message is about the old text (see email.tsx)
+          }}
           error={error}
           hint="Year, month, day — for example 2005-04-17."
           keyboardType="numbers-and-punctuation"

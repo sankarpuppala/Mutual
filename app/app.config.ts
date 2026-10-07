@@ -62,6 +62,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       monochromeImage: './assets/android-icon-monochrome.png',
     },
     predictiveBackGestureEnabled: false,
+    // Android Auto Backup would upload the app's `SharedPreferences` to Google. The BLE
+    // module keeps its undrained sighting table there (`mutual-ble-sightings`), which is
+    // this device's own EIDs, the EIDs it heard, and the 15-minute interval it heard them
+    // in. Invariant 3 says EIDs and sighting times never leave the device; with backup on
+    // they leave it to a third party. expo-secure-store's bundled backup rules exclude
+    // only `SecureStore`, so turning the whole thing off is the only honest setting --
+    // and SPEC §4 already says there is no key escrow and no backup.
+    allowBackup: false,
     blockedPermissions: BLOCKED_PERMISSIONS,
     permissions: [
       'android.permission.BLUETOOTH_ADVERTISE',
@@ -102,6 +110,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   extra: {
     // Overridable per machine without editing code; see src/api/client.ts.
     serverBaseUrl: process.env.EXPO_PUBLIC_SERVER_URL ?? 'http://10.0.2.2:8000',
-    env: process.env.EXPO_PUBLIC_MUTUAL_ENV ?? 'dev',
+    // Fail closed. `isDev()` gates the dev panel (clock travel, synthetic crossings, and
+    // the upload minute §6.11 says must never be predictable), so a build made without
+    // this variable must be the safe one. Development sets EXPO_PUBLIC_MUTUAL_ENV=dev
+    // explicitly -- see docs/RUNNING_LOCALLY.md (invariant 11).
+    env: process.env.EXPO_PUBLIC_MUTUAL_ENV ?? 'prod',
   },
 });

@@ -258,6 +258,23 @@ function checkNetworkBoundary(): void {
       if (/\bXMLHttpRequest\b/.test(code)) {
         fail(`${rel} uses XMLHttpRequest. Network access goes through src/api/client.ts only.`);
       }
+      // `fetch` is not the only way to put a request on the wire, and the others are the
+      // ones that would slip through a review: an <Image source={{ uri: 'https://...' }}>
+      // or a WebView issues a request whose timing says which card was on screen, which is
+      // exactly what invariant 1 forbids. Media is always read from the local cache, so a
+      // remote URL anywhere in the app is a mistake rather than a trade-off.
+      if (/\b(?:uri|url)\s*:\s*[`'"]https?:\/\//.test(code)) {
+        fail(
+          `${rel} names a remote http(s) URL. The UI reads media from the local cache only ` +
+            '(CLAUDE.md invariant 1).',
+        );
+      }
+      if (/\bWebView\b/.test(code)) {
+        fail(`${rel} uses a WebView, which can issue requests outside src/api/client.ts.`);
+      }
+      if (/\bsendBeacon\s*\(/.test(code)) {
+        fail(`${rel} calls sendBeacon(). Network access goes through src/api/client.ts only.`);
+      }
     });
   }
 }

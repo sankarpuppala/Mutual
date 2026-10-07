@@ -17,6 +17,8 @@ import { SIGNAL_SET_SIZE } from '@mutual/protocol';
 import type { Intent } from '@/api/types';
 import { db } from '@/storage/localDb';
 
+import { addDays } from './ttl';
+
 /** The cap on real signals per epoch: `signal_set_size` from constants.json (20). */
 export const SIGNAL_CAP = SIGNAL_SET_SIZE;
 
@@ -169,6 +171,38 @@ export async function setSignalsForPeer(
 export async function withdrawPeer(peerId: string): Promise<void> {
   const database = await db();
   await database.runAsync('DELETE FROM signals WHERE peer_id = ?', [peerId]);
+}
+
+/**
+ * Deletes signals whose TTL has run out, freeing their slots.
+ *
+ * Without this the cap and the Signals tab counted dead rows: `activeSignals` filtered the
+ * upload correctly, so nothing was ever sent for an expired signal, but `signalCount` is
+ * `COUNT(*)` and the tab lists every row. After a week of ordinary use a user could be told
+ * "All 20 signals are out" while holding none that would ever be uploaded again.
+ *
+ * `expiryDay` is `lastCrossingDay + interestTtlDays`, inclusive, so a row is dead once its
+ * anchor is older than `today - interestTtlDays` (the same arithmetic as `isActive`, in SQL
+ * because this runs over the whole table).
+ */
+export async function deleteExpiredSignals(
+  today: string,
+  interestTtlDays: number,
+): Promise<number> {
+  const database = await db();
+  const result = await database.runAsync('DELETE FROM signals WHERE last_crossing_day < ?', [
+    addDays(today, -interestTtlDays),
+  ]);
+  return result.changes;
+}
+
+/** Clears one `(peer, intent)` signal, used when its match arrives (SPEC §6.10). */
+export async function clearSignal(peerId: string, intent: Intent): Promise<void> {
+  const database = await db();
+  await database.runAsync('DELETE FROM signals WHERE peer_id = ? AND intent = ?', [
+    peerId,
+    intent,
+  ]);
 }
 
 /** Refreshes the TTL anchor after a new crossing with a peer already signalled. */

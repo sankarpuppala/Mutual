@@ -18,7 +18,7 @@
  */
 
 import type { Intent, Match, MatchedToken } from '@/api/types';
-import { lookupSentToken } from '@/signals/db';
+import { clearSignal, lookupSentToken } from '@/signals/db';
 
 export interface ResolvedIntent {
   intent: Intent;
@@ -59,6 +59,20 @@ export async function resolveMatch(match: Match): Promise<ResolvedMatch> {
   }
 
   intents.sort((a, b) => (a.epoch === b.epoch ? a.intent.localeCompare(b.intent) : a.epoch.localeCompare(b.epoch)));
+
+  // SPEC §6.10: a signal is active "until a match containing its (peer, intent) token is
+  // received". This is where it is received and understood, so this is where it stops.
+  //
+  // Leaving it had two costs. The slot stayed occupied against the cap of twenty. Worse,
+  // the same real token was rebuilt and re-uploaded every following epoch, and §6.9 says
+  // the server appends a newly matching token to an existing match as another shared
+  // intent -- so the same intent would be added night after night, and the count of shared
+  // intents both sides see (claim C3's stated limit) would climb without either of them
+  // doing anything. Clearing is idempotent, so resolving the same match twice is harmless.
+  for (const resolved of intents) {
+    await clearSignal(match.peer.peer_id, resolved.intent);
+  }
+
   return { match, intents, unverified };
 }
 

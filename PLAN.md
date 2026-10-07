@@ -1748,3 +1748,81 @@ build was still running.
   - [ ] Decide whether `app.mutual` is the package name you want; it is baked
         into a build's identity, and `in.mutual.*` is not available because
         `in` is a Kotlin keyword.
+
+### 2026-10-07 (later) — second security review; one invariant violation and two dead subsystems
+
+A full independent review of the app layer, plus a screen-by-screen walk of the
+running app. Thirteen findings, all but one applied. The long version is
+`docs/DECISIONS_LOG.md` 29; this is what it means for the plan.
+
+**The one that matters.** `useMorningLetter().refresh()` called
+`digest.refetch()`, and the Today screen called `refresh()` after every signal
+send, change and withdrawal. That put a `GET /v1/digest` in the server's log at
+the moment a one-sided signal was created — **a direct violation of invariant 1
+and of claim C1**, in the one screen the protocol exists to protect.
+`query-defaults.test.ts` passed throughout, because it checks the declarative
+half of invariant 1 and `refetch` is imperative. Fixed, and
+`app/__tests__/signal-no-traffic.test.tsx` now covers the imperative half:
+render the letter, send/change/withdraw, assert `fetch` was never called.
+
+**Two subsystems were not running at all.**
+
+- `NativeBle.start()` had one caller: the pause switch. A new account's
+  `discovery_paused` is false, so the first toggle *pauses* — nothing ever
+  advertised or scanned until a user toggled twice. Every later stage was
+  correctly empty, so the app said "No crossings yesterday" and looked healthy.
+  **This would have survived the pilot as a measured detection rate of zero.**
+- The legacy split advertisement cannot be received (the two halves share
+  company id `0xFFFF`, so Android's parser collapses them). **Not fixed** — both
+  candidate fixes are guesses about hardware behaviour. The status now says
+  `legacy_fallback_unverified` instead of claiming success, and §1a of
+  `docs/BLE_SPIKE.md` makes settling it the first task of the two-phone spike.
+
+**Also fixed:** Android Auto Backup was uploading the BLE sighting table (own
+EIDs, heard EIDs, 15-minute intervals) to Google — `allowBackup` is now false;
+`isDev()` defaulted to true, so a build without `EXPO_PUBLIC_MUTUAL_ENV` shipped
+the dev panel; three of the ways a signal is meant to end were written but never
+called, so the 20-slot cap filled with dead rows and a matched signal was
+re-uploaded every night; every epoch and day came from the phone's clock rather
+than `GET /v1/config` (§6.11 says "never its own clock"); an empty night was not
+uploaded, which told the server exactly which nights a user was near nobody; the
+presence upload ignored `presence_upload_window` entirely; and nothing checked
+that the six protocol constants restated in `Schedule.kt` still matched
+`constants.json`.
+
+**A behaviour change the human should weigh.** With §6.11's window now enforced,
+a night whose upload window passes while the phone is off is **lost**, not sent
+late — the same rule the signal path already followed. That is the
+privacy-preserving reading, and it does mean a phone switched off overnight
+produces no crossings. Board item **Q11**.
+
+**Numbers.** Tests: **272 Python, 206 app (was 174), 29 protocol-ts**; lint,
+typecheck, `check:privacy` and `check:contrast` all clean; `npm run verify` runs
+the lot. New test files: `signal-no-traffic`, `signal-lifecycle`,
+`deployment-clock`, `kotlin-constants`, `form-errors`. New source file:
+`app/src/signals/deploymentClock.ts` (added to SPEC §20). Local database schema
+is now version 2 (`presence_plans`).
+
+**Spec changes made, all recorded in `docs/DECISIONS_LOG.md` 29:** SPEC §7.3
+states that an empty night is still uploaded as 256 dummies; §14.1 lists
+`BLUETOOTH_CONNECT` with the reason it is unavoidable (`isEnabled()` needs it
+from API 31) and records `allowBackup="false"`; §20 lists the new file.
+`CLAUDE.md` §6 said the privacy script checks hex literals — ESLint does, and it
+now says so.
+
+**From the screen walk.** All four onboarding forms kept a validation error on
+screen while it was being corrected: typing a good address under "That does not
+look like an email address." Fixed in all four, with `form-errors.test.tsx`.
+Welcome, the three how-it-works panels, the email screen and its error state all
+match `docs/design/prototype.html`.
+
+- Human review checklist (this entry):
+  - [ ] **Q10** — the legacy-split join. Needs two phones; §1a of
+        `docs/BLE_SPIKE.md` says exactly what to measure and what each answer
+        means. Until it is settled, devices without BLE 5 discover nobody.
+  - [ ] **Q11** — is losing a night to a missed upload window acceptable for the
+        pilot, or should §6.11 allow a late upload?
+  - [ ] **Q12** — daily keys are in plaintext SQLite while SPEC §9 reads as if
+        they were in the keystore. Move them, or correct §9.
+  - [ ] Confirm the SPEC §14.1 and CLAUDE.md §6 wording changes above; they were
+        applied under the standing delegation rather than waiting.

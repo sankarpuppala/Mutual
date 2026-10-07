@@ -16,7 +16,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { getDigest, getPromptLibrary } from '@/api/endpoints';
 import type { DigestPeer, Intent } from '@/api/types';
-import { listSignals } from '@/signals/db';
+import { listSignals, touchCrossing } from '@/signals/db';
 import { hiddenPeerIds, getEncounterTime, type TimeBlock } from '@/storage/localDb';
 
 import { cachedMediaUri } from './cache';
@@ -51,6 +51,16 @@ export interface MorningLetter {
   error: unknown;
   /** Resolves a prompt id to its question text. */
   questionFor: (promptId: string) => string;
+  /**
+   * Rebuild the letter from the device's own database — the signals table and the hidden
+   * peers — after the user has changed one of them.
+   *
+   * **This must never touch the network** (invariant 1). A request here would exist only
+   * because the user signalled, so its presence and timing in the server's log would mark
+   * the moment a one-sided signal was created, changed or withdrawn, which is exactly the
+   * fact claim C1 says the server cannot learn. Nothing on the server can have changed
+   * either: the digest is byte-identical until the next release (claim C5).
+   */
   refresh: () => void;
 }
 
@@ -74,6 +84,9 @@ export function useMorningLetter(): MorningLetter {
 
   const [entries, setEntries] = useState<LetterEntry[] | null>(null);
   const [prefetched, setPrefetched] = useState<string | null>(null);
+  // Bumped by `refresh()`. It is in the local-rebuild effect's dependencies and nowhere
+  // near the query, so changing it re-reads SQLite and sends nothing.
+  const [localRevision, setLocalRevision] = useState(0);
 
   // One eager prefetch per release, before any card is shown.
   useEffect(() => {
@@ -89,7 +102,8 @@ export function useMorningLetter(): MorningLetter {
     };
   }, [digest.data, prefetched]);
 
-  // Everything device-local, recomputed when the digest or the prefetch changes.
+  // Everything device-local, recomputed when the digest or the prefetch changes, and when
+  // `refresh()` says the signals table has been written to.
   useEffect(() => {
     const data = digest.data;
     if (!data) return;
@@ -107,6 +121,19 @@ export function useMorningLetter(): MorningLetter {
 
       const built: LetterEntry[] = [];
       for (const peer of data.peers) {
+        // Move the TTL anchor forward for anyone already signalled. SPEC §6.10 counts the
+        // seven days from the *most recent* crossing, so that a signal to someone you keep
+        // seeing stays alive and one to someone who has left your routine quietly expires.
+        // Until this call existed the anchor was written once, at signal creation, so every
+        // signal expired seven days after the first crossing no matter how often you
+        // crossed afterwards -- the opposite of the documented behaviour, and silent,
+        // because the only visible effect was that the signal stopped being uploaded.
+        //
+        // This is a local write, triggered by the digest arriving rather than by anything
+        // the user does with a card, so it adds no traffic of any kind (invariant 1).
+        if (signalsByPeer.has(peer.card.peer_id)) {
+          await touchCrossing(peer.card.peer_id, peer.last_day);
+        }
         if (hiddenSet.has(peer.card.peer_id)) continue;
         const stored = await getEncounterTime(peer.encounter);
         const when = dayLabel(peer.last_day, data.release_day);
@@ -124,7 +151,7 @@ export function useMorningLetter(): MorningLetter {
     return () => {
       cancelled = true;
     };
-  }, [digest.data, prefetched]);
+  }, [digest.data, prefetched, localRevision]);
 
   const questionFor = useMemo(() => {
     const byId = new Map((library.data?.prompts ?? []).map((p) => [p.id, p.text]));
@@ -143,7 +170,7 @@ export function useMorningLetter(): MorningLetter {
     error: digest.error,
     questionFor,
     refresh: () => {
-      void digest.refetch();
+      setLocalRevision((n) => n + 1);
     },
   };
 }

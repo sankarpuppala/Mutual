@@ -18,6 +18,8 @@
 
 import { randBelow } from '@mutual/protocol';
 
+import { deviceClock, type DeploymentClock } from './deploymentClock';
+
 export interface UploadWindow {
   /** `HH:MM`, inclusive. */
   start: string;
@@ -33,17 +35,20 @@ export function minutesOfDay(time: string): number {
   return (h ?? 0) * 60 + (m ?? 0);
 }
 
-/** Minutes since local midnight for a Date, in the device's local timezone. */
+/**
+ * Minutes since local midnight for a Date, in the **device's** timezone.
+ *
+ * Correct only for a phone in the deployment timezone. Protocol decisions go through a
+ * `DeploymentClock` instead (see `deploymentClock.ts`); this stays for the screens, where
+ * being an hour out means a chip reads "sent tonight" slightly early and nothing more.
+ */
 export function nowMinutes(now: Date): number {
-  return now.getHours() * 60 + now.getMinutes();
+  return deviceClock.minutes(now);
 }
 
-/** The local day of a Date as `YYYY-MM-DD`, which is what an epoch is. */
+/** The device-local day of a Date as `YYYY-MM-DD`. Same caveat as `nowMinutes`. */
 export function localDay(now: Date): string {
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return deviceClock.day(now);
 }
 
 /**
@@ -88,6 +93,17 @@ export interface DecideOptions {
   alreadyUploaded: boolean;
   /** The minute chosen for today, if one has been chosen. */
   plannedMinute: number | null;
+  /**
+   * The deployment's wall clock (SPEC §6.3). Defaults to the device's own, which is right
+   * only for a phone in the deployment timezone -- `runNightlyWork` passes a clock built
+   * from `server_time` instead.
+   */
+  clock?: DeploymentClock;
+  /**
+   * The epoch the server says an upload must be addressed to (SPEC §6.11: "never its own
+   * clock"). Defaults to the clock's own day.
+   */
+  epoch?: string;
 }
 
 /**
@@ -102,11 +118,13 @@ export function decide({
   window,
   alreadyUploaded,
   plannedMinute,
+  clock = deviceClock,
+  epoch: serverEpoch,
 }: DecideOptions): Decision {
-  const epoch = localDay(now);
+  const epoch = serverEpoch ?? clock.day(now);
   if (alreadyUploaded) return { action: 'skip', reason: 'already_uploaded' };
 
-  const minute = nowMinutes(now);
+  const minute = clock.minutes(now);
   if (minute < minutesOfDay(window.start)) {
     return { action: 'wait', reason: 'before_window' };
   }

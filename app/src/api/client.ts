@@ -85,6 +85,13 @@ interface RequestOptions {
 
 const TIMEOUT_MS = 20_000;
 
+/**
+ * Longer than `TIMEOUT_MS`: a voice note is up to a few hundred kilobytes over whatever
+ * connection a campus has at 8 am, where a JSON response is a few hundred bytes. Long
+ * enough to be generous, finite so one stalled socket cannot hold up the whole prefetch.
+ */
+const MEDIA_TIMEOUT_MS = 60_000;
+
 async function parseError(response: Response): Promise<ApiError> {
   let code = 'http_error';
   let message = 'Something went wrong.';
@@ -160,13 +167,24 @@ export const api = {
    */
   async media(mediaId: string): Promise<ArrayBuffer> {
     const token = await getSessionToken();
+
+    // The same timeout `request` uses. The prefetch loop is deliberately sequential, so a
+    // single hung connection here would stall the rest of the morning's prefetch for as
+    // long as the socket stayed open -- and every voice note after it would then be missing
+    // from the cache, which on screen looks like one person's recording being broken.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), MEDIA_TIMEOUT_MS);
+
     let response: Response;
     try {
       response = await fetch(`${baseUrl()}/v1/media/${mediaId}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
+        signal: controller.signal,
       });
     } catch {
       throw new NetworkError();
+    } finally {
+      clearTimeout(timer);
     }
     if (!response.ok) throw await parseError(response);
     return response.arrayBuffer();

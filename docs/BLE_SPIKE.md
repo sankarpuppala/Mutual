@@ -42,6 +42,51 @@ The code already implements both and reports which one it achieved
 `NativeBle.advertiseLayout()`). The spike records the answer rather than
 assuming it.
 
+### 1a. A known defect in layout 2, to be settled first
+
+**The receiving half of the legacy split is believed not to work at all**, and
+settling this is the first thing to do with the two phones — before any
+detection-rate run, because a rate measured through a broken parser is a
+measurement of the parser.
+
+The two halves are both manufacturer-specific data under company id `0xFFFF`.
+Android's `ScanRecord` parses manufacturer-specific data into a map keyed by
+company id, so when the stack merges an advertisement with its scan response the
+second structure overwrites the first. `BleRadio.scanCallback` then calls
+`getManufacturerSpecificData(0xFFFF)` once and gets one of the halves: the tail
+has no magic prefix and is rejected, the head is 24 bytes and is dropped later
+for not being 32. Either way **no encounter token is produced**, silently, while
+the app reports that it is advertising.
+
+What has been done so far: `NativeBle.status()` now reports
+`legacy_fallback_unverified` instead of claiming discovery works, so the
+condition is visible rather than hidden. No fix has been written, because both
+candidates are guesses about merge behaviour on hardware this project does not
+have, and untested Kotlin written against a guess is what caused the two module
+bugs in `DECISIONS_LOG.md` 27.
+
+| Step | What to measure | Result |
+|---|---|---|
+| 2a-1 | Force layout 2 on phone A (skip `startExtended`). Log the full `ScanRecord.getBytes()` seen by phone B. Does it contain **both** `0xFFFF` structures, or only one? | |
+| 2a-2 | Does `ScanFilter` on `(0xFFFF, magic‖version)` still match the merged record, or is the device filtered out entirely? | |
+| 2a-3 | Are the advertisement and the scan response delivered as **one** merged `onScanResult`, or as two with the same device address? | |
+
+The answer decides which of three things happens, and the choice is the
+human's:
+
+- **2a-1 shows both structures present** → fix is a parser change only: read
+  `record.getBytes()` and join the two halves there. The bytes on air do not
+  change, so this is not a protocol change.
+- **2a-2 shows the filter rejects it** → the scan filter has to be relaxed for
+  this path, which costs battery, and that trade belongs in `SPEC.md` §14.2.
+- **Neither works** → the split layout is not implementable as specified. §14.2
+  changes: either the tail moves to a service-data element (a protocol change
+  under invariant 8, needing a `protocol_version` bump) or the fallback is
+  dropped and devices without BLE 5 are declared unsupported, honestly, in the
+  report.
+
+Recorded as **Q10** on the `DECISIONS_LOG.md` Board.
+
 ---
 
 ## 2. What you need

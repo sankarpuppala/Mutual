@@ -78,9 +78,17 @@ class MutualBleService : Service(), BleRadio.Listener {
     private fun tick() {
         handler.removeCallbacks(::tick)
         ensureCorrectEid()
-        if (radio.isAdvertising || State.schedule.isEmpty()) {
-            // Scan even when advertising is impossible: hearing others is still useful, and
-            // the other device's own dwell check is what makes a crossing anyway (§6.13).
+        // Scan whenever this slot has an EID of our own, which is exactly when a sighting
+        // can be recorded: `onQualifyingWindow` stores `(ownEid, heardEid)`, and SPEC §6.13
+        // derives the encounter token from the shared secret between the two, so a peer
+        // heard while we have no EID cannot be turned into anything.
+        //
+        // The old condition was `radio.isAdvertising || schedule.isEmpty()`, which got both
+        // ends wrong: it skipped the window after every EID rotation (advertising restarts
+        // 400 ms later, so `isAdvertising` is still false), and with a non-empty schedule on
+        // a device where advertising is impossible it never scanned at all -- the opposite
+        // of what the comment it carried claimed.
+        if (currentEntry != null) {
             radio.scanOnce(scanWindowSeconds)
         }
         handler.postDelayed(::tick, scanPeriodSeconds * 1000L)

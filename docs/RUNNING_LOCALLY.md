@@ -86,11 +86,6 @@ Device Guard / WDAC policy. A research project whose whole point is privacy
 should not be committing with its test gate disabled. Delete the shim directory
 once that is done.
 
-**The proper fix is yours to make, not a workaround:** ask whoever administers
-this machine to allow the venv, or add an exclusion. A research project whose
-whole point is privacy should not be quietly running with its test gate
-disabled.
-
 ### What else that policy blocks
 
 - **`scipy`'s compiled `_alternative` module**, which is why the study's
@@ -118,7 +113,30 @@ ninja: error: Stat(...RNGestureHandlerDetectorShadowNode.cpp.o): Filename longer
 ```
 
 Windows `LongPathsEnabled` is already `1`; ninja and CMake do not honour it.
-Build through a short junction instead:
+CMake mangles each source file's absolute path into its object-file name, so the
+project's own path has to be short before the build starts.
+
+**Use a `subst` drive, not a junction.** `C:\mtl` is a junction, which is a
+reparse point, and Java's `getCanonicalPath()` — used by Gradle and by the React
+Native Gradle plugin when it writes `Android-autolinking.cmake` — resolves it
+straight back to the long path, so the generated CMake files name
+`C:/Users/sanka/Desktop/STUDIES/AIDS/Project 2/node_modules/...` however the
+build was launched. A `subst` drive is not a reparse point and survives
+canonicalisation:
+
+```powershell
+subst M: "C:\Users\sanka\Desktop\STUDIES\AIDS\Project 2"
+cd M:\app\android
+.\gradlew.bat assembleDebug
+```
+
+`subst` does not survive a reboot; re-run it. After an `expo prebuild`, delete
+`app\android\app\.cxx` and `app\android\app\build\generated\autolinking` before
+rebuilding, or the stale long paths are reused and the build fails in exactly
+the same way it did before.
+
+The junction is still there and is still convenient for everything that is not
+the C++ build:
 
 ```powershell
 cmd /c 'mklink /J C:\mtl "C:\Users\sanka\Desktop\STUDIES\AIDS\Project 2"'
@@ -130,12 +148,26 @@ cd C:\mtl\app\android
 
 ## Building and running the app
 
+**Set `EXPO_PUBLIC_MUTUAL_ENV=dev` before building or starting Metro.** The app
+config defaults to `prod` on purpose (invariant 11: a build made without the
+variable must be the safe one), and `isDev()` is what shows the dev panel,
+enables clock travel and allows the fake BLE adapter on an emulator. Without it
+the build works, but the dev panel is gone and `pickAdapter` returns the native
+adapter, which honestly reports `unsupported_device` on an emulator.
+
 ```powershell
 # PowerShell, with JAVA_HOME / ANDROID_HOME set as above.
-cd C:\mtl\app
+$env:EXPO_PUBLIC_MUTUAL_ENV = "dev"
+subst M: "C:\Users\sanka\Desktop\STUDIES\AIDS\Project 2"   # see the 260-character section
+cd M:\app
 npx expo prebuild --platform android --no-install
-"sdk.dir=C:\\Users\\sanka\\AppData\\Local\\Android\\Sdk" | Set-Content android\local.properties -Encoding ascii
-cd android
+# prebuild wipes android/, and the stale C++ paths under it are what fail the build.
+Remove-Item -Recurse -Force android\app\.cxx, android\app\build\generated\autolinking -ErrorAction SilentlyContinue
+# Forward slashes on purpose. A .properties file reads a single backslash as an
+# escape, so C:\Users\... becomes C:UsersAppData... and Gradle fails with "The
+# filename, directory name, or volume label syntax is incorrect".
+"sdk.dir=C:/Users/sanka/AppData/Local/Android/Sdk" | Set-Content android\local.properties -Encoding ascii
+cd M:\app\android
 .\gradlew.bat assembleDebug          # about 12 minutes cold, 2 warm
 ```
 
@@ -160,7 +192,7 @@ Drop `-no-window` to watch it on screen.
 adb reverse tcp:8081 tcp:8081      # Metro
 adb reverse tcp:8000 tcp:8000      # the Mutual server
 
-cd app && npx expo start --dev-client --port 8081
+cd app && EXPO_PUBLIC_MUTUAL_ENV=dev npx expo start --dev-client --port 8081
 ```
 
 The app is a **dev build**, so it opens a launcher listing development
@@ -194,6 +226,16 @@ Do **not** use PowerShell's `adb exec-out screencap -p > file.png` — the
 redirect adds a BOM and corrupts the PNG.
 
 ## Things that look broken and are not
+
+- **Nothing uploads during the day.** Both uploads now wait for a random minute
+  inside their window — `signal_upload_window` (18:00–23:30) and
+  `presence_upload_window` (00:05–06:00), SPEC §6.11. Running the app at noon
+  and expecting a request is a misreading of the system, not a bug. Use the dev
+  panel's clock travel to move into a window, or shift the windows in
+  `server/config.yaml` for a demo and change them back.
+- **A night missed is a night gone.** If the device is not awake during the
+  presence window, that day is not uploaded late; the server's cutoff then
+  drops it. Deliberate (DECISIONS_LOG 29, Board Q11).
 
 - **`SYSTEM_ALERT_WINDOW` in the debug manifest.** React Native's debug AAR
   declares it for LogBox. `npm run check:privacy -w app` reports it as a note

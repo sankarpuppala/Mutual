@@ -18,6 +18,7 @@
 import { PermissionsAndroid, Platform } from 'react-native';
 
 import { MutualBle, type NativeAdvertiseLayout } from '../../modules/mutual-ble';
+import { isDev } from '@/api/client';
 import type {
   BleAdapter,
   BleStatus,
@@ -130,6 +131,7 @@ export class NativeBle implements BleAdapter {
     if (!native.bluetoothOn) reason = 'bluetooth_off';
     else if (native.scheduleSize === 0) reason = 'schedule_exhausted';
     else if (native.layout === 'UNSUPPORTED') reason = 'unsupported_device';
+    else if (native.layout === 'LEGACY_SPLIT') reason = 'legacy_fallback_unverified';
     else if (!MutualBle.hasPermissions()) reason = 'permissions_missing';
 
     return {
@@ -143,14 +145,22 @@ export class NativeBle implements BleAdapter {
 
 /**
  * The adapter the app should use: the native one on a device that has the module, the fake
- * one everywhere else. Phase 11's presence scheduler takes an adapter as a parameter, so a
- * test can always pass its own.
+ * one on an emulator during development. Phase 11's presence scheduler takes an adapter as
+ * a parameter, so a test can always pass its own.
+ *
+ * The fake adapter is **only** substituted in a dev build. It reports `advertising: true`
+ * once started, which is what makes the emulator usable -- and which, on a real phone that
+ * cannot advertise, would be a lie: the You screen would say discovery was running while
+ * nothing was on air. In a release build an unsupported device gets the native adapter and
+ * therefore the honest `unsupported_device` status. That matters for a pilot, where "the
+ * app said it was running" is the difference between a measurement and a guess.
  */
 export async function pickAdapter(
   config: Partial<NativeBleConfig> = {},
 ): Promise<BleAdapter> {
   const native = new NativeBle(config);
   if (await native.isSupported()) return native;
+  if (!isDev()) return native;
   const { FakeBle } = await import('./fakeBle');
   return new FakeBle();
 }

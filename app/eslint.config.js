@@ -66,6 +66,13 @@ module.exports = [
           selector: "NewExpression[callee.name='XMLHttpRequest']",
           message: 'Network access goes through src/api/client.ts only (CLAUDE.md invariant 1).',
         },
+        {
+          // `no-restricted-syntax` replaces the earlier block rather than adding to it, so
+          // the global.fetch selector has to be repeated here -- and these are exactly the
+          // files that render peer content, where invariant 1 matters most.
+          selector: "MemberExpression[object.name='global'][property.name='fetch']",
+          message: 'Network access goes through src/api/client.ts only (CLAUDE.md invariant 1).',
+        },
       ],
     },
   },

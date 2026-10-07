@@ -14,7 +14,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { deleteAccount, getMe, pauseDiscovery, resumeDiscovery } from '@/api/endpoints';
@@ -32,7 +32,8 @@ import {
 import { useTheme } from '@/design/theme';
 import { radius, space } from '@/design/tokens';
 import { NativeBle } from '@/presence/nativeBle';
-import { clearAll } from '@/storage/secure';
+import { runNightlyWork } from '@/presence/schedule';
+import { clearAll, getIdentity } from '@/storage/secure';
 
 export default function YouScreen(): ReactNode {
   const theme = useTheme();
@@ -41,13 +42,34 @@ export default function YouScreen(): ReactNode {
 
   const me = useQuery({ queryKey: ['me'], queryFn: getMe });
 
+  // The avatar is a hash of the identity public key, so "a preview of how you appear" has
+  // to hash the same value every peer hashes. It used to be given `user_id`, which is a
+  // different string and therefore a different blob: the one thing this card promises to
+  // show was the one thing it got wrong. The key is on the device already -- asking the
+  // server for it would be a request that exists only because this screen was opened.
+  const [identityPk, setIdentityPk] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void getIdentity().then((identity) => {
+      if (!cancelled) setIdentityPk(identity?.pk ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const togglePause = useMutation({
     mutationFn: async (paused: boolean) => {
       // Stop the radio first when pausing: the user asked to stop being noticed, and the
       // server call only stops them appearing in other people's letters.
       if (paused) await new NativeBle().stop().catch(() => undefined);
       await (paused ? pauseDiscovery() : resumeDiscovery());
-      if (!paused) await new NativeBle().start().catch(() => undefined);
+      // Resuming goes through the nightly pass rather than `start()` directly: that is
+      // what fetches `GET /v1/config` and applies the server's `ble.*` settings to the
+      // radio, and what hands native a fresh schedule. Calling `start()` here would run
+      // the radio on nativeBle.ts's compiled-in defaults instead (CLAUDE.md §6: no
+      // tunable number inline in code).
+      if (!paused) await runNightlyWork().catch(() => undefined);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['me'] }),
   });
@@ -75,7 +97,7 @@ export default function YouScreen(): ReactNode {
       <Card>
         <View style={styles.head}>
           {me.data ? (
-            <GenerativeAvatar identityPk={me.data.user_id} size={60} />
+            <GenerativeAvatar identityPk={identityPk ?? me.data.user_id} size={60} />
           ) : (
             <View style={[styles.avatarPlaceholder, { backgroundColor: theme.colors.surfaceSunk }]} />
           )}

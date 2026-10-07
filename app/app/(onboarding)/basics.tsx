@@ -94,7 +94,10 @@ export default function BasicsScreen(): ReactNode {
         <TextField
           label="First name"
           value={name}
-          onChangeText={setName}
+          onChangeText={(text) => {
+            setName(text);
+            setNameError(null); // the message is about the old text (see email.tsx)
+          }}
           error={nameError}
           autoCapitalize="words"
           autoComplete="given-name"
@@ -105,7 +108,10 @@ export default function BasicsScreen(): ReactNode {
         <TextField
           label="Year of study"
           value={year}
-          onChangeText={(text) => setYear(text.replace(/\D/g, '').slice(0, 1))}
+          onChangeText={(text) => {
+            setYear(text.replace(/\D/g, '').slice(0, 1));
+            setYearError(null); // the message is about the old digit (see email.tsx)
+          }}
           error={yearError}
           hint="Optional. 1 to 8."
           keyboardType="number-pad"

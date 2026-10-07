@@ -234,8 +234,9 @@ that violates one, stop and report it before doing anything else.
   `fetch` and `XMLHttpRequest` everywhere else.
 - All colours, spacing, radii, type sizes and durations come from
   `app/src/design/tokens.ts`. No raw hex values or magic numbers in
-  components (the privacy/lint script checks for hex literals in
-  `app/app/` and `app/src/components/`).
+  components — ESLint fails on a hex literal anywhere in `app/app/` or
+  `app/src/components/` (`app/eslint.config.js`), and
+  `npm run check:contrast -w app` checks the token pairs themselves.
 - Bytes are `Uint8Array`. Wire encoding is base64url without padding,
   implemented once in `protocol-ts/src/encoding.ts`.
 

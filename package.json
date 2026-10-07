@@ -13,5 +13,10 @@
   "devDependencies": {
     "react": "^19.2.3",
     "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "verify": "npm run verify:py && npm run verify:js",
+    "verify:py": "python -m pytest packages/protocol_py server sim -q -p no:warnings && python -m ruff check . && python -m ruff format --check .",
+    "verify:js": "npm test -w packages/protocol-ts && npm run typecheck -w packages/protocol-ts && npm run lint -w app && npm run typecheck -w app && npm test -w app && npm run check:privacy -w app && npm run check:contrast -w app"
   }
 }

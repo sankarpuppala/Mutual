@@ -31,7 +31,8 @@ import {
   qualifying,
   timeBlockFor,
 } from '@/presence/encounters';
-import { uploadPresenceFor } from '@/presence/upload';
+import { presenceTick } from '@/presence/schedule';
+import { uploadPendingPresence, uploadPresenceFor } from '@/presence/upload';
 import { FakeBle } from '@/presence/fakeBle';
 import type { Sighting } from '@/presence/bleAdapter';
 import {
@@ -407,21 +408,156 @@ describe('the presence upload (invariant 3, AC-T2-2)', () => {
     expect(endpoints.uploadPresence).toHaveBeenCalledTimes(1);
   });
 
-  it('sends nothing for a day with no qualifying sightings, and tidies up', async () => {
+  /**
+   * A night with nothing in it looks exactly like a night with two hundred encounters.
+   *
+   * This test used to assert the opposite -- that an empty night sent nothing -- which made
+   * zero the one count the server could read exactly, and so told it which nights a user
+   * was near nobody. SPEC §6.13 pads "to the next multiple of 256, at least 256", and
+   * `paddedSize(0)` is 256 precisely so that this case has an answer.
+   */
+  it('still uploads a full padded set for a day with no qualifying sightings', async () => {
     await ensureLookahead(DAY);
     const own = await ownEid(DAY, 40);
     const adapter = {
       name: 'fake' as const,
       drain: async () => [
+        // Two windows, below the four `min_qualified_windows` requires: a brush past
+        // somebody, not a crossing.
         { day: DAY, interval: 40, ownEid: own!, heardEid: 'brush', windows: 2 },
       ],
     } as unknown as FakeBle;
     await drainInto(adapter);
 
     const result = await uploadPresenceFor(DAY, { minWindows: 4, now: NOW });
-    expect(result).toMatchObject({ status: 'nothing_to_send' });
-    expect(endpoints.uploadPresence).not.toHaveBeenCalled();
+
+    expect(result).toMatchObject({ status: 'uploaded', real: 0, sent: ENCOUNTER_PAD_BLOCK });
+    expect(endpoints.uploadPresence).toHaveBeenCalledTimes(1);
+    const [, body] = endpoints.uploadPresence.mock.calls[0] as [string, { encounters: string[] }];
+    expect(body.encounters).toHaveLength(ENCOUNTER_PAD_BLOCK);
+    expect(new Set(body.encounters).size).toBe(ENCOUNTER_PAD_BLOCK); // all distinct dummies
     expect(await hasUploaded('presence', DAY)).toBe(true);
     expect(await getDailyKey(DAY)).toBeNull();
   });
+  /**
+   * The presence upload's random minute (SPEC §6.11).
+   *
+   * §6.11 asks for "a random time between 00:05 and 06:00 local on day d+1" and says the
+   * timing "is a privacy property, not a convenience". The code read
+   * `presence_upload_window` from the config into a type and then never used it: the upload
+   * went out whenever Android happened to wake the background task, and when Android wakes a
+   * phone correlates with when its owner is using it.
+   */
+  describe('the presence upload waits for its drawn minute', () => {
+    const WINDOW = { start: '00:05', end: '06:00' };
+    const at = (hhmm: string): Date => new Date(`2026-10-06T${hhmm}:00Z`);
+
+    /** A clock that reads UTC, so the test's instants are the deployment's wall time. */
+    const clock = { day: (d: Date) => d.toISOString().slice(0, 10), minutes: (d: Date) => d.getUTCHours() * 60 + d.getUTCMinutes() };
+
+    it('does not upload before the minute it drew', async () => {
+      await seedRealDay();
+      const results = await uploadPendingPresence({
+        today: '2026-10-06',
+        minWindows: 4,
+        now: at('00:06'), // the earliest minute in the window; the draw is almost surely later
+        window: WINDOW,
+        clock,
+      });
+
+      // Either it drew 00:05 or 00:06 and went, or it is waiting. Both are correct; what must
+      // never happen is uploading at a time it did not choose.
+      if (results[0]?.status === 'waiting') {
+        expect(endpoints.uploadPresence).not.toHaveBeenCalled();
+        expect(results[0].dueMinute).toBeGreaterThanOrEqual(5);
+        expect(results[0].dueMinute).toBeLessThan(6 * 60);
+      } else {
+        expect(results[0]).toMatchObject({ status: 'uploaded' });
+      }
+    });
+
+    it('does not upload after the window has shut', async () => {
+      await seedRealDay();
+      const results = await uploadPendingPresence({
+        today: '2026-10-06',
+        minWindows: 4,
+        now: at('09:30'),
+        window: WINDOW,
+        clock,
+      });
+
+      expect(results.every((r) => r.status === 'waiting')).toBe(true);
+      expect(endpoints.uploadPresence).not.toHaveBeenCalled();
+    });
+
+    it('uploads once the drawn minute has passed, inside the window', async () => {
+      await seedRealDay();
+      const results = await uploadPendingPresence({
+        today: '2026-10-06',
+        minWindows: 4,
+        now: at('05:59'), // the last minute of the window: any draw is at or before this
+        window: WINDOW,
+        clock,
+      });
+
+      expect(results[0]).toMatchObject({ status: 'uploaded' });
+      expect(endpoints.uploadPresence).toHaveBeenCalledTimes(1);
+    });
+
+    it('draws the minute once, so restarts do not pull it towards the start of the window', async () => {
+      const draws = new Set<number>();
+      for (let i = 0; i < 5; i += 1) {
+        const results = await uploadPendingPresence({
+          today: '2026-10-06',
+          minWindows: 4,
+          now: at('00:06'),
+          window: WINDOW,
+          clock,
+        });
+        const first = results[0];
+        if (first?.status === 'waiting') draws.add(first.dueMinute);
+      }
+      expect(draws.size).toBeLessThanOrEqual(1);
+    });
+  });
+
 });
+
+/**
+ * The radio has to be running for any of the above to have an input.
+ *
+ * `NativeBle.start()` had exactly one caller: the pause switch on the You screen. A new
+ * account's `discovery_paused` is false, so the switch's first use *pauses*; the service
+ * was therefore never launched until a user toggled it twice. Nothing advertised, nothing
+ * scanned, and every later stage was correctly empty -- so the app looked healthy and said
+ * "No crossings yesterday" forever.
+ */
+describe('presenceTick starts the radio', () => {
+  const config = {
+    interest_ttl_days: 7,
+    ble: { min_qualified_windows: 4 },
+  } as unknown as Parameters<typeof presenceTick>[1];
+
+  it('starts it once there is a schedule to advertise', async () => {
+    const adapter = new FakeBle();
+    expect((await adapter.status()).advertising).toBe(false);
+
+    await presenceTick(adapter, config, NOW);
+
+    expect((await adapter.status()).advertising).toBe(true);
+  });
+
+  it('leaves it stopped when the user has paused being noticed', async () => {
+    const adapter = new FakeBle();
+    await presenceTick(adapter, config, NOW, { discoveryPaused: true });
+    expect((await adapter.status()).advertising).toBe(false);
+  });
+
+  it('is idempotent, because the tick runs on open, on resume and in the background', async () => {
+    const adapter = new FakeBle();
+    await presenceTick(adapter, config, NOW);
+    await presenceTick(adapter, config, NOW);
+    expect((await adapter.status()).advertising).toBe(true);
+  });
+});
+

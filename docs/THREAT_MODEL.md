@@ -218,6 +218,22 @@ Ranked by how much they would worry a reviewer:
 8. **An encounter set's size, rounded to 256, is a coarse activity signal** —
    it distinguishes "a quiet day" from "a very social day" at four levels.
 9. **App presence is detectable over BLE.**
+10. **The platform's own backup is a disclosure channel, and has to be turned
+    off by hand.** Android Auto Backup uploads an app's `SharedPreferences` to
+    Google unless the manifest says otherwise. The BLE module keeps its
+    undrained sighting table there — own EIDs, heard EIDs and 15-minute
+    interval indices — so with the default `allowBackup="true"` the one class
+    of data §7.3 promises never leaves the device was leaving it to a third
+    party. Now `allowBackup="false"` (SPEC §14.1), but the general point stands
+    for every future dependency: a privacy property enforced only in our own
+    code is not enforced, because the platform has defaults of its own.
+    Found in the review recorded as `docs/DECISIONS_LOG.md` 29.
+11. **A device without BLE 5 currently discovers nobody.** The legacy split
+    advertisement advertises correctly but cannot be received (both halves
+    share company id `0xFFFF`, so Android's parser collapses them). The app
+    now reports `legacy_fallback_unverified` rather than claiming discovery
+    works. Whether this is fixable without a format change is the first
+    question of the Phase 9a spike (`docs/BLE_SPIKE.md` §1a, Board item Q10).
 
 ---
 

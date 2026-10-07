@@ -70,7 +70,13 @@ export default function EmailScreen(): ReactNode {
         <TextField
           label="College email address"
           value={value}
-          onChangeText={setValue}
+          // An error describes the text that was submitted. Once it is being corrected the
+          // message is about something no longer on screen, so it goes as soon as the
+          // field changes; `submit` puts it back if the new text is still wrong.
+          onChangeText={(text) => {
+            setValue(text);
+            setError(null);
+          }}
           error={error}
           autoCapitalize="none"
           autoCorrect={false}

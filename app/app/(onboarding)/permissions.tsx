@@ -28,6 +28,7 @@ import {
 } from '@/design/primitives';
 import { space } from '@/design/tokens';
 import { NativeBle } from '@/presence/nativeBle';
+import { runNightlyWork } from '@/presence/schedule';
 
 const ASKS_FOR = [
   'Bluetooth, to notice other phones running Mutual and let them notice yours.',
@@ -60,6 +61,12 @@ export default function PermissionsScreen(): ReactNode {
   };
 
   const finish = (): void => {
+    // Run one pass of the nightly work on the way out. It builds today's EID schedule,
+    // hands it to the radio and starts advertising, so discovery is live from the moment
+    // onboarding ends rather than from whenever the background task first wakes. Failures
+    // are swallowed deliberately: this is the last screen of sign-up, and the next tick
+    // will do the same work.
+    void runNightlyWork().catch(() => undefined);
     router.replace('/(tabs)/today');
   };
 

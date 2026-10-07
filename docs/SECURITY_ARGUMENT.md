@@ -103,8 +103,23 @@ non-matching token, they are not even retained for later analysis.
   (`docs/THREAT_MODEL.md` §3.8).
 - It covers the server's view. Client-side behaviour — that the app does not
   betray the user by uploading early or making a per-card request — is a
-  separate claim, covered by invariant 1, `AC-T2-2` and
-  `app/scripts/check-privacy-invariants.ts`.
+  separate claim, covered by invariant 1, `AC-T2-2`,
+  `app/scripts/check-privacy-invariants.ts` and the two app tests named below.
+- **The client half has been violated once, and the violation is instructive.**
+  The Today screen called `digest.refetch()` after every signal, which put a
+  `GET /v1/digest` in the server's log at the second a one-sided signal was
+  created: two worlds that differ only in whether U signalled V produced
+  different request logs, which is precisely what this claim denies. The server
+  was blameless; the leak was entirely in the app.
+
+  What made it survivable for as long as it did is worth recording.
+  `app/__tests__/query-defaults.test.ts` asserts the *declarative* guard —
+  `staleTime: Infinity`, `refetchOnMount: false` and the rest — and passed
+  throughout, because `refetch()` is imperative and ignores all of it. The
+  lesson is that a configuration test cannot stand in for a behavioural one.
+  `app/__tests__/signal-no-traffic.test.tsx` is the behavioural one: it renders
+  the morning letter, sends, changes and withdraws a signal, and asserts
+  `fetch` was not called. Fixed and logged in `docs/DECISIONS_LOG.md` 29.
 - `epoch_tokens.token` bytes genuinely do differ between worlds during the few
   hours before the batch. The claim is that they are indistinguishable from
   random, not that they are absent.
@@ -296,6 +311,16 @@ same bytes — asserted by
 (256, 512, 768, 1024 entries) mean the operator learns at most a two-bit
 activity level, and nothing finer. Total daily upload is therefore between
 about 12.7 KB and 24.5 KB, once per night.
+
+**A night with nothing in it costs the same 11,792 bytes**, because it is
+uploaded too (SPEC §6.13's "at least 256"). This is the least intuitive line
+in the budget and the one most tempting to optimise away — the app did exactly
+that until the review in `docs/DECISIONS_LOG.md` 29. Skipping an empty night
+makes zero the one count an operator can read exactly, and so hands it a
+reliable record of which nights each named account was near nobody: ill, off
+campus, or alone. The padding rule is already paying 11.5 KB to blur 1 against
+50; refusing to pay it to blur 0 against 1 would give away the most sensitive
+count of all for the sake of the cheapest night.
 
 **Latency.** This is where privacy actually costs the user something, and the
 honest number is the worst case, not the typical one:

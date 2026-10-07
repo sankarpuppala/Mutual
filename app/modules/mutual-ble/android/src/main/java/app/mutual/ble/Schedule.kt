@@ -125,13 +125,19 @@ object Payload {
      * Extracts an EID from received manufacturer data.
      *
      * Returns the 32-byte id for a full payload, the 24-byte head for a legacy
-     * advertisement (the scanner joins it with the scan response), or null when the data
-     * does not start with Mutual's magic and version.
+     * advertisement, or null for anything else -- including a payload of some other length.
+     *
+     * The length check is not cosmetic. Without it a crafted advertisement of any size
+     * carrying Mutual's magic produced a "EID" of that size, and the only thing stopping it
+     * from being counted was a `length !== 32` test on the TypeScript side. A radio parser
+     * should not depend on a later layer to reject what it hands over.
      */
     fun extractEid(data: ByteArray?): ByteArray? {
         if (data == null) return null
         val prefix = filterPrefix()
-        if (data.size < prefix.size + BleConstants.LEGACY_EID_HEAD) return null
+        val full = prefix.size + BleConstants.EID_BYTES
+        val head = prefix.size + BleConstants.LEGACY_EID_HEAD
+        if (data.size != full && data.size != head) return null
         for (i in prefix.indices) if (data[i] != prefix[i]) return null
         return data.copyOfRange(prefix.size, data.size)
     }

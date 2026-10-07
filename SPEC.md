@@ -468,6 +468,12 @@ Presence uploads contain only encounter tokens, with no durations, and are
 deleted at the cutoff. The server never receives a daily key, an EID or a
 sighting time. It never logs or stores client IP addresses (§9).
 
+A night with **no** qualifying encounters is uploaded as well, as 256 dummy
+tokens (§6.13's "at least 256"). Skipping it would make zero the one count the
+server could read exactly, and so would tell it which nights a user was near
+nobody — ill, off campus, or alone. The table above grants the server the size
+rounded up to a multiple of 256; silence is not a size.
+
 ### 7.4 Security claims (each must map to a test or a written argument)
 
 - **C1 — Independence.** Take two worlds that differ only in whether user U
@@ -902,8 +908,22 @@ construction. Real photos come from the server after reveal (§11.2).
 `BLUETOOTH_SCAN` with `usesPermissionFlags="neverForLocation"`,
 `BLUETOOTH_ADVERTISE`, `FOREGROUND_SERVICE`, the foreground-service type
 permission required for a `connectedDevice` foreground service on Android 14+,
-`POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED`, `RECORD_AUDIO`. Location
-permissions are blocked via the Expo config (`android.blockedPermissions`).
+`POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED`, `RECORD_AUDIO`, and
+`BLUETOOTH_CONNECT`. Location permissions are blocked via the Expo config
+(`android.blockedPermissions`).
+
+`BLUETOOTH_CONNECT` is listed only because `BluetoothAdapter.isEnabled()`
+requires it from API 31, and that call is how the app tells a user "Bluetooth is
+off" instead of silently failing to discover anyone. Mutual never connects to a
+device, never pairs, and never reads a device name. The app does not request any
+other permission for a reason it cannot name on the permissions screen.
+
+Android Auto Backup is **off** (`android:allowBackup="false"`). The BLE module
+keeps its undrained sighting table in `SharedPreferences`, so with backup on,
+EIDs and 15-minute interval indices would be uploaded to a third party — which
+§7.3 says the system never produces, and §4 already rules out by saying there is
+no key escrow and no backup.
+
 Verify exact names against current Android documentation for the installed
 target SDK and record them in the Progress log.
 
@@ -1326,6 +1346,7 @@ sim/tests/{test_metrics,test_determinism,test_policies}.py
 sim/results/report.md  sim/results/figures/            (generated)
 app/{package.json,app.json,app.config.ts,tsconfig.json,eslint.config.js,jest.config.js,babel.config.js,metro.config.js}
 app/plugins/withBleNeverForLocation.js                   (local Expo config plugin, §14.1)
+app/src/signals/deploymentClock.ts                      (deployment wall clock, §6.3, §6.11)
 app/app/...                                              (routes listed in §13.2)
 app/src/api/{client,endpoints,types}.ts
 app/src/design/{tokens,typography,motion,theme,primitives,icons}.ts(x)

@@ -83,7 +83,10 @@ export default function CodeScreen(): ReactNode {
         <TextField
           label="Six-digit code"
           value={code}
-          onChangeText={(text) => setCode(text.replace(/\D/g, '').slice(0, 6))}
+          onChangeText={(text) => {
+            setCode(text.replace(/\D/g, '').slice(0, 6));
+            setError(null); // the message is about the old digits (see email.tsx)
+          }}
           error={error}
           keyboardType="number-pad"
           inputMode="numeric"

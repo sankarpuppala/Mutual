@@ -21,6 +21,9 @@ the reason), **Parked** (good idea, not now), **Open** (waiting for an answer).
 | Q6 | Where will the server run for a demo with more than one phone? | Phase 11 |
 | Q8 | In a pilot, who has server (operator) access? They cannot also hold accounts. | Phase 12 |
 | Q9 | On a study campus the server will not create an account without consent, so declining means not using Mutual at all. Is that acceptable to the approving body, or is a non-participating mode needed? | Phase 12 |
+| Q10 | The legacy split advertisement (§14.2, D23) cannot be received: Android collapses the two halves because they share company id `0xFFFF`. Fix the parser, change the format, or drop the fallback and say so? Needs two phones to decide. | Phase 9a (DECISIONS_LOG 29) |
+| Q11 | §6.11 now costs a whole night of crossings when the phone is off through the upload window, because a missed window is not retried. Is that the right trade for the pilot, or should §6.11 allow a late upload? | Phase 12 (DECISIONS_LOG 29) |
+| Q12 | Daily keys live in plaintext SQLite, while SPEC §9's retention row reads as if they were in the keystore. Move them to `expo-secure-store`, or correct §9? Device compromise is out of scope (§7.2), so this is about the spec telling the truth. | Before the report (DECISIONS_LOG 29) |
 
 ### Parked ideas
 | Idea | Why parked | Where |
@@ -1169,3 +1172,188 @@ suite exists to support, and until now it had only been checked under Node.
 Still not done, and still needing a person: the 60 steps of
 `docs/E2E_CHECKLIST.md` (two emulators, and judgement about what each screen
 should feel like), and the two-phone BLE spike.
+
+### 29. The second security review, and what it found — Adopted
+
+An independent review of the whole app layer (`app/src`, `app/app`,
+`app/modules/mutual-ble`, the scripts, the config and the merged manifest), run
+against `CLAUDE.md` §5 and `SPEC.md` §6, §7, §9, §11, §13, §14. It was asked to
+assume nothing was right merely because it had a test.
+
+It found one invariant violation, two bugs that stopped the system working at
+all, and a set of smaller ones. All were applied under the human's standing
+delegation for security fixes (2026-10-05); the ones that are spec questions
+rather than code questions are marked and are on the Board.
+
+**1. Sending a signal told the server you had sent one.** The Today screen
+finished every signal — send, change *and* withdraw — by calling
+`letter.refresh()`, and `refresh()` called `digest.refetch()`. A refetch is
+imperative, so it goes straight past `staleTime: Infinity` and every other
+default that `query-defaults.test.ts` so carefully checks. The result was a
+`GET /v1/digest` in the server's log at the exact second a one-sided signal was
+created. Claim C1 says the two worlds "U holds an unreturned signal for V" and
+"U holds no such signal" must produce identical request logs; telling them apart
+needed nothing but a timestamp.
+
+This is the most serious thing found in the project so far, and it was in the
+one screen the whole protocol exists to protect. It was also almost certainly
+added for an innocent reason: to re-render the "Signal sent" chip. Nothing on
+the server can have changed anyway — the digest is byte-identical until the next
+release (claim C5) — so `refresh()` now bumps a local counter and re-reads
+SQLite.
+
+The lesson is about the shape of the test suite, not about one line.
+`query-defaults.test.ts` checks the *declarative* half of invariant 1 and passed
+throughout. There was no test for the imperative half, which no configuration
+can protect. `signal-no-traffic.test.tsx` is now that test: it renders the
+letter, waits for it to load, then sends, changes and withdraws a signal and
+asserts `fetch` was not called once.
+
+**2. The radio was never switched on.** `NativeBle.start()` had exactly one
+caller in the entire app: the pause switch on the You screen. A new account's
+`discovery_paused` is false, so the switch's first use *pauses* — a user had to
+toggle it twice before anything was ever advertised. Until then nothing
+advertised and nothing scanned, every later stage was correctly empty, and Today
+said "No crossings yesterday" forever. A failure that produces a plausible,
+calm, entirely wrong screen is the worst kind, and this one would have survived
+a pilot: we would have concluded the BLE detection rate was zero.
+
+Now `presenceTick` starts the adapter after handing it a schedule, the
+permissions screen runs one pass of the nightly work on its way out, and
+resuming from pause goes through the same path — which also fixes the radio
+running on compiled-in defaults instead of the server's `ble.*` settings.
+
+**3. The legacy advertisement fallback cannot receive anything.** `SPEC` §14.2's
+fallback puts `magic || version || EID[0:24]` in the advertisement and
+`EID[24:32]` in the scan response, both under company id `0xFFFF`, and says "the
+scanner uses active scanning and joins the two halves". Android parses
+manufacturer-specific data into a map keyed by company id, so the two halves
+collapse onto each other and the scanner never sees a 32-byte id. No encounter
+token is ever produced on a device that falls back — silently, while the UI
+reports that advertising is on.
+
+**Not fixed, deliberately.** Both candidate fixes (parse the raw AD bytes and
+join them, or move the tail into a service-data element) are guesses about merge
+behaviour on hardware this laptop does not have, and writing untested Kotlin
+against a guess is exactly what produced the two module bugs in entry 27. What
+was done instead: `status()` now reports `legacy_fallback_unverified` rather
+than claiming discovery works, and the defect is written into
+`docs/BLE_SPIKE.md` as the **first** thing the two-phone spike must settle. If
+the join cannot be made to work, §14.2 is a spec change, not a code change.
+
+**4. Raw sightings were being uploaded to Google.** The BLE module keeps its
+undrained sighting table in `SharedPreferences`, keyed by own EID, heard EID and
+15-minute interval. The manifest had `android:allowBackup="true"` with
+expo-secure-store's bundled rules, which exclude only `SecureStore` and include
+the whole rest of the `sharedpref` domain. So this device's EIDs and the
+intervals it heard others in were going to Android Auto Backup.
+`SightingStore`'s own comment explains that it stores no timestamps so that a
+compromised device cannot reconstruct a movement trace; the manifest undid that.
+Now `allowBackup: false`, recorded in SPEC §14.1 — and §4 already said there is
+no key escrow and no backup.
+
+**5. A build without an environment variable shipped the dev panel.**
+`app.config.ts` had `env: process.env.EXPO_PUBLIC_MUTUAL_ENV ?? 'dev'`, and
+`isDev()` is what gates clock travel, synthetic crossings and the readout of
+tonight's upload minute — the one value §6.11 says must never be predictable.
+Fail-open is the wrong direction for a privacy invariant. It now defaults to
+`'prod'`, and development sets the variable explicitly.
+
+**6. Three of the ways a signal ends were never wired up.** §6.10 says a signal
+lives until its TTL runs out, or it is withdrawn, or a match arrives for its
+`(peer, intent)`. Withdrawal worked. The others did not, and nor did the TTL's
+own anchor:
+
+- `expiredSignals()` had no caller. Dead rows stayed in the table, so after a
+  week of ordinary use a user could be told "All 20 signals are out" while
+  holding none that would ever be uploaded again.
+- `touchCrossing()` had no caller, so the TTL anchor was written once at
+  creation. A signal to someone crossed every single day still expired seven
+  days after the *first* crossing — the exact opposite of what the TTL is for.
+- Nothing cleared a signal when its match arrived. The slot stayed used, and the
+  same real token was rebuilt and re-uploaded every epoch; per §6.9 the server
+  appends a newly matching token to an existing match as another shared intent,
+  so the number of shared intents both sides saw would have climbed night after
+  night with neither of them doing anything.
+
+All are now wired up, with eight tests in `signal-lifecycle.test.ts`.
+`sent_tokens` is pruned on a 30-day horizon too, which its own docstring had
+described and nothing performed.
+
+**7. Every day and every epoch came from the phone's clock.** §6.11 is explicit:
+"The client uses the server's current epoch from `GET /v1/config`, never its own
+clock", and §6.3 says devices correct their clock by the `server_time` offset.
+`ServerConfig.epoch` and `ServerConfig.server_time` existed in the types and
+were read nowhere. A phone in another timezone addressed its upload to a day the
+server rejects — after the local ledger had already recorded that day as
+claimed, so the epoch was lost rather than retried — drew its random upload
+minute against the wrong wall clock, and computed different interval indices
+from its peer, which is what the §6.13 midnight rule depends on.
+`src/signals/deploymentClock.ts` now derives the deployment's wall time from
+`server_time`, including the skew between the two clocks, and `runNightlyWork`
+addresses uploads to `config.epoch`.
+
+**8. An empty night was not uploaded, which said "I was near nobody".** *(A spec
+question, resolved in favour of the spec.)* `upload.ts` skipped the request when
+a night produced no qualifying encounters, and argued in a comment that this was
+covered by §7.3. It is not: §7.3 grants the server "the size rounded up to a
+multiple of 256", and silence is not a size. §6.13 says the set is padded "to
+the next multiple of 256, **at least 256**", and `paddedSize(0)` returns 256
+precisely so that this case has an answer. With the skip in place, zero was the
+one count the server could read exactly — so it learned which nights a user was
+ill, off campus or alone, the cheapest thing in the system to observe. The code
+now matches the spec, SPEC §7.3 says so explicitly, and the test that asserted
+the old behaviour was rewritten rather than deleted, with the reasoning in it.
+
+**9. The presence upload ignored its window.** §6.11 asks for "a random time
+between 00:05 and 06:00 local on day d+1" and states that the timing "is a
+privacy property, not a convenience". `presence_upload_window` was read into a
+type and never used: the upload went out whenever Android happened to wake the
+background task, which correlates with when the phone is being used. It now
+draws a minute inside the window from the CSPRNG, once per night, persisted in a
+new `presence_plans` table (schema version 2) for the same reason the signal
+minute is persisted.
+
+**A consequence the human should know about:** a night whose window passes
+without the device waking is now *lost* rather than uploaded late, which is what
+the signal path already does. That is the privacy-preserving reading of §6.11,
+and it does mean a phone switched off overnight produces no crossings. If the
+pilot needs the other trade-off, that is a spec change to §6.11, not a bug. On
+the Board.
+
+**10. Nothing checked that the Kotlin constants still matched the spec.**
+`Schedule.kt` restates six values from `constants.json` by hand, because the
+native module cannot load the JSON at build time. A `protocol_version` bump that
+changed `ble.magic_hex` would update the spec, the constants, both
+implementations and the vectors — all of which have tests — and leave Kotlin
+quietly advertising the old format, with every test in the repository still
+passing. `kotlin-constants.test.ts` now reads `Schedule.kt` as text and compares
+all six.
+
+**Smaller ones, all applied.** The media fetch had no timeout, so one hung
+connection stalled the whole morning's sequential prefetch. The scan window was
+skipped after every EID rotation and never opened at all on a device that could
+not advertise — the guard contradicted its own comment. `extractEid` had no
+length check and trusted the TypeScript side to reject what it returned. The
+"preview of how you appear" on the You screen hashed the user id instead of the
+identity key, so it showed a different blob from the one every peer sees.
+`pickAdapter` substituted the fake adapter in release builds, where it would
+report "advertising" on a phone that cannot. The `global.fetch` ESLint guard was
+silently dropped in exactly the files that render peer content. The privacy
+script now also rejects remote URLs, `WebView` and `sendBeacon`, not just
+`fetch`. And two comments asserted things their own code did not do.
+
+**One found by using the app rather than reviewing it.** Typing a bad address,
+pressing "Send me a code", then correcting it left the field red with "That does
+not look like an email address." underneath a perfectly good one. All four
+onboarding forms set the error on submit and cleared it only on the next submit.
+Fixed in all four, with `form-errors.test.tsx`.
+
+**Where it landed.** SPEC §7.3 (the empty-night rule), §14.1
+(`BLUETOOTH_CONNECT` with its reason, and `allowBackup="false"`), §20 (the new
+file). CLAUDE.md §6 had said the privacy script checks hex literals; ESLint does,
+and it now says so. Tests: **272 Python, 206 app (was 174), 29 protocol-ts**.
+
+**Still open, and on the Board:** the legacy-split join (needs two phones); the
+daily keys living in plaintext SQLite while SPEC §9 reads as if they were in the
+keystore; and whether §6.11's window should cost a night when the phone was off.
