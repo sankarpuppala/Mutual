@@ -54,37 +54,33 @@ entries and not one.
 
 Verified: `272 passed`.
 
-### The pre-commit gate is currently broken, and this is the state of it
+### The pre-commit gate works, but only with the shim directory on `PATH`
 
-**The Python pre-commit hooks do not run on this machine.** They shell out to
-bare `python`/`pytest`, and under pre-commit's sanitised environment the venv's
-compiled extensions fail to load (`No module named '_cffi_backend'`) even with
-the allowed interpreter and `PYTHONPATH` in place.
+The hooks shell out to bare `python`, `pytest` and `ruff`. With the venv's own
+interpreter blocked, they find the system Python 3.14 instead, which has none of
+the dependencies.
 
-What was done about it, so the position is clear:
-
-- `%LOCALAPPDATA%\mutual-dev-shim` holds `python`, `pytest`, `ruff`, `alembic`
-  and `uvicorn` shims that route through the allowed interpreter. **Put it first
-  on `PATH`** and those commands work in a normal shell.
-- `.git/hooks/pre-commit` was patched to use the allowed interpreter and to put
-  that shim directory on `PATH`.
-- Even so, the four **Python** hooks still fail. The five **JavaScript** hooks
-  (lint, app tests, typecheck, check:privacy, check:contrast) pass.
-
-**Until the policy is fixed, run the Python side by hand before committing:**
+`%LOCALAPPDATA%\mutual-dev-shim` holds `python`, `pytest`, `ruff`, `alembic` and
+`uvicorn` shims that route through the allowed uv interpreter with the right
+`PYTHONPATH`. **Put it first on `PATH` before committing** and the whole gate
+runs — verified on 2026-10-07, all eleven hooks passing:
 
 ```bash
 export PATH="/c/Users/sanka/AppData/Local/mutual-dev-shim:$PATH"
-pytest packages/protocol_py server sim -q      # expect 272 passed
-ruff check . && ruff format --check .
-git commit --no-verify -m "..."
+git add -A && git commit -F message.txt
 ```
 
-**The proper fix is yours to make, not a workaround to keep.** Ask whoever
-administers this machine to allow the `.venv\Scripts\` directory under the
-Device Guard / WDAC policy. A research project whose whole point is privacy
-should not be committing with its test gate disabled. Delete the shim directory
-once that is done.
+(An earlier version of this file said the four Python hooks fail regardless.
+That was written after a run where the shim directory was not on `PATH`, and it
+was wrong. They pass.)
+
+`.git/hooks/pre-commit` is also patched to use the allowed interpreter, so a
+commit from a shell without the shim still gets most of the way.
+
+**The proper fix is still yours to make.** Ask whoever administers this machine
+to allow the `.venv\Scripts\` directory under the Device Guard / WDAC policy,
+then delete the shim directory. A workaround that has to be remembered is one
+that will eventually be forgotten.
 
 ### What else that policy blocks
 
@@ -130,10 +126,22 @@ cd M:\app\android
 .\gradlew.bat assembleDebug
 ```
 
-`subst` does not survive a reboot; re-run it. After an `expo prebuild`, delete
-`app\android\app\.cxx` and `app\android\app\build\generated\autolinking` before
-rebuilding, or the stale long paths are reused and the build fails in exactly
-the same way it did before.
+`subst` does not survive a reboot; re-run it.
+
+**The stale cache turned out to matter more than the path.** On 2026-10-07 this
+error came back after an `expo prebuild`, and rebuilding through the junction
+did not clear it. What did was deleting the two generated directories first:
+
+```powershell
+Remove-Item -Recurse -Force app\android\app\.cxx, app\android\app\build\generated\autolinking
+```
+
+With those gone the build succeeded in 25 minutes. So when the 260-character
+error appears, delete those two directories before trying anything cleverer —
+and note that the generated `Android-autolinking.cmake` still names the real
+long path whether you build from `M:`, from `C:\mtl`, or from the project
+itself, because the React Native Gradle plugin canonicalises. The short path is
+insurance, not the fix.
 
 The junction is still there and is still convenient for everything that is not
 the C++ build:
