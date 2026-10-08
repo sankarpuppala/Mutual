@@ -69,11 +69,21 @@ def test_prod_refuses_console_email(tmp_path: Path) -> None:
 
 
 def test_no_datetime_now_outside_clock() -> None:
+    """CLAUDE.md §6: server request-handling logic never reads the wall clock directly.
+
+    `demo_seed.py` is deliberately excluded alongside `clock.py` itself: it is an operator
+    script that runs *outside* the server process, over the live HTTP API, and drives
+    `POST /dev/clock` -- which takes an offset from the server's real time. Computing that
+    offset is the one place a real wall-clock read is the point, not a bug; there is no
+    injected clock for a separate process to be injected with. It has no route, so it
+    cannot make a response depend on anything (invariant 12).
+    """
     root = Path(clock_module.__file__).parent
+    excluded = {"clock.py", "demo_seed.py"}
     offenders = [
         p.name
         for p in root.rglob("*.py")
-        if p.name != "clock.py"
+        if p.name not in excluded
         and (
             "datetime.now" in p.read_text(encoding="utf-8")
             or ".utcnow(" in p.read_text(encoding="utf-8")

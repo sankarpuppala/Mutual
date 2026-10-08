@@ -17,6 +17,8 @@ node_modules/
 *.sqlite3
 server/config.yaml
 server/media/
+# session tokens for synthetic demo_seed.py accounts
+server/demo_accounts.json
 .env*
 *.keystore
 *.jks

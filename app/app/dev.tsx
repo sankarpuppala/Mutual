@@ -39,7 +39,7 @@ import { buildSchedule, ensureLookahead } from '@/presence/dailyKeys';
 import { drainInto } from '@/presence/drain';
 import { plannedUploadMinute, runNightlyWork } from '@/presence/schedule';
 import { localDay } from '@/signals/scheduler';
-import { getUserId } from '@/storage/secure';
+import { getUserId, setIdentity, setSessionToken, setUserId } from '@/storage/secure';
 
 interface SelfTestState {
   result: SelfTestResult | null;
@@ -75,6 +75,10 @@ export default function DevScreen(): ReactNode {
   });
   const [offsetHours, setOffsetHours] = useState('24');
   const [peerId, setPeerId] = useState('');
+  const [seedUserId, setSeedUserId] = useState('');
+  const [seedSessionToken, setSeedSessionToken] = useState('');
+  const [seedIdentitySk, setSeedIdentitySk] = useState('');
+  const [seedIdentityPk, setSeedIdentityPk] = useState('');
   const [log, setLog] = useState<string[]>([]);
 
   const say = (line: string): void => setLog((previous) => [line, ...previous].slice(0, 8));
@@ -141,6 +145,23 @@ export default function DevScreen(): ReactNode {
           outcome.presence?.presence.map((p) => `${p.day}:${p.status}`).join(', ') ?? 'none'
         }.`,
       );
+    },
+    loginAsSeeded: async () => {
+      const userId = seedUserId.trim();
+      const sessionToken = seedSessionToken.trim();
+      const sk = seedIdentitySk.trim();
+      const pk = seedIdentityPk.trim();
+      if (!userId || !sessionToken || !sk || !pk) {
+        say('Fill in all four fields from one user in demo_accounts.json.');
+        return;
+      }
+      // The same three writes onboarding's code/basics screens make on success -- this
+      // panel is a shortcut to the end of onboarding, not a different path through it.
+      await setSessionToken(sessionToken);
+      await setIdentity({ sk, pk });
+      await setUserId(userId);
+      say(`Logged in as ${userId}. Reopening at Today…`);
+      router.replace('/(tabs)/today');
     },
   };
 
@@ -253,6 +274,50 @@ export default function DevScreen(): ReactNode {
             onPress={() => void actions.nightly()}
           />
         </Stack>
+      </Card>
+
+      <SectionHeading>Log in as a seeded account</SectionHeading>
+      <Card>
+        <AppText variant="small" tone="muted">
+          For a demo, not a test: this swaps the whole device over to one of
+          `python -m mutual_server.demo_seed`&rsquo;s synthetic students, the same three
+          writes onboarding makes on success, so the Today and Mutuals tabs are populated
+          straight away instead of starting from a blank account. Copy the four fields
+          below from one user in that run&rsquo;s `server/demo_accounts.json`.
+        </AppText>
+        <TextField
+          label="user_id"
+          value={seedUserId}
+          onChangeText={setSeedUserId}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <TextField
+          label="session_token"
+          value={seedSessionToken}
+          onChangeText={setSeedSessionToken}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <TextField
+          label="identity_sk"
+          value={seedIdentitySk}
+          onChangeText={setSeedIdentitySk}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <TextField
+          label="identity_pk"
+          value={seedIdentityPk}
+          onChangeText={setSeedIdentityPk}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <Button
+          label="Log in as this account"
+          kind="ink"
+          onPress={() => void actions.loginAsSeeded()}
+        />
       </Card>
 
       {log.length > 0 ? (
