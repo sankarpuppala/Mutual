@@ -23,10 +23,63 @@ from mutual_server.schemas import DevClockIn, DevCrossingIn, DevSeededUser, DevS
 router = APIRouter(prefix="/dev", tags=["dev"])
 
 _NAMES = ["Meera", "Arjun", "Zoya", "Kabir", "Ishaan", "Tara", "Nila", "Sana", "Vikram", "Dev"]
-_ANSWERS = [
-    ("looking_for", "People to study with before the panic sets in."),
-    ("simple_pleasures", "Filter coffee before an early lab."),
-    ("ask_me_about", "The time I got lost on campus on day one."),
+
+# One distinct, 3-answer persona per name in _NAMES (indices line up), so a seeded campus
+# reads as ten different people rather than one answer repeated on every card. Every prompt
+# in each tuple's first element is a real id from data/prompts.json; PUT /profile would
+# itself require `prompts_required` (3) distinct ids, and these honour that even though the
+# dev seed route writes the Profile row directly and so is not routed through that check.
+_ANSWERS: list[list[tuple[str, str]]] = [
+    [  # Meera
+        ("looking_for", "People to study with before the panic sets in."),
+        ("simple_pleasures", "Filter coffee before an early lab."),
+        ("ask_me_about", "The time I got lost on campus on day one."),
+    ],
+    [  # Arjun
+        ("geek_out", "Ask me about competitive programming and I will not stop."),
+        ("typical_sunday", "Laundry, cricket highlights, then pretending to revise."),
+        ("win_me_over", "Bring snacks to the group project meeting."),
+    ],
+    [  # Zoya
+        ("irrational_fear", "Group projects where nobody responds to messages."),
+        ("shower_thought", "Why do vending machines never have what I actually want."),
+        ("together_we_could", "Start a campus book swap that isn't just textbooks."),
+    ],
+    [  # Kabir
+        ("recently_discovered", "The library's third floor is always empty before 9am."),
+        ("makes_my_week", "A genuinely good question in a lecture that goes nowhere."),
+        ("unpopular_opinion", "Instant noodles are better the next morning, cold."),
+    ],
+    [  # Ishaan
+        ("currently_learning", "How to not procrastinate on the thing I enjoy most."),
+        ("study_ritual", "Same table, same corner, headphones even with no music on."),
+        ("comfort_food", "Whatever my roommate is cooking when I walk in hungry."),
+    ],
+    [  # Tara
+        ("go_to_song", "Something loud enough to drown out the deadline."),
+        ("proud_of", "Finishing a half marathon I did zero training for."),
+        ("green_flag", "Remembers small things you mentioned once in passing."),
+    ],
+    [  # Nila
+        ("looking_for", "Someone to argue with about which café has the better filter coffee."),
+        ("ask_me_about", "The time our lab experiment set off the fire alarm."),
+        ("simple_pleasures", "A seat by the window on the bus back from campus."),
+    ],
+    [  # Sana
+        ("geek_out", "Ask me about the ongoing argument in my head about fonts."),
+        ("win_me_over", "Actually read the thing I recommended you."),
+        ("typical_sunday", "Overambitious grocery list, half of it never gets cooked."),
+    ],
+    [  # Vikram
+        ("irrational_fear", "Running into a professor outside of office hours."),
+        ("together_we_could", "Finally use the rooftop for something other than photos."),
+        ("shower_thought", "Every group chat eventually becomes just memes."),
+    ],
+    [  # Dev
+        ("unpopular_opinion", "The canteen's filter coffee is actually underrated."),
+        ("recently_discovered", "A shortcut between the two blocks nobody else uses."),
+        ("makes_my_week", "Getting a seat in the library on the first try."),
+    ],
 ]
 
 
@@ -66,7 +119,7 @@ def seed(
         db.add(
             Profile(
                 user_id=user_id,
-                prompts=[{"prompt_id": p, "text": t} for p, t in _ANSWERS],
+                prompts=[{"prompt_id": p, "text": t} for p, t in _ANSWERS[n % len(_ANSWERS)]],
                 tags=[],
                 updated_at=now,
             )

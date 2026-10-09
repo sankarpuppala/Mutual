@@ -152,10 +152,10 @@ previous 6 days. No photos. No counts of how often you crossed.
 **J4 — Sending a signal.** Tap "Send a signal" → bottom sheet with the five
 intents (multi-select) and one line: "They'll only know if they signal you
 back — for the same thing." Confirm → gentle haptic → the card shows "Signal
-sent". The Signals tab shows "14 of 20 signals free" as a row of 20 dots, and
+sent". The Signals tab shows "4 of 7 signals free" as a row of 7 dots, and
 each active signal with an expiry ("until Sunday"). A signal can be withdrawn
 any time, and withdrawing frees its slot instantly. No intent has its own
-limit; all five share the 20 signals.
+limit; all five share the 7 signals.
 
 **J5 — A mutual.** The next morning, the Mutuals tab shows the new match with
 the shared intent(s). Depending on the active reveal policy, photos reveal
@@ -191,8 +191,8 @@ outputs for every vector in `packages/protocol-spec/vectors.json`.
 ### 6.2 Constants (`packages/protocol-spec/constants.json`)
 ```json
 {
-  "protocol_version": 1,
-  "signal_set_size": 20,
+  "protocol_version": 2,
+  "signal_set_size": 7,
   "token_bytes": 32,
   "pair_key_bytes": 32,
   "daily_key_bytes": 32,
@@ -458,7 +458,7 @@ sighting, and the server never learns a time (invariant 4).
 |---|---|
 | Verified accounts, each user's campus (college), first names, profile text and media | Plaintext email, date of birth |
 | The day's **crossing graph**: who crossed whom, at day granularity, retained 7 days. Groups that spent time together show up as clusters, and with a public timetable an operator may guess which class a cluster was | GPS location, any place, or client IP addresses |
-| That a user uploaded a signal set (always exactly 20 tokens) | Whom a signal targets, or whether any real signal exists |
+| That a user uploaded a signal set (always exactly `signal_set_size` tokens: 7) | Whom a signal targets, or whether any real signal exists |
 | That a user uploaded an encounter set, and its size rounded up to a multiple of 256 (a coarse activity level) | Daily keys, EIDs, or the time of day of any crossing |
 | Mutual matches (pairs), and how many intents a pair shares | The intent of any signal or match |
 | Messages within matches; message counts | Which digest cards a user opened or played |
@@ -863,7 +863,7 @@ Plain, warm, honest, never pushy. No emoji in system copy. Examples:
 - Today empty: "No crossings yesterday. Mutual notices people you spend a little time near — keep it on during your day."
 - Before release: "Your morning letter arrives at 8."
 - Signal sent: "Signal sent. If they send one back, you'll both know tomorrow morning."
-- Signals full: "All 20 signals are out. Withdraw one to send another."
+- Signals full: "All 7 signals are out. Withdraw one to send another."
 - Withdrawn, before tonight's upload: "Signal withdrawn. Nobody was ever told."
 - Withdrawn, after tonight's upload: "Signal withdrawn. It already left with tonight's set, so it could still match tonight. From tomorrow it's gone."
 - Ended mutual (Mutuals row): "This mutual has ended." No chat, no photos.
@@ -1237,7 +1237,7 @@ exists in the named file, whatever its value.
   - low-order and non-canonical public keys rejected by the validity check;
   - tokens differ when pair, epoch or intent differ (≥ 5 000 tokens, zero
     collisions);
-  - padded set has exactly 20 entries of 32 bytes, contains every real
+  - padded set has exactly 7 entries of 32 bytes, contains every real
     token, and raises on > 20 real tokens;
   - EIDs: 96 distinct valid public keys per daily key;
   - encounter token symmetry: both devices compute the same token;
@@ -1445,14 +1445,14 @@ study/analysis/export.py                                 (GATED: written only af
 | D11 | Whole app 18+ | Removes the risk of minors in a co-presence app with a date intent |
 | D12 | Emails stored only as HMAC | Data minimisation; honest about its limits (§9) |
 | D13 | Matching runs in one nightly batch; matches are delivered at the next release time, to both parties (revised v1.2) | Removes timing correlation between an upload and a notification, and stops one party from detecting a match and erasing it before the other sees it |
-| D14 | 20-signal cap | Bounds the padded set, limits probing ("signal everyone to see who likes me") and discourages volume behaviour |
+| D14 | 7-signal cap (reduced from 20, 2026-10-09) | Bounds the padded set, limits probing ("signal everyone to see who likes me") and discourages volume behaviour. Lowered once Tier 2 was running: 20 free, revocable, undetectable signals a night was a wide enough net to make the cap nearly meaningless as a limit on probing |
 | D15 | Unmatch deletes the conversation (report excerpts kept) | Gives users a clean exit; preserves evidence when it matters |
 | D16 | One account per verified college email | Sybil resistance without collecting ID documents |
 | D24 | One server, many colleges; each campus is a closed partition; new colleges open after a one-time operator approval (§4.1) | The human's choice (2026-10-05): "make it for all colleges, people see only their college". Approval because `.ac.in` and similar suffixes also cover some schools, and age is self-declared |
 | D17 | BLE company id 0xFFFF (SIG test id) | Free and acceptable for a prototype; must change before any public release |
 | D18 | Ranking never uses signal, match or attention data | Impossible by design and must stay identical across reveal policies |
 | D19 | The app's interface matches `docs/design/prototype.html` exactly (§13.9) | Interface quality is the human's top priority; approved 2026-10-05 |
-| D20 | No per-intent limits; all five intents share the 20-signal cap (§6.10) | Considered and withdrawn the same day (2026-10-05): "date one person at a time", and "hold other date signals while a date mutual is active". Signals are free and withdrawable, so there is nothing to protect. Any per-intent limit could only be enforced by the app, and simplicity wins. The hold idea is parked in PLAN.md "Deferred improvements" |
+| D20 | No per-intent limits; all five intents share the 7-signal cap (§6.10) | Considered and withdrawn the same day (2026-10-05): "date one person at a time", and "hold other date signals while a date mutual is active". Signals are free and withdrawable, so there is nothing to protect. Any per-intent limit could only be enforced by the app, and simplicity wins. The hold idea is parked in PLAN.md "Deferred improvements" |
 | D21 | Pair keys bind both account ids; identity keys must be valid and unique (§6.5) | A copied public key could otherwise redirect signals meant for its owner |
 | D22 | The server never logs client IP addresses or user agents (§9) | Campus Wi-Fi addresses map to buildings, which would leak location |
 | D23 | EIDs are 32-byte one-time X25519 public keys, carried by **BLE 5 extended advertising only** (§6.8, §14.2) | Required for keyed encounter tokens (D5). The legacy split-advertisement fallback was withdrawn on 2026-10-07: it cannot be received, because Android collapses two manufacturer-data structures that share a company id. Repairing it would change the bytes on air for the sake of phones older than the Android 12 floor. If the Phase 9a spike shows extended advertising is not delivered under `neverForLocation`, the fallback is the v1.0 server-side resolution with its operator visibility stated honestly — a spec decision for the human (DECISIONS_LOG 30) |

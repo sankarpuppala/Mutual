@@ -26,6 +26,7 @@ from datetime import timedelta
 from typing import Any
 
 from conftest import Account, Harness, auth, login
+from mutual_protocol.constants import SIGNAL_SET_SIZE
 from mutual_protocol.encoding import b64url_encode
 from mutual_protocol.keys import pair_key, public_key
 from mutual_protocol.tokens import interest_token, padded_set
@@ -264,10 +265,11 @@ def test_worlds_a_and_b_are_indistinguishable_and_c_is_not_vacuous(make_harness:
     # --- every account's response bodies are identical (session tokens masked) ---
     assert a.log.bodies == b.log.bodies
 
-    # --- before match_batch_time, every account still holds exactly 20 tokens ---
-    assert a.epoch_token_counts_before_batch == {"U": 20, "V": 20, "W": 20}
-    assert b.epoch_token_counts_before_batch == {"U": 20, "V": 20, "W": 20}
-    assert c.epoch_token_counts_before_batch == {"U": 20, "V": 20, "W": 20}
+    # --- before match_batch_time, every account still holds exactly signal_set_size tokens ---
+    full_set = {"U": SIGNAL_SET_SIZE, "V": SIGNAL_SET_SIZE, "W": SIGNAL_SET_SIZE}
+    assert a.epoch_token_counts_before_batch == full_set
+    assert b.epoch_token_counts_before_batch == full_set
+    assert c.epoch_token_counts_before_batch == full_set
 
     # --- before notify_after, A, B and C all look the same: no match, anywhere ---
     assert (

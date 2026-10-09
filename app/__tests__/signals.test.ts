@@ -145,8 +145,9 @@ describe('the 20-signal cap', () => {
   };
 
   it('matches the protocol constant rather than a local number', () => {
+    // No literal count here on purpose: the whole point is that this is read from
+    // constants.json, not duplicated. signal_set_size is 7 as of protocol_version 2.
     expect(SIGNAL_CAP).toBe(SIGNAL_SET_SIZE);
-    expect(SIGNAL_CAP).toBe(20);
   });
 
   it('counts one slot per (peer, intent)', async () => {

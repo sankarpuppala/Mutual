@@ -72,6 +72,11 @@ class AuthConfig(_Strict):
     otp_ttl_seconds: int = Field(gt=0)
     otp_max_attempts: int = Field(gt=0)
     otp_resend_cooldown_seconds: int = Field(ge=0)
+    # Per-IP, per-hour, enforced by services.rate_limit.RateLimiter (CLAUDE.md §9). The
+    # per-email cooldown above already throttles repeated requests for one address; these
+    # bound how many *different* addresses one source can hit in an hour.
+    otp_request_ip_limit_per_hour: int = Field(gt=0)
+    otp_verify_ip_limit_per_hour: int = Field(gt=0)
     session_ttl_days: int = Field(gt=0)
     min_age_years: int = Field(ge=18)
     identity_key_change_min_days: int = Field(ge=0)

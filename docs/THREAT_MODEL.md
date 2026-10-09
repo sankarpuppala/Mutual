@@ -23,7 +23,7 @@ up tokens that two accounts both uploaded and learns, at day granularity, who
 was near whom. The next morning each student sees yesterday's crossings, with
 no place and no exact time, and can send a private **signal** to any of them
 for one of five intents. Signals never leave the phone individually: each
-evening the phone uploads exactly 20 **interest tokens**, padded with random
+evening the phone uploads exactly 7 **interest tokens**, padded with random
 values, at a random time. The server intersects the sets. A pair that both
 signalled the same intent is told the next morning; nobody else learns
 anything, including the server.
@@ -58,7 +58,7 @@ the one conventional apps lose to completely.
 
 What they get by design: verified accounts and their campus, first names,
 profile text and media, the day's crossing graph (7 days), the fact that a
-user uploaded a signal set of exactly 20 tokens, the fact that a user uploaded
+user uploaded a signal set of exactly 7 tokens, the fact that a user uploaded
 an encounter set whose size is rounded to a multiple of 256, mutual matches
 and how many intents each matched pair shares, and messages inside matches.
 
@@ -66,7 +66,7 @@ What they do not get, and the mechanism:
 
 | They never learn | Because |
 |---|---|
-| Whether any particular signal exists, or whom it targets | An interest token is `BLAKE2b(key = pair key, epoch ‖ intent)`. Without one of the two private keys the token is indistinguishable from random, and the set is padded to exactly 20 with random values and uploaded at a random time, once per epoch (`SPEC.md` §6.7, §6.11) |
+| Whether any particular signal exists, or whom it targets | An interest token is `BLAKE2b(key = pair key, epoch ‖ intent)`. Without one of the two private keys the token is indistinguishable from random, and the set is padded to exactly 7 with random values and uploaded at a random time, once per epoch (`SPEC.md` §6.7, §6.11) |
 | The intent of any signal or match | Intent is an input to the token hash and appears nowhere else — no field, no column, no log line (claim C3) |
 | GPS location, any place, any client IP | Never requested, never sent, never logged. uvicorn runs with `--no-access-log` in every environment (D22) |
 | Daily keys, ephemeral ids, RSSI, or the time of day of a crossing | They are never uploaded. The phone does the derivation and uploads only the final tokens (`SPEC.md` §6.13) |
@@ -88,7 +88,7 @@ specific person is interested in them, or where that person is.
 Defences: there is no API that answers a question about another user before a
 mutual match exists (invariant 10, enforced by `test_route_audit.py`); a
 signal produces no observable effect of any kind unless it is returned; the
-cap of 20 signals per epoch limits mass probing; the digest is next-morning
+cap of 7 signals per epoch limits mass probing; the digest is next-morning
 only, so the app cannot be used to locate anyone; times are coarse and places
 absent; block and report are always available and always return the same
 response whether or not the target exists.

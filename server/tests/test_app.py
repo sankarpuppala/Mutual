@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from conftest import Harness, auth, make_settings, signup
+from mutual_protocol.constants import PROTOCOL_VERSION
 
 from mutual_server import clock as clock_module
 
@@ -11,7 +12,7 @@ from mutual_server import clock as clock_module
 def test_config_route(h: Harness) -> None:
     c = h.client.get("/v1/config").json()
     assert c["epoch"] == "2026-10-05" and c["reveal_policy"] == "M"
-    assert c["campus"] is None and c["protocol_version"] == 1
+    assert c["campus"] is None and c["protocol_version"] == PROTOCOL_VERSION
     assert c["signal_upload_window"] == {"start": "18:00", "end": "23:30"}
     acct = signup(h)
     assert (
@@ -93,9 +94,25 @@ def test_no_datetime_now_outside_clock() -> None:
 
 
 def test_no_client_address_is_read() -> None:
+    """CLAUDE.md invariant 5: the client's IP address is never logged or stored.
+
+    `deps.py` is the one documented exception, added 2026-10-09 alongside the IP rate
+    limiter CLAUDE.md §9 had described since before that but which nothing actually
+    implemented. `check_ip_rate_limit` reads `request.client.host` and feeds it straight
+    into `RateLimiter.hit`, which folds it into a BLAKE2b-keyed counter held only in this
+    process's memory and discarded whole every time the salt rotates (hourly). The address
+    itself is never assigned to a variable that outlives the call, never logged, never
+    written to the database, and never present in any response body -- so invariant 5
+    still holds; what no longer holds is the stronger, simpler guarantee this test used to
+    enforce, that the string "client.host" appears nowhere in the package at all. Allowing
+    it in exactly one file is the deliberate, narrow trade for having the rate limit exist.
+    """
     root = Path(clock_module.__file__).parent
+    excluded = {"deps.py"}
     assert [
-        p.name for p in root.rglob("*.py") if "client.host" in p.read_text(encoding="utf-8")
+        p.name
+        for p in root.rglob("*.py")
+        if p.name not in excluded and "client.host" in p.read_text(encoding="utf-8")
     ] == []
 
 

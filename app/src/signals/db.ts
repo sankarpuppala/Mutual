@@ -19,7 +19,7 @@ import { db } from '@/storage/localDb';
 
 import { addDays } from './ttl';
 
-/** The cap on real signals per epoch: `signal_set_size` from constants.json (20). */
+/** The cap on real signals per epoch: `signal_set_size` from constants.json. */
 export const SIGNAL_CAP = SIGNAL_SET_SIZE;
 
 export interface StoredSignal {

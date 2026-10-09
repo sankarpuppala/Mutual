@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from mutual_protocol import vectors
+from mutual_protocol.constants import PROTOCOL_VERSION
 from mutual_protocol.eid import eid, ephemeral_private_key
 from mutual_protocol.encoding import b64url_decode, b64url_encode
 from mutual_protocol.encounter import encounter_token
@@ -22,7 +23,7 @@ def test_committed_file_equals_fresh_regeneration() -> None:
 def test_at_least_100_cases_and_version() -> None:
     doc = _doc()
     assert vectors.count_cases(doc) >= 100
-    assert doc["protocol_version"] == 1
+    assert doc["protocol_version"] == PROTOCOL_VERSION
 
 
 def test_vectors_reproduce() -> None:

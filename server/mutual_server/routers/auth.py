@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from mutual_server import security
-from mutual_server.deps import AppContext, current_session, get_ctx, get_db
+from mutual_server.deps import AppContext, check_ip_rate_limit, current_session, get_ctx, get_db
 from mutual_server.errors import ApiError
 from mutual_server.models import OtpCode, SessionRow, User
 from mutual_server.schemas import RequestOtpIn, VerifyOtpIn, VerifyOtpOut
@@ -24,8 +24,18 @@ _INVALID_CODE = ApiError(
 
 @router.post("/request-otp", status_code=204)
 def request_otp(
-    body: RequestOtpIn, db: Session = Depends(get_db), ctx: AppContext = Depends(get_ctx)
+    body: RequestOtpIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    ctx: AppContext = Depends(get_ctx),
 ) -> Response:
+    # Bounds how many *different* email addresses one source can request a code for in an
+    # hour (CLAUDE.md §9); the per-email cooldown below already throttles repeats to one
+    # address. Checked first, so a source already over budget never reaches the campus
+    # lookup or the email send.
+    check_ip_rate_limit(
+        request, ctx, "request_otp", ctx.settings.auth.otp_request_ip_limit_per_hour
+    )
     try:
         email, domain = security.normalize_email(body.email)
     except security.InvalidEmail as exc:
@@ -65,8 +75,15 @@ def request_otp(
 
 @router.post("/verify-otp", response_model=VerifyOtpOut)
 def verify_otp(
-    body: VerifyOtpIn, db: Session = Depends(get_db), ctx: AppContext = Depends(get_ctx)
+    body: VerifyOtpIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    ctx: AppContext = Depends(get_ctx),
 ) -> VerifyOtpOut:
+    # Per-code attempts are already capped (otp_max_attempts, below); this bounds how many
+    # *different* codes one source can try across an hour, which a single code's own cap
+    # cannot (CLAUDE.md §9).
+    check_ip_rate_limit(request, ctx, "verify_otp", ctx.settings.auth.otp_verify_ip_limit_per_hour)
     try:
         email, _ = security.normalize_email(body.email)
     except security.InvalidEmail as exc:

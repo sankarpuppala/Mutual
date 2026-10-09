@@ -863,7 +863,7 @@
       "uid_b": "a6781692-7b4f-4efc-aff8-8425da2c90e2"
     }
   ],
-  "protocol_version": 1,
+  "protocol_version": 2,
   "public_key_validity": [
     {
       "public_key": "0000000000000000000000000000000000000000000000000000000000000000",

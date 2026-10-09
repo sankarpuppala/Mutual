@@ -17,6 +17,7 @@ from mutual_server.models import SessionRow, User
 from mutual_server.security import session_hash
 from mutual_server.services.email import EmailSender
 from mutual_server.services.matching import sync_matches
+from mutual_server.services.rate_limit import RateLimiter
 
 
 @dataclass
@@ -25,6 +26,7 @@ class AppContext:
     clock: Clock
     ids: IdFactory
     email: EmailSender
+    rate_limiter: RateLimiter
 
     @property
     def media_dir(self) -> Path:
@@ -85,3 +87,14 @@ def synced_matches(db: Session = Depends(get_db), ctx: AppContext = Depends(get_
     """Finish any due nightly batch and release step before a /matches or /blocks route
     reads or acts on state (SPEC §6.9). Never triggered by the request's own action."""
     sync_matches(db, ctx.clock, ctx.settings, ctx.ids)
+
+
+def check_ip_rate_limit(request: Request, ctx: AppContext, bucket: str, limit: int) -> None:
+    """Raises 429 once this IP has made more than `limit` requests to `bucket` within the
+    current hourly window (CLAUDE.md §9, invariant 5 -- see `services/rate_limit.py` for why
+    this exists and what it deliberately never stores). Called from a route body, the same
+    way `messages.py` checks `ctx.settings.messages.rate_limit_per_minute`, so the limit is
+    read from settings at request time rather than captured into a dependency at import time."""
+    ip = request.client.host if request.client is not None else "unknown"
+    if not ctx.rate_limiter.hit(bucket, ip, limit):
+        raise ApiError(429, "rate_limited", "Too many requests. Try again in a while.")

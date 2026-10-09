@@ -77,14 +77,14 @@ accounts' `user_id` from their dev panels — §4 needs them.
 |---|---|---|---|---|
 | 3.1 | Send a signal from a card, pick two intents | Card shows "Sent · Study, Project" | | |
 | 3.2 | Server log at that moment | **No request at all.** The signal has not left the device | | |
-| 3.3 | Signals tab | Twenty dots, two filled; the peer's name and both intents; "until …" | | |
+| 3.3 | Signals tab | Seven dots, two filled; the peer's name and both intents; "until …" | | |
 | 3.4 | Withdraw it | Slot freed at once; "Signal withdrawn. Nobody was ever told." **No request** | | |
-| 3.5 | Send 20 signals | 21st attempt refused with "All 20 signals are out" | | |
+| 3.5 | Send 7 signals | 8th attempt refused with "All 7 signals are out" | | |
 | 3.6 | At the cap, change one peer's intent | Allowed: the count does not change | | |
-| 3.7 | Dev panel → "Run the nightly work now" inside the upload window | One `PUT /v1/signals/<epoch>` with **exactly 20 tokens**, whatever the real count | | |
+| 3.7 | Dev panel → "Run the nightly work now" inside the upload window | One `PUT /v1/signals/<epoch>` with **exactly 7 tokens**, whatever the real count | | |
 | 3.8 | Run it again immediately | **No second request.** Once per epoch | | |
 | 3.9 | Withdraw a signal after the upload | Copy now says it already left with tonight's set and could still match tonight | | |
-| 3.10 | Send no signals at all on another night, then run the nightly work | **Still exactly 20 tokens uploaded.** This is the request that makes every other night unreadable | | |
+| 3.10 | Send no signals at all on another night, then run the nightly work | **Still exactly 7 tokens uploaded.** This is the request that makes every other night unreadable | | |
 | 3.11 | Travel past `match_batch_time`, then run the nightly work | Nothing uploaded; log says `skip:after_batch_time` | | |
 
 ## 4. A mutual match (journey J4, invariant 12)

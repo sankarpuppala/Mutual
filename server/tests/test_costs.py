@@ -16,6 +16,7 @@ from collections.abc import Callable
 
 import pytest
 from conftest import Harness, auth, make_shared_token, signup
+from mutual_protocol.constants import SIGNAL_SET_SIZE
 from mutual_protocol.encoding import b64url_encode
 from mutual_protocol.keys import pair_key
 from mutual_protocol.tokens import interest_token, padded_set
@@ -137,7 +138,7 @@ def test_print_costs(make_harness: Callable[..., Harness]) -> None:
     print("\nAC-T1-8 measured costs")
     for key, value in costs.items():
         print(f"  {key} = {_fmt(value)}")
-    assert costs["signal_upload_bytes"] > 20 * 43  # 20 tokens, 43 base64url chars each
+    assert costs["signal_upload_bytes"] > SIGNAL_SET_SIZE * 43  # 43 base64url chars/token
     assert (
         costs["presence_upload_bytes_500_sightings"] > costs["presence_upload_bytes_50_sightings"]
     )

@@ -1,6 +1,6 @@
 {
-  "protocol_version": 1,
-  "signal_set_size": 20,
+  "protocol_version": 2,
+  "signal_set_size": 7,
   "token_bytes": 32,
   "pair_key_bytes": 32,
   "daily_key_bytes": 32,

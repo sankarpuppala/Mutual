@@ -1891,3 +1891,68 @@ Tests: **273 Python** (one more: the consent change split a test in two),
   - [ ] `docs/BLE_SPIKE.md` §1a is now history (it was written to settle the
         legacy join, which no longer exists). What the spike still measures is
         whether extended advertising is delivered under `neverForLocation`.
+
+### 2026-10-09 — feedback on the prototype: varied demo data, a lower signal cap, and a real security gap closed
+
+Four items from the human's first look at the running app. Full reasoning in
+`docs/DECISIONS_LOG.md` 31.
+
+**Demo answers varied.** Every seeded student had identical prompt text —
+`routers/dev.py`'s `_ANSWERS` was one shared list. Ten distinct personas now,
+one per seeded name. Re-seeded and confirmed on the device: Zoya's card shows
+her own answer, not Meera's.
+
+**Signal cap: 20 → 7**, propagated the way invariant 8 requires: `constants.json`
+(`signal_set_size`, `protocol_version` 1→2), `vectors.json` regenerated, and
+every prose mention of "20" across SPEC.md, THREAT_MODEL.md,
+SECURITY_ARGUMENT.md (re-measured `signal_upload_bytes`: 334, via
+`test_costs.py`) and E2E_CHECKLIST.md. Four tests in three languages had
+duplicated the literal number instead of deriving it from the constant,
+including `test_leak_two_worlds.py` — all four now read the constant.
+`sim/config.yaml`'s own `K: 20` was deliberately left alone: it already
+produced the committed `sim/results/`, and changing it silently would
+invalidate that output (CLAUDE.md §8 rule 4) — the comment that falsely
+claimed it "mirrors" the protocol constant was corrected instead.
+
+**A real gap closed: IP rate limiting on login.** `CLAUDE.md` §9 has always
+described "rate limits keyed on IP, an in-memory hash with a salt that
+rotates hourly" — nothing implemented it. `/auth/request-otp` had only a
+per-email cooldown, so a source could request codes for unlimited different
+addresses. Built `services/rate_limit.py` (the described hourly-rotating
+BLAKE2b-keyed counter, in-process memory only) and wired it onto both auth
+routes via `deps.check_ip_rate_limit`, config-driven limits
+(`otp_request_ip_limit_per_hour`, `otp_verify_ip_limit_per_hour`), 9 new
+tests. This is the one change that touches invariant 5: the IP is read once,
+transiently, to key an in-memory counter, never logged or stored.
+`test_no_client_address_is_read` — which used to assert the string
+"client.host" appears nowhere in the package — now has a second documented
+exception (`deps.py`, alongside `clock.py`'s), with the reasoning written
+into the test. Flagged per CLAUDE.md §7 for changes touching that test file.
+
+**The question that needed no code change.** "If several people signal one
+person and she responds to only one, do the others get their slot back?"
+There is no accept/reject action anywhere in the app — a recipient never
+learns who signalled her unless she also signals them back for the same
+intent, which is the whole point of the protocol. The unlucky senders' slots
+free up exactly the three ways they already did (withdrawal, TTL, or a real
+match clearing the signal); nothing about what she did with other signals is
+ever visible to them, and nothing refunds a slot early.
+
+Tests: **282 Python** (was 272), **214 app** (unchanged net — two
+hardcoded-20 fixes cancel out), **29 protocol-ts**. Lint, typecheck, ruff and
+check:privacy all clean. Verified on the emulator after a full server
+restart: dev panel reads "Protocol version 2"; logged in as the re-seeded
+Meera; Zoya's own answer shows on her card; the signal sheet reads "7 of 7
+signals free" with seven dots.
+
+- Human review checklist (this entry):
+  - [ ] `docs/design/prototype.html` (the approved visual reference, D19) still
+        shows "20" in its own demo data for the Signals tab — the real app's
+        dot pattern is unaffected (it already renders "N of N" dynamically),
+        only the specific number in the mockup's sample data is now stale.
+        Not changed without asking, per CLAUDE.md §6 ("never improve the
+        design on your own initiative; propose changes instead").
+  - [ ] The two new config values
+        (`otp_request_ip_limit_per_hour: 20`, `otp_verify_ip_limit_per_hour: 30`)
+        are first guesses at a sensible rate, not measured against anything —
+        worth a look once there is real traffic to judge them against.

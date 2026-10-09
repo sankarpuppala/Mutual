@@ -48,8 +48,8 @@ signal at all. Then the following are identical across the two worlds:
 
 Four design rules do the work, and all four are necessary:
 
-1. **Fixed size.** A signal upload is always exactly `signal_set_size` = 20
-   tokens of 32 bytes (`SPEC.md` §6.7). One real signal, twenty real signals
+1. **Fixed size.** A signal upload is always exactly `signal_set_size` = 7
+   tokens of 32 bytes (`SPEC.md` §6.7). One real signal, seven real signals
    and zero real signals produce byte-identical request sizes. The padding is
    drawn from the OS CSPRNG.
 2. **Fixed frequency.** At most one upload per epoch, and it happens whether
@@ -288,7 +288,7 @@ python -m pytest server/tests/test_costs.py -s -k print_costs
 ```
 
 ```measured-costs
-signal_upload_bytes = 932
+signal_upload_bytes = 334
 presence_upload_bytes_50_sightings = 11792
 presence_upload_bytes_500_sightings = 23568
 worst_case_match_latency_hours = 38
@@ -298,10 +298,15 @@ crossing_to_notification_hours = 56
 
 ### Reading these numbers
 
-**Bandwidth.** A signal upload is **932 bytes** of request body, once a day,
-regardless of whether the user signalled nobody or twenty people. That is the
-whole price of hiding one-sided interest: under a kilobyte a day. For
+**Bandwidth.** A signal upload is **334 bytes** of request body, once a day,
+regardless of whether the user signalled nobody or seven people. That is the
+whole price of hiding one-sided interest: a fraction of a kilobyte a day. For
 comparison, a single profile photo is several hundred times larger.
+
+(The cap was 20 until 2026-10-09, when it was lowered to 7 -- see `SPEC.md`
+decision D14. 20 free, revocable, undetectable signals a night was wide
+enough to make the cap nearly meaningless as a limit on probing; the smaller
+set also means less bandwidth, measured here rather than assumed.)
 
 A presence upload is **11,792 bytes** for a quiet day and **23,568 bytes** for
 a very social one. The step between them is not gradual: the set is padded to

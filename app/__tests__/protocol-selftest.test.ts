@@ -3,6 +3,8 @@
  * under jest is not a substitute for running it on a phone -- the dev panel does that --
  * but it catches a broken import path or a mangled vectors.json before a build.
  */
+import { PROTOCOL_VERSION } from '@mutual/protocol';
+
 import { runProtocolSelfTest } from '@/dev/protocolSelfTest';
 
 describe('protocol self-test', () => {
@@ -17,6 +19,6 @@ describe('protocol self-test', () => {
   });
 
   it('knows which protocol version it is testing', () => {
-    expect(runProtocolSelfTest().protocolVersion).toBe(1);
+    expect(runProtocolSelfTest().protocolVersion).toBe(PROTOCOL_VERSION);
   });
 });

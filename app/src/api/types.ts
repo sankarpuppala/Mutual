@@ -137,7 +137,7 @@ export interface DigestResponse {
 
 // ------------------------------------------------------ signals and matches
 
-/** Exactly `signal_set_size` (20) base64url tokens. Never a count, never an intent. */
+/** Exactly `signal_set_size` base64url tokens. Never a count, never an intent. */
 export interface SignalsUpload {
   tokens: string[];
 }

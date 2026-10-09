@@ -1496,3 +1496,121 @@ control. **That is a one-way door**: it cannot be turned back on without
 resetting Windows. Recorded in `docs/RUNNING_LOCALLY.md` with the trade stated,
 because the shim directory already works and the only thing it cannot fix is
 `scipy`, which Tier 3's model needs and which can be run elsewhere for free.
+
+### 31. Version-1 feedback: varied demo answers, the signal cap explained and lowered, and a real missing security check — Adopted
+
+The human tried the prototype and raised four things. In order.
+
+**"Change the answers to something else."** Every synthetic student from
+`demo_seed.py` had the identical three prompt answers — `_ANSWERS` in
+`routers/dev.py` was one shared list, not one per name. Zoya's card showed
+word-for-word the same "I'm looking for" text as Meera's own profile, which is
+what gave it away. Replaced with ten distinct three-answer personas, one per
+name in `_NAMES`, each using real prompt ids from `data/prompts.json`. Verified
+on the device, not just read from the database: logged back in as the
+re-seeded Meera and Zoya's card now reads "Group projects where nobody
+responds to messages" — her own voice, not Meera's.
+
+**"If multiple people signal one person and she accepts one, rejects the
+rest, do the rejected senders get their slot back?"** The honest answer is
+that the question doesn't apply to this design, and it's worth being precise
+about why rather than just saying "no". There is no "accept" or "reject"
+action anywhere in the app, because there is no list of incoming signals to
+act on — a recipient never learns who signalled them unless she *also*
+signals them back for the same intent, which is the entire point of the
+protocol (claim C1: the server, and the other person, provably learn nothing
+about one-sided interest). If five people signal Meera and she signals only
+one of them back, the other four simply have a token sitting in their own
+29n-slot budget that was never going to match anything; nothing about what
+Meera did is visible to them, and nothing frees their slot early. A slot
+frees up only three ways, all already true before this conversation: the
+signal is withdrawn, its TTL runs out (`interest_ttl_days` after the most
+recent crossing), or it resolves into a real match (`resolve.ts`'s
+`clearSignal`, DECISIONS_LOG 29). Confirmed by reading `app/src/signals/`,
+`app/app/match/`, and the server's routers end to end: no "reject" concept
+exists to search for. No code change follows from this, because the current
+behaviour already is what the human asked for ("if yes don't do it").
+
+**Signal cap lowered from 20 to 7, with the full propagation invariant 8
+requires.** `packages/protocol-spec/constants.json`: `signal_set_size`
+20 → 7, `protocol_version` 1 → 2. `vectors.json` regenerated
+(`python -m mutual_protocol.vectors`). Updated everywhere the number was
+written in prose rather than read from the constant: `SPEC.md` (§6.2's shown
+constants block, §7.3's leak table, §9's signals-full copy, §14, D14, D20),
+`docs/THREAT_MODEL.md`, `docs/E2E_CHECKLIST.md` §3, and `docs/SECURITY_ARGUMENT.md`
+— whose `measured-costs` block is asserted against the real code by
+`test_costs.py`, so the new `signal_upload_bytes` (334, was 932) is the
+re-measured value, not a guess, and `test_print_costs`'s sanity floor now
+reads `SIGNAL_SET_SIZE * 43` instead of a second hardcoded `20`.
+
+Four tests across three languages had the same shape — a literal `20` or `1`
+duplicated instead of derived from the constant — and all four broke the
+instant the constant changed, which is exactly what they were for:
+`app/__tests__/signals.test.ts`, `app/__tests__/protocol-selftest.test.ts`,
+`packages/protocol_py/tests/test_vectors.py`, `server/tests/test_app.py`
+(twice), and `server/tests/test_leak_two_worlds.py` — the last one being
+**the most important test in the repository**, which asserted
+`{"U": 20, "V": 20, "W": 20}` and now reads the count from
+`SIGNAL_SET_SIZE`. All five fixed to derive the number rather than restate
+it, so the next change like this one breaks loudly in one place
+(`constants.json`) instead of quietly in several.
+
+`sim/config.yaml`'s `K: 20` was deliberately **not** changed. It already
+produced the committed `sim/results/` figures and report; changing it
+silently would either invalidate that research output or require re-running
+the whole study, neither of which this conversation asked for (CLAUDE.md §8
+rule 4). The comment claiming it "mirrors" `signal_set_size` was corrected
+instead, since that claim is now false and a stale comment is worse than an
+admitted divergence.
+
+**"What about the security check at the login page?"** A real question with
+a real answer: there wasn't one, beyond what already existed. `CLAUDE.md` §9
+has always said "rate limits keyed on IP use an in-memory hash with a salt
+that rotates hourly" — but nothing in the code implemented that sentence.
+`/auth/request-otp` had only the per-email 60-second resend cooldown, which
+throttles repeats to *one* address and does nothing to stop a source from
+requesting codes for as many *different* college addresses as it liked, as
+fast as it liked. `/auth/verify-otp` had its own per-code 5-attempt cap, which
+is a good guess-budget but, again, nothing stopped trying many different
+codes across many different addresses from one source.
+
+Built the thing the spec already claimed existed:
+`services/rate_limit.py`'s `RateLimiter` is a fixed-window counter keyed by
+`BLAKE2b(salt, bucket:ip)` (an approved primitive, invariant 7), held only in
+process memory, reset by rotating the salt every hour rather than by any
+cleanup pass. Wired onto both routes via a new `deps.check_ip_rate_limit`,
+checked before the campus lookup or the email send so a source already over
+budget never reaches either. Two new config values,
+`otp_request_ip_limit_per_hour` (20) and `otp_verify_ip_limit_per_hour` (30),
+in both `config.example.yaml` and this laptop's `config.yaml` — every tunable
+number lives in config, never inline (CLAUDE.md §6).
+
+This is the one change in this entry that touches invariant 5 directly, so it
+gets its own paragraph. The client's IP is read, once, inside
+`check_ip_rate_limit` — never assigned anywhere that outlives the call, never
+logged, never written to the database, never present in any response.
+`test_no_client_address_is_read` used to assert that the literal string
+`"client.host"` appears nowhere in `mutual_server` at all, which was a
+stronger and simpler guarantee than invariant 5 strictly requires, and this
+change narrows it: `deps.py` is now a second documented exception alongside
+`clock.py`'s pre-existing one, with the reasoning written into the test
+itself. Logged here because it is exactly the kind of change the standing
+delegation (2026-10-05) exists for — a security fix to a test that guards a
+privacy invariant — and because CLAUDE.md §7 asks that changes to these two
+test files be flagged with particular care.
+
+New test file `server/tests/test_rate_limit.py` (9 cases): the limiter's unit
+behaviour (window rotation, independent buckets, independent IPs), that
+`request-otp` and `verify-otp` are each limited and recover after the window,
+and that the limit is checked *before* the campus lookup — a source already
+over budget gets 429 even for an address that would otherwise be refused for
+an unrelated reason, so the limiter is not merely a courtesy for requests that
+were going to succeed anyway.
+
+**Numbers.** Tests: 282 Python (was 272), 214 app (was 206, unchanged by this
+entry — the two hardcoded-20 fixes net against each other), 29 protocol-ts.
+Verified live on the emulator after a full server/DB restart (the code changes
+needed a fresh process, not just a fresh account): re-ran `demo_seed.py`,
+confirmed the dev panel's protocol self-test says "Protocol version 2", logged
+in as the newly-seeded Meera, and confirmed "7 of 7 signals free" with seven
+dots on Zoya's signal sheet.

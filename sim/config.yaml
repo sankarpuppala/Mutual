@@ -28,7 +28,12 @@ sbm_otherwise: 0.002           # assumption: strangers rarely cross
 beta_a: 1.0                   # assumption: weight on visual attractiveness in utility
 beta_c: 1.0                   # assumption: weight on compatibility in utility
 tau: 0.5                      # assumption: signalling threshold (utility must clear this to signal)
-K: 20                         # literature-informed: mirrors the real protocol's signal_set_size (constants.json)
+K: 20                         # literature-informed, independent of the app: constants.json's signal_set_size
+                              # was lowered to 7 on 2026-10-09 (SPEC D14); K stays 20 because sim/results/
+                              # was already generated at this value, and changing it would mean either
+                              # re-running the whole study or letting the committed figures drift from the
+                              # config that produced them (CLAUDE.md §8 rule 4). Revisit together if the
+                              # study is re-run.
 display_cap: 40               # literature-informed: mirrors server/config.example.yaml digest.display_cap
 interest_ttl_days: 7          # literature-informed: mirrors server/config.example.yaml signals.interest_ttl_days
 
