@@ -31,9 +31,9 @@ _NAMES = ["Meera", "Arjun", "Zoya", "Kabir", "Ishaan", "Tara", "Nila", "Sana", "
 # dev seed route writes the Profile row directly and so is not routed through that check.
 _ANSWERS: list[list[tuple[str, str]]] = [
     [  # Meera
-        ("looking_for", "People to study with before the panic sets in."),
-        ("simple_pleasures", "Filter coffee before an early lab."),
-        ("ask_me_about", "The time I got lost on campus on day one."),
+        ("proud_of", "Teaching myself guitar from videos, badly, for a whole year."),
+        ("typical_sunday", "A long walk with no destination, then way too much reading."),
+        ("green_flag", "Asks good questions instead of just waiting for their turn to talk."),
     ],
     [  # Arjun
         ("geek_out", "Ask me about competitive programming and I will not stop."),

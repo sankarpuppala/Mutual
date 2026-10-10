@@ -590,10 +590,10 @@ const VIEWS = {
   signals: () => {
     const u = used(), ids = Object.keys(state.signals);
     return '<header class="top"><h1 class="h-title">Signals</h1><p class="lede">A signal becomes a mutual only if they send one back for the same thing. Until then it stays secret.</p></header>'
-      + '<section class="card"><div class="dots" role="img" aria-label="'+u+' of 20 signals in use">'+Array.from({length:20}, (_, k) => '<i class="'+(k < u ? 'used' : '')+'"></i>').join('')+'</div>'
-      + '<p class="count"><strong>'+(20 - u)+' of 20</strong> signals free</p>'
-      + '<p class="upload">'+ic('lock',16)+'<span>Tonight, at a random time between 6 and 11:30 pm, your phone sends all 20 at once. Unused ones are random decoys, so nobody can tell how many are real.</span></p></section>'
-      + (u >= 20 ? '<p class="lede" style="margin-top:16px">All 20 signals are out. Withdraw one to send another.</p>' : '')
+      + '<section class="card"><div class="dots" role="img" aria-label="'+u+' of 7 signals in use">'+Array.from({length:7}, (_, k) => '<i class="'+(k < u ? 'used' : '')+'"></i>').join('')+'</div>'
+      + '<p class="count"><strong>'+(7 - u)+' of 7</strong> signals free</p>'
+      + '<p class="upload">'+ic('lock',16)+'<span>Tonight, at a random time between 6 and 11:30 pm, your phone sends all 7 at once. Unused ones are random decoys, so nobody can tell how many are real.</span></p></section>'
+      + (u >= 7 ? '<p class="lede" style="margin-top:16px">All 7 signals are out. Withdraw one to send another.</p>' : '')
       + '<h2 class="section-h">Active</h2>'
       + (ids.length ? '<ul class="list">'+ids.map(id => '<li class="row">'+avatar(id,40)+'<div class="row-main"><span class="row-title">'+P[id].name+' '+state.signals[id].map(pill).join('')+'</span><span class="row-sub">'+P[id].until+'</span></div><button class="btn btn-ghost btn-sm" data-action="withdraw" data-id="'+id+'" aria-label="Withdraw signal to '+P[id].name+'">Withdraw</button></li>').join('')+'</ul>'
                     : '<p class="lede">No active signals. You can send one from your morning letter.</p>');
@@ -657,7 +657,7 @@ const VIEWS = {
     + '<h2>Mutual can see</h2><ul class="can">'
     + ['Your first name, your year, and the answers, voice notes and photos you add.',
        'Which day you crossed paths with someone. Only the day, and only for 7 days.',
-       'That your phone sent its nightly set of 20 signals. Every set looks the same.',
+       'That your phone sent its nightly set of 7 signals. Every set looks the same.',
        'Your mutuals, and the messages inside them.',
        'Blocks and reports you choose to make.'].map(t => '<li>'+ic('eye',20)+'<span>'+t+'</span></li>').join('')
     + '</ul><h2>Mutual can never see</h2><ul class="never">'
@@ -709,12 +709,12 @@ function signalSheet(){
   const id = state.sheet.id, sel = state.sheet.sel, p = P[id];
   const had = !!state.signals[id];
   const others = used() - (had ? state.signals[id].length : 0);
-  const total = others + sel.size, full = total >= 20;
+  const total = others + sel.size, full = total >= 7;
   return '<div class="handle"></div><h2 class="sheet-title">Signal '+p.name+' for…</h2><p class="sheet-sub">Pick one or more. You can change this any time.</p>'
     + '<div class="ichips" role="group" aria-label="What for">'+INTENTS.map(i => { const on = sel.has(i.id); return '<button class="ichip" data-action="toggle-intent" data-intent="'+i.id+'" aria-pressed="'+on+'"'+(!on && full ? ' disabled' : '')+'>'+ic('check',16,2.2)+i.label+'</button>'; }).join('')+'</div>'
     + '<p class="reassure">They\'ll only know if they signal you back — for the same thing.</p>'
-    + '<div class="meter"><div class="mini-dots" aria-hidden="true">'+Array.from({length:20}, (_, k) => '<i class="'+(k < others ? 'used' : k < total ? 'pending' : '')+'"></i>').join('')+'</div>'
-    + '<p class="small">'+(20 - total)+' of 20 signals free'+(full ? '. All 20 signals are out. Withdraw one to send another.' : '')+'</p></div>'
+    + '<div class="meter"><div class="mini-dots" aria-hidden="true">'+Array.from({length:7}, (_, k) => '<i class="'+(k < others ? 'used' : k < total ? 'pending' : '')+'"></i>').join('')+'</div>'
+    + '<p class="small">'+(7 - total)+' of 7 signals free'+(full ? '. All 7 signals are out. Withdraw one to send another.' : '')+'</p></div>'
     + '<button class="btn btn-signal wide" data-action="confirm-signal"'+(!had && sel.size === 0 ? ' disabled' : '')+'>'+(had ? (sel.size ? 'Update signal' : 'Withdraw signal') : 'Send signal')+'</button>';
 }
 function openSignalSheet(id){ state.sheet = {kind:'signal', id:id, sel:new Set(state.signals[id] || [])}; openSheet(signalSheet(), 'Send a signal'); }

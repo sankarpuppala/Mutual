@@ -1614,3 +1614,34 @@ needed a fresh process, not just a fresh account): re-ran `demo_seed.py`,
 confirmed the dev panel's protocol self-test says "Protocol version 2", logged
 in as the newly-seeded Meera, and confirmed "7 of 7 signals free" with seven
 dots on Zoya's signal sheet.
+
+### 32. Follow-up to entry 31: Meera's own answers hadn't changed, and the design file still said 20 — Adopted
+
+Two corrections from the human, both pointing at the same thing: entry 31 was
+reported done while it wasn't, in two small ways.
+
+**Meera's persona.** The previous pass wrote ten distinct personas into
+`routers/dev.py`'s `_ANSWERS`, but index 0 — Meera, the account the human was
+actually logged into and looking at — still read word-for-word as it had
+before the change. Nine personas were new; the one visible on screen wasn't.
+Rewritten to genuinely different text. The lesson worth keeping: when a task
+says "change X", the account currently being used to verify the change is not
+exempt just because it's first in a list — check it specifically, not just
+the diff's line count.
+
+**The design file.** Entry 31 explicitly left `docs/design/prototype.html`'s
+"20"s alone, citing CLAUDE.md §6 ("never improve the design on your own
+initiative; propose changes instead") and flagging it in PLAN.md's human
+review checklist instead of editing it. The human then asked directly: "also
+change the 20 to 7 in design file." That's exactly the kind of explicit
+ask the rule is written to require before touching this file, so it was made:
+all six signal-count occurrences (Signals tab dots and count, the upload
+description, the all-signals-out message, the privacy explainer's "nightly
+set of N signals" line, and the signal-sending sheet's own dots, count and
+all-out message) now read 7. The unrelated `--signal` CSS colour variable and
+the already-correct, unrelated "7 days" crossing-retention sentence were left
+alone — recognising which "7"s and "20"s in a file are in scope for a given
+change, and which merely share a digit, matters here.
+
+No spec change, no code change outside `routers/dev.py` and the static HTML
+file. Logged per CLAUDE.md §8 rule 8, same session as entry 31.

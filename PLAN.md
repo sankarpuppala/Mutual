@@ -1946,13 +1946,42 @@ Meera; Zoya's own answer shows on her card; the signal sheet reads "7 of 7
 signals free" with seven dots.
 
 - Human review checklist (this entry):
-  - [ ] `docs/design/prototype.html` (the approved visual reference, D19) still
-        shows "20" in its own demo data for the Signals tab — the real app's
-        dot pattern is unaffected (it already renders "N of N" dynamically),
-        only the specific number in the mockup's sample data is now stale.
-        Not changed without asking, per CLAUDE.md §6 ("never improve the
-        design on your own initiative; propose changes instead").
+  - [x] `docs/design/prototype.html`'s "20" was changed to "7" — see the
+        2026-10-09 follow-up entry below.
   - [ ] The two new config values
         (`otp_request_ip_limit_per_hour: 20`, `otp_verify_ip_limit_per_hour: 30`)
         are first guesses at a sensible rate, not measured against anything —
         worth a look once there is real traffic to judge them against.
+
+### 2026-10-09 — follow-up: Meera's own answers were still unchanged, and the design file still said 20
+
+Two corrections to the entry above, both from the same human message.
+
+**Meera's persona wasn't actually varied.** The first pass gave nine of the
+ten seeded names a new persona but left index 0 (Meera — the account actually
+logged into and viewed) textually identical to the pre-change original, which
+is how the "vary the answers" task got reported done while the one profile the
+human was looking at hadn't changed. `routers/dev.py`'s `_ANSWERS[0]` rewritten
+to genuinely new text (guitar / Sunday walks / "asks good questions" green
+flag). Verified with `py_compile` and `ruff check`/`ruff format`.
+
+**`docs/design/prototype.html` still showed "20".** Left alone in the entry
+above only because CLAUDE.md §6 says never to change the approved design
+reference without being asked — the human then asked directly ("change the
+20 to 7 in design file"), which resolves that rule for this one change.
+Updated all six signal-count occurrences: the Signals tab's dot array and "N
+of 7" count, its upload-window sentence ("sends all 7 at once"), its
+all-signals-out message, the privacy explainer's "nightly set of 7 signals",
+and the signal-sending sheet's mini-dots, "N of 7 signals free" and
+all-out message. The unrelated `--signal` CSS colour token (lines 33/43) and
+the separate, already-correct "7 days" crossing-retention line (659) were left
+untouched — neither one is a signal-cap number.
+
+Tests: unchanged from the entry above (no test covers this static HTML file).
+Verified by reading the three edited regions back in full; no syntax markers
+broken (`'`, `+`, template-literal structure all intact).
+
+- Human review checklist (this entry):
+  - [ ] Re-seed demo data (`demo_seed.py`) if you want Meera's new answers
+        live on a running server — the previous seed still has her old text
+        in the database until re-seeded.
