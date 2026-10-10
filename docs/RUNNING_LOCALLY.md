@@ -111,6 +111,28 @@ that will eventually be forgotten.
   mixed-effects model cannot be fitted here. `study/analysis/analyze.py`
   reports it as an environment problem and still prints all eight
   pre-registered tables.
+- **`hermesc.exe`, and therefore every release build** — found on 2026-10-10,
+  the first time a release APK was attempted. `node_modules/hermes-compiler/
+  hermesc/win64-bin/hermesc.exe` is unsigned, so Smart App Control refuses it
+  and `:app:createBundleReleaseJsAndAssets` dies with
+  `finished with non-zero exit value 4551`. Debug builds never hit this,
+  because they load JS from Metro and never compile bytecode — which is why
+  everything worked for months before anyone asked for a release build.
+
+  Confirmed, not guessed: the CodeIntegrity event log
+  (`Microsoft-Windows-CodeIntegrity/Operational`, events 3033/3077) names
+  policy `{0283ac0f-fff1-49ae-ada1-8a933130cad6}`, the Smart App Control
+  policy. The file has no Mark-of-the-Web stream, so `Unblock-File` does
+  nothing, and the package ships no WASM or JS compiler to fall back to.
+
+  There is no per-file exception: Smart App Control has no allowlist, by
+  design. The ways out are the one-way door above, or installing WSL and
+  routing the Linux `hermesc` the same package ships through a path-
+  translating shim. **Do not "fix" this by setting `hermesEnabled=false`** —
+  that switches the app to JSC, and Phase 2 of `PLAN.md` exists to prove the
+  protocol runs under *Hermes* (`packages/protocol-ts`, the in-app
+  self-test). Changing the JS engine to dodge a local machine policy would
+  invalidate that, and is a spec change, not a build fix.
 
 ## PowerShell: two separate problems
 

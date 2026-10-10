@@ -102,6 +102,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           minSdkVersion: 31, // Android 12+: BLE scanning without a location permission (D1)
           compileSdkVersion: 36,
           targetSdkVersion: 36,
+          // SPEC §7's threat table: "Dev runs on localhost HTTP; pilot must use TLS."
+          // Cleartext is permitted by the *debug* manifest overlay only, so a release
+          // build cannot reach an http:// dev server at all -- right for a pilot build,
+          // useless for a local demo one. Gated on the dev flag so a build made without
+          // EXPO_PUBLIC_MUTUAL_ENV=dev is held to TLS, the same way `extra.env` below
+          // fails closed rather than defaulting to the permissive value.
+          usesCleartextTraffic: process.env.EXPO_PUBLIC_MUTUAL_ENV === 'dev',
         },
       },
     ],

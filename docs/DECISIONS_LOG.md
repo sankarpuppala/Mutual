@@ -1683,3 +1683,54 @@ deleting the two throwaway test messages. This cannot occur outside dev mode,
 since no dev clock exists in `MUTUAL_ENV=prod`.
 
 No spec change. Logged per CLAUDE.md §8 rule 8, same session.
+
+### 34. The app icon was never designed, and the first release build hit a wall — Partly adopted
+
+Three things from trying the installed app on a real phone.
+
+**The icon was placeholder art.** `app/assets/icon.png` and its four siblings
+were Expo's unedited scaffold images — the adaptive *background* layer still
+had the template's blueprint guide circles and crop marks baked into the PNG.
+Nothing was ever designed; Phase 8 scaffolded them and no phase replaced them.
+Regenerated all five (launcher, adaptive foreground, adaptive background,
+Android 13+ monochrome, splash) from the mark the project already approved:
+`docs/design/prototype.html`'s `LOGO` constant — the signal circle and the
+mutual circle overlapping, same proportions, same light-theme brand tokens
+(`#B5523F`, `#4F4FC4`) on the app background `#F7F3EE`. This is the same mark
+the Mutuals tab already uses, so it is not a new design decision, just the
+existing one applied where it had been missed. The human asked for this
+directly, which is what CLAUDE.md §6's "propose, never improve on your own
+initiative" requires before touching the approved design.
+
+**A correction worth recording.** When asked whether a build could skip the
+Expo dev-launcher screen, the first answer given was that it would cost the
+dev panel. That was wrong. `isDev()` reads `EXPO_PUBLIC_MUTUAL_ENV`, which is
+independent of `expo-dev-client`; the launcher is debug-build-only. A release
+build opens straight into the app, needs no Metro, *and* keeps the dev panel.
+The human was told before any work was done on the strength of the wrong
+answer.
+
+**A real gap, caught before shipping it.** Cleartext HTTP is permitted only by
+the *debug* manifest overlay (`android:usesCleartextTraffic="true"` in
+`app/android/app/src/debug/AndroidManifest.xml`). A release APK would have
+installed, opened, and failed every single API call against the `http://` dev
+server. `SPEC.md` §7's threat table already draws the right line — "Dev runs
+on localhost HTTP; pilot must use TLS" — so cleartext is now gated on the dev
+flag in `app.config.ts` rather than enabled globally. Verified both
+directions: with `EXPO_PUBLIC_MUTUAL_ENV=dev` the merged manifest carries
+`usesCleartextTraffic="true"`; without it, `expo config` resolves
+`usesCleartextTraffic = false` and `extra.env = prod`, so a pilot build is
+held to TLS exactly as the spec requires. This follows the same fail-closed
+shape `extra.env` already used.
+
+**Still blocked.** The release build cannot be produced on this laptop:
+Smart App Control refuses the unsigned `hermesc.exe`, so the JS never
+compiles to bytecode. Diagnosed to the policy GUID from the CodeIntegrity
+event log and written up in `docs/RUNNING_LOCALLY.md`. Smart App Control has
+no per-file exception, so the remaining routes are a machine-wide change the
+human has to make, not a project change: turn Smart App Control off (a
+one-way door — Windows cannot re-enable it without a reset), or install WSL
+and shim the Linux `hermesc`. The human chose to turn Smart App Control off;
+at the time of writing it still reads enforced, so the release APK is not yet
+built and its merged manifest is **not yet verified**. The icon and the
+cleartext fix are committed regardless, since neither depends on it.

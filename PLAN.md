@@ -2012,3 +2012,45 @@ Tests: 214 app. Lint, typecheck, check:privacy all clean.
         freshly-sent live messages chronologically before the seeded ones
         until real wall-clock time catches up (or you nudge the clock
         forward again via the dev panel / `POST /v1/dev/clock`).
+
+### 2026-10-10 — a real app icon, a cleartext gate, and a release build blocked by machine policy
+
+From trying the installed app on a real phone. Full reasoning in
+`docs/DECISIONS_LOG.md` 34.
+
+**The icon was never designed.** All five assets were Expo's unedited scaffold
+art — the adaptive background layer still carried the template's blueprint
+guide lines. Regenerated from `docs/design/prototype.html`'s own `LOGO` mark
+(the overlapping signal and mutual circles, light-theme brand tokens), which
+is the mark the Mutuals tab already uses, so no new design decision was made.
+
+**Cleartext HTTP is now gated on the dev flag.** It had been enabled only by
+the debug manifest overlay, so a release APK would have opened and then failed
+every API call. `SPEC.md` §7 already says "Dev runs on localhost HTTP; pilot
+must use TLS", so `app.config.ts` now sets `usesCleartextTraffic` from
+`EXPO_PUBLIC_MUTUAL_ENV === 'dev'`. Verified both ways: dev → `true` in the
+merged manifest; no flag → `false` with `extra.env = prod`.
+
+**Release builds are blocked on this laptop.** Smart App Control refuses the
+unsigned `hermesc.exe`, so `:app:createBundleReleaseJsAndAssets` fails with
+exit 4551. Diagnosed to the SAC policy GUID via the CodeIntegrity event log
+and documented in `docs/RUNNING_LOCALLY.md`, including why `hermesEnabled=false`
+is **not** an acceptable workaround (it swaps the JS engine to JSC and
+invalidates what Phase 2 exists to prove).
+
+Tests: 214 app, typecheck, lint and check:privacy clean. The privacy check ran
+against the prebuild manifest; the **merged release manifest is not yet
+verified**, because no release build has completed.
+
+- Human review checklist (this entry):
+  - [ ] Smart App Control is a one-way door. If you turn it off for the
+        release build, that also permanently clears the venv-python, ruff and
+        scipy blocks this file documents — decide it deliberately, not mid-build.
+  - [ ] The release APK bakes `EXPO_PUBLIC_SERVER_URL` in at build time.
+        If the laptop's LAN IP changes, the app cannot reach the server and
+        needs rebuilding — unlike the dev-client build, which re-reads it
+        from Metro.
+  - [ ] `scripts/make_icons.py` lives in the session scratchpad, not the repo,
+        so the icons are currently committed as binaries with no generator
+        beside them. Worth adding to `SPEC.md` §20 and committing if the mark
+        is ever regenerated.
