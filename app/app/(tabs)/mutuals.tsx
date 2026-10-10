@@ -11,8 +11,8 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { router } from 'expo-router';
-import { useEffect, useState, type ReactNode } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState, type ReactNode } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 
 import { getMatches } from '@/api/endpoints';
@@ -53,27 +53,30 @@ export default function MutualsScreen(): ReactNode {
   const [seen, setSeen] = useState<Set<string>>(new Set());
   const [photos, setPhotos] = useState<Record<string, PhotoSource>>({});
 
-  useEffect(() => {
+  // `seenRevealIds()` reads local storage, which the reveal screen writes to when a card is
+  // opened. react-query's `matches.data` does not change just from visiting that screen and
+  // coming back, so this also has to re-run on focus -- otherwise a just-revealed match stays
+  // stuck under "New this morning" until the next 5-minute matches refetch.
+  const load = useCallback(async () => {
     if (!matches.data) return;
-    let cancelled = false;
-    void (async () => {
-      const [result, played] = await Promise.all([resolveMatches(matches.data), seenRevealIds()]);
-      // Photo sources carry the session token, so they are built once rather than per render.
-      const sources: Record<string, PhotoSource> = {};
-      for (const entry of result) {
-        if (!photosAvailable(entry.match) || entry.match.state === 'ended') continue;
-        const source = await matchPhotoSource(entry.match.match_id, 0);
-        if (source) sources[entry.match.match_id] = source;
-      }
-      if (cancelled) return;
-      setResolved(result);
-      setSeen(played);
-      setPhotos(sources);
-    })();
-    return () => {
-      cancelled = true;
-    };
+    const [result, played] = await Promise.all([resolveMatches(matches.data), seenRevealIds()]);
+    // Photo sources carry the session token, so they are built once rather than per render.
+    const sources: Record<string, PhotoSource> = {};
+    for (const entry of result) {
+      if (!photosAvailable(entry.match) || entry.match.state === 'ended') continue;
+      const source = await matchPhotoSource(entry.match.match_id, 0);
+      if (source) sources[entry.match.match_id] = source;
+    }
+    setResolved(result);
+    setSeen(played);
+    setPhotos(sources);
   }, [matches.data]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   // "New this morning": revealed by the server, and this device has not played the reveal.
   const fresh = resolved.filter(
