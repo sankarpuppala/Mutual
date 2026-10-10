@@ -1985,3 +1985,30 @@ broken (`'`, `+`, template-literal structure all intact).
   - [ ] Re-seed demo data (`demo_seed.py`) if you want Meera's new answers
         live on a running server — the previous seed still has her old text
         in the database until re-seeded.
+
+### 2026-10-10 — first real-device bug reports: Mutuals-tab focus bug fixed, a clock artifact explained
+
+The human installed the APK on a real device over Wi-Fi (server and Metro
+bound to the laptop's LAN IP, no new infrastructure) and reported two bugs
+from actual use. Full reasoning in `docs/DECISIONS_LOG.md` 33.
+
+**Fixed:** `mutuals.tsx` kept a just-revealed match under "New this morning"
+with an empty Conversations list, because its seen-state check only re-ran
+when `matches.data` changed, not on returning to the tab. Now uses
+`useFocusEffect`, matching `signals.tsx`'s existing pattern. Verified live.
+
+**Not a bug:** new chat messages sorting above older ones traced to the demo
+seed script's use of dev clock time-travel, whose offset doesn't survive a
+server restart — a fresh real-time message landed earlier than the seed
+conversation's artificially future-dated rows. No code change; resolved for
+this session by advancing the dev clock past the seed timestamps.
+
+Tests: 214 app. Lint, typecheck, check:privacy all clean.
+
+- Human review checklist (this entry):
+  - [ ] If you re-seed demo data again, remember the posted conversation's
+        timestamps depend on whatever dev-clock offset was active *at seed
+        time* — a server restart resets that offset to 0, which can put
+        freshly-sent live messages chronologically before the seeded ones
+        until real wall-clock time catches up (or you nudge the clock
+        forward again via the dev panel / `POST /v1/dev/clock`).

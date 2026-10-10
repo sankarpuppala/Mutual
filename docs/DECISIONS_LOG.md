@@ -1645,3 +1645,41 @@ change, and which merely share a digit, matters here.
 
 No spec change, no code change outside `routers/dev.py` and the static HTML
 file. Logged per CLAUDE.md §8 rule 8, same session as entry 31.
+
+### 33. Two more version-1 reports: a real Mutuals-tab bug, and a demo-only clock artifact — Adopted
+
+After installing the APK and trying it live, the human reported two things:
+messages sorting above older ones in a chat, and a mutual not moving from
+"New this morning" into Conversations after being opened.
+
+**The Conversations bug was real.** `app/app/(tabs)/mutuals.tsx` computed
+which matches had a played reveal (`seenRevealIds()`, written locally by the
+reveal screen) inside a `useEffect` keyed on `matches.data` alone. Tapping
+"See Arjun" correctly recorded the reveal as seen, but returning to the
+Mutuals tab did not change `matches.data`, so the screen kept rendering the
+stale bucket — a mutual stayed under "New this morning", with Conversations
+showing empty, until the next 5-minute background refetch happened to also
+change the query result. Fixed by switching to `useFocusEffect` (the same
+pattern `signals.tsx` already used for exactly this reason), so the seen-state
+check re-runs on every visit to the tab, not just when the match list itself
+changes. Verified live on the emulator: Arjun moved into Conversations
+immediately on returning to the tab.
+
+**The message-order report traced to the demo data, not the code.** Sending
+two real test messages into the seeded Arjun conversation and reading
+`server/mutual.db` directly showed the seeded exchange's `created_at` values
+were about two hours *ahead* of the live server's real clock. The demo seed
+script uses `POST /dev/clock` to jump the dev clock forward while posting its
+canned conversation (so the batch/digest/reveal pipeline treats it as
+"today"), and that offset is in-memory only — it does not survive a server
+restart. A fresh server process (offset reset to 0) then gave a genuinely-sent
+new message a real "now" timestamp that was still earlier than the
+artificially future-dated seed rows, so `ORDER BY created_at ascending`
+correctly put it first. The ordering logic, on both the server and in
+`app/app/match/[id].tsx`, was never wrong; there was nothing to patch.
+Resolved for this session by nudging the dev clock forward
+(`POST /v1/dev/clock {"offset_seconds": 7200}`) past the seed timestamps, then
+deleting the two throwaway test messages. This cannot occur outside dev mode,
+since no dev clock exists in `MUTUAL_ENV=prod`.
+
+No spec change. Logged per CLAUDE.md §8 rule 8, same session.
