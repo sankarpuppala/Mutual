@@ -2054,3 +2054,45 @@ verified**, because no release build has completed.
         so the icons are currently committed as binaries with no generator
         beside them. Worth adding to `SPEC.md` §20 and committing if the mark
         is ever regenerated.
+
+### 2026-10-16 — the release APK, and the IP churn that kept killing it
+
+Continues the 2026-10-10 entry. Full reasoning in `docs/DECISIONS_LOG.md` 35.
+
+**Smart App Control off** (the human's call, a one-way door), which cleared
+`hermesc.exe` and every other blocked binary this project had been working
+around since 2026-10-07. `docs/RUNNING_LOCALLY.md` marks those workarounds as
+historical instead of leaving them reading as current.
+
+**First release APK built** — 85 MB, arm64-only, opens straight into the app
+with no dev-client launcher, and keeps the dev panel (that is gated on
+`EXPO_PUBLIC_MUTUAL_ENV`, not on `expo-dev-client`). It only builds from a
+real short path: the worst-case object path is 294 chars at the project's own
+location and 253 from a `C:\m` worktree, against ninja's hard 260 limit.
+`subst` and `CMAKE_OBJECT_PATH_MAX` both look like fixes and are not; both
+dead ends are now documented.
+
+**The merged release manifest passed `check:privacy` for the first time** —
+no location permission, `BLUETOOTH_SCAN` + `neverForLocation`, no
+`SYSTEM_ALERT_WINDOW`. Every previous run had only seen the prebuild manifest.
+
+**"It's not opening" was the laptop's IP**, which changed four times in six
+days. Fixed properly rather than by rebuilding: the dev panel can now repoint
+the device at any server address, persisted locally, dev builds only.
+
+Tests: 214 app, typecheck, lint, check:privacy clean. One pre-commit run
+failed flakily in jest teardown and passed on retry; not caused by this change
+(no test renders the root layout, so the new startup effect never executes
+under jest) but worth watching.
+
+- Human review checklist (this entry):
+  - [ ] Seven characters of headroom on the release build's longest object
+        path. Adding a dependency with deeper C++ paths will break release
+        builds, and the error will blame ninja rather than the dependency.
+  - [ ] No in-app route to the dev panel on a release build — `mutual://dev`
+        from the browser is the only way in. A visible entry point would
+        change a screen, so it needs your approval, not mine.
+  - [ ] The `C:\m` worktree (and its own `node_modules`) is still on disk and
+        currently serves the APK. `git worktree remove C:\m` when done.
+  - [ ] The APK still ships a stale compiled-in address; set the real one in
+        the dev panel on first run.

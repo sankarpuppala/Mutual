@@ -31,7 +31,16 @@ npm test -w app                                          # 174 tests
 
 ## The Device Guard problem (the important one)
 
-**It is Smart App Control, and it is on.** Checked on 2026-10-07:
+> **Resolved on 2026-10-16: Smart App Control was turned off**, deliberately,
+> to get the first release build through (it blocked `hermesc.exe`; see below).
+> `VerifiedAndReputablePolicyState` now reads **0**, and `.venv\Scripts\python.exe`,
+> `ruff.exe` and `hermesc.exe` all run normally. The shim directory and the
+> `PYTHONPATH` dance below are no longer required — they are kept because the
+> machine cannot be put back the way it was (the switch is one-way), so if this
+> project is ever set up on another Windows laptop with Smart App Control on,
+> everything here applies again from scratch.
+
+**It was Smart App Control, and it was on.** Checked on 2026-10-07:
 
 ```powershell
 (Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy).VerifiedAndReputablePolicyState
@@ -112,6 +121,8 @@ that will eventually be forgotten.
   reports it as an environment problem and still prints all eight
   pre-registered tables.
 - **`hermesc.exe`, and therefore every release build** — found on 2026-10-10,
+  and the reason Smart App Control was switched off on 2026-10-16. The rest of
+  this entry describes the machine as it was before that.
   the first time a release APK was attempted. `node_modules/hermes-compiler/
   hermesc/win64-bin/hermesc.exe` is unsigned, so Smart App Control refuses it
   and `:app:createBundleReleaseJsAndAssets` dies with
@@ -239,6 +250,69 @@ Two AVDs already exist: **`mutual-a`** and **`mutual-b`**. Two are needed from
 
 Drop `-no-window` to watch it on screen.
 
+### Release builds: only from a short path, and only in a worktree
+
+First produced on 2026-10-16, for a phone that should open the app without the
+dev-client launcher. Two things make a release build different from every
+debug build before it, and both cost a day to find.
+
+**It compiles JS to Hermes bytecode**, which debug builds never do (they load
+JS from Metro). That is what hit the blocked `hermesc.exe` above.
+
+**It cannot be built from this project's real path**, because of the
+260-character limit. This is the same limit as the section above but a
+different, worse case: CMake names each object file after its source's
+*absolute* path, and for the autolinked codegen targets that produces a path
+**294 characters long measured relative to the ninja build directory**, which
+is what ninja's `Stat()` actually checks. Measured, not estimated. Two things
+that look like fixes are not:
+
+- **`subst` / junctions do not help.** The React Native Gradle plugin
+  canonicalises them straight back to the long path. Worse, building from
+  `M:` fails *earlier*, in `:react-native-svg:generateCodegenSchemaFromJavaScript`,
+  with `this and base files have different roots` — the codegen CLI resolves
+  through `M:` while the project model resolves through `C:`.
+- **`CMAKE_OBJECT_PATH_MAX` does not help.** Setting it to 240 does reach
+  CMake (it appears in `CMakeCache.txt`), and is simply ignored: the object
+  path shortening it controls is implemented in CMake's *Makefile* generator,
+  and Android's native build uses *Ninja*.
+
+What works is a **real** short directory — a git worktree:
+
+```powershell
+git worktree add C:\m HEAD --detach
+cd C:\m; npm install
+$env:EXPO_PUBLIC_MUTUAL_ENV = "dev"
+$env:EXPO_PUBLIC_SERVER_URL = "http://<laptop-ip>:8000"
+cd C:\m\app; npx expo prebuild --platform android --no-install
+"sdk.dir=C:/Users/sanka/AppData/Local/Android/Sdk" | Set-Content android\local.properties -Encoding ascii
+cd C:\m\app\android
+.\gradlew.bat assembleRelease -PreactNativeArchitectures=arm64-v8a
+```
+
+At `C:\m` that same worst-case path measures **253** — it fits, with **seven
+characters to spare**. That margin is the fragile part: a new dependency with
+deeper C++ paths breaks release builds again, and the error will point at
+ninja rather than at the dependency. `-PreactNativeArchitectures=arm64-v8a`
+builds for a phone only and cuts the native compile roughly fourfold; drop it
+if the APK also has to run on an x86_64 emulator.
+
+Cold build ≈ 15 minutes. A rebuild that only changes JS (a new server address,
+say) reuses the native outputs and takes ≈ 50 seconds, so do **not** re-run
+`expo prebuild` for one — it wipes `android/` and costs the full 15 again.
+
+The APK lands at
+`C:\m\app\android\app\build\outputs\apk\release\app-release.apk` (≈ 85 MB,
+against ≈ 322 MB for debug). It is signed with the same Expo-template debug
+keystore as the debug build, so it installs over it without an uninstall.
+
+**Verify the merged release manifest, not the prebuild one.** This is the
+only build where `npm run check:privacy` can check what actually ships:
+release drops the debug manifest overlay, so `SYSTEM_ALERT_WINDOW` disappears
+and the cleartext permission comes from `app.config.ts` instead. Confirmed on
+the first release build: no location permission, `BLUETOOTH_SCAN` with
+`neverForLocation`, no `SYSTEM_ALERT_WINDOW`.
+
 ### Metro and the server
 
 ```bash
@@ -295,3 +369,29 @@ redirect adds a BOM and corrupts the PNG.
   in debug and **fails on it in release**. See `docs/DECISIONS_LOG.md` 26.
 - **`expo start` says "An update for expo is available".** Ignore it during a
   verification run; upgrading mid-check invalidates what you just measured.
+
+## The laptop's IP moves, and it takes the phone with it
+
+On this campus Wi-Fi the DHCP lease turned over four times in six days —
+`10.217.8.118`, `10.178.241.80`, `10.217.8.226`, `10.214.240.37`, the last two
+minutes apart. Everything that points a phone at this laptop by IP dies each
+time, and the symptom is just "the app doesn't open": the download link 404s,
+or the installed app reaches nothing.
+
+A release APK has `EXPO_PUBLIC_SERVER_URL` compiled in, so historically each
+change meant rebuilding. It does not any more — **the dev panel's "Server
+address" card repoints the device**, stored on the device, surviving restart
+and logout (`app/src/api/client.ts`, dev builds only). Get the current address
+with `ipconfig` and type it in.
+
+Reaching the dev panel on a release build is the awkward part: **there is no
+in-app link to it**. On the emulator it was the dev-client's floating bubble,
+which a release build does not have. Open **`mutual://dev`** from the phone's
+browser instead — the `mutual` scheme is in the release manifest. If a visible
+entry point is ever wanted, it needs a spec change, because every screen is
+supposed to match `docs/design/prototype.html`.
+
+Two other things die the same way and just need restarting: a `uvicorn` left
+running for days can wedge (alive, listening, answering nothing — restart it),
+and anything bound for the phone must be `--host 0.0.0.0`, never the default
+localhost.

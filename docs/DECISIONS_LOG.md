@@ -1734,3 +1734,54 @@ and shim the Linux `hermesc`. The human chose to turn Smart App Control off;
 at the time of writing it still reads enforced, so the release APK is not yet
 built and its merged manifest is **not yet verified**. The icon and the
 cleartext fix are committed regardless, since neither depends on it.
+
+### 35. The release APK exists, and the thing that kept breaking it was the laptop's IP — Adopted
+
+Follow-up to 34, after the human reported the installed app "not opening".
+
+**Smart App Control was turned off** (2026-10-16), the human's decision, taken
+knowing it is a one-way door. That cleared `hermesc.exe` and with it the
+`.venv` python, `ruff` and `scipy` blocks the project had been working around
+since 2026-10-07. `docs/RUNNING_LOCALLY.md` now says so at the top of that
+section rather than leaving a page of workarounds reading as current.
+
+**Release builds need a real short path.** The 260-character limit bites far
+harder here than in a debug build. Measured rather than guessed: CMake names
+each object file after its source's absolute path, and for the autolinked
+codegen targets that is **294 characters relative to the ninja build dir**,
+which is what ninja's `Stat()` checks. Two plausible fixes are not fixes, and
+both are now written down so nobody spends an afternoon on them again —
+`subst`/junctions are canonicalised back by the React Native Gradle plugin
+(and building from `M:` fails earlier still, with "different roots" in
+react-native-svg's codegen), and `CMAKE_OBJECT_PATH_MAX` reaches CMake but is
+ignored, because that shortening lives in CMake's Makefile generator while
+Android builds with Ninja. A git worktree at `C:\m` gives a genuinely short
+path: the same worst case measures 253, which fits with seven characters
+spare. Seven. A dependency with deeper C++ paths breaks release builds again.
+
+**The first merged *release* manifest was finally verifiable**, and is clean:
+no location permission, `BLUETOOTH_SCAN` with `neverForLocation`, and no
+`SYSTEM_ALERT_WINDOW` — the dev-overlay permission that `check:privacy` is
+written to fail on in release. Every earlier run of that check had only ever
+seen the prebuild manifest.
+
+**The actual cause of "not opening" was none of the above.** The laptop's DHCP
+lease turned over four times in six days — `10.217.8.118`, `10.178.241.80`,
+`10.217.8.226`, `10.214.240.37`, the last two minutes apart — so both the
+download link and the address compiled into the APK were dead, and a `uvicorn`
+left up for six days had wedged (listening, answering nothing). Rebuilding
+with the current IP would have fixed it until the next lease, which on this
+network is hours. So the fix is a **dev-panel "Server address" card** that
+repoints the device from the phone, persisted locally, surviving restart and
+logout. Dev-gated in all three places (`loadServerUrlOverride`,
+`overrideServerUrl`, and the panel itself, invariant 11), so a prod build has
+no path to set it. `clearAll()` deliberately spares it: it is not a secret,
+and wiping it on logout would point the device back at the dead compiled-in
+address, which is the exact situation it exists to rescue.
+
+**Known rough edge, not fixed.** There is no in-app way to reach the dev
+panel; on the emulator that was the dev-client's floating bubble, which a
+release build has no equivalent of. `mutual://dev` from the phone's browser
+works, because the scheme is in the release manifest. Adding a visible entry
+point would change a screen, and every screen is supposed to match
+`docs/design/prototype.html` (CLAUDE.md §6), so it is left as a proposal.
