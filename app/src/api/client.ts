@@ -19,7 +19,12 @@
 
 import Constants from 'expo-constants';
 
-import { getSessionToken } from '../storage/secure';
+import {
+  clearServerUrlOverride,
+  getServerUrlOverride,
+  getSessionToken,
+  setServerUrlOverride,
+} from '../storage/secure';
 
 /** Shape of the server's error body (SPEC §11). */
 export interface ApiErrorBody {
@@ -58,11 +63,42 @@ function extra(): Extra {
   return (Constants.expoConfig?.extra ?? {}) as Extra;
 }
 
-/** The server base URL, from app.config.ts (`EXPO_PUBLIC_SERVER_URL` overrides it). */
+/**
+ * A dev-panel override of the compiled-in address, held in memory so `baseUrl()` can stay
+ * synchronous. `loadServerUrlOverride()` fills it at startup; the dev panel sets it.
+ */
+let serverUrlOverride: string | null = null;
+
+/** The server base URL: the dev override if one is set, else app.config.ts. */
 export function baseUrl(): string {
-  const url = extra().serverBaseUrl;
+  const url = serverUrlOverride ?? extra().serverBaseUrl;
   if (!url) throw new Error('serverBaseUrl is not configured; see app.config.ts');
   return url.replace(/\/+$/, '');
+}
+
+/**
+ * Reads the stored override into memory. Called once at startup, before anything fetches.
+ *
+ * Ignored outside a dev build: the override is a development affordance for sideloaded
+ * builds whose compiled-in address has gone stale, and a prod build must always talk to
+ * the address it shipped with.
+ */
+export async function loadServerUrlOverride(): Promise<void> {
+  if (!isDev()) return;
+  serverUrlOverride = await getServerUrlOverride();
+}
+
+/** Points this device at `url`, or back at the compiled-in address when given null. */
+export async function overrideServerUrl(url: string | null): Promise<void> {
+  if (!isDev()) return;
+  if (url === null) {
+    serverUrlOverride = null;
+    await clearServerUrlOverride();
+    return;
+  }
+  const trimmed = url.trim().replace(/\/+$/, '');
+  serverUrlOverride = trimmed;
+  await setServerUrlOverride(trimmed);
 }
 
 /** True when the app is running against a dev server (enables the dev panel, SPEC §13.2). */

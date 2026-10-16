@@ -26,6 +26,7 @@ const SESSION_TOKEN = 'mutual.session_token';
 const IDENTITY_SK = 'mutual.identity_sk';
 const IDENTITY_PK = 'mutual.identity_pk';
 const USER_ID = 'mutual.user_id';
+const SERVER_URL_OVERRIDE = 'mutual.dev_server_url';
 
 /** expo-secure-store is string-only, so byte keys are stored base64url-encoded. */
 async function getString(key: string): Promise<string | null> {
@@ -74,8 +75,34 @@ export async function setUserId(userId: string): Promise<void> {
 }
 
 /**
+ * The dev server address, when this device has been pointed somewhere other than the one
+ * compiled in. Not a secret -- it lives here only because SecureStore is the app's one
+ * string store, and `mutual.db` is wiped on logout while this needs to outlive that.
+ *
+ * It exists because a sideloaded build bakes `EXPO_PUBLIC_SERVER_URL` in at build time,
+ * and a laptop on DHCP changes address every day or two -- which bricks the build until
+ * someone recompiles it. `client.ts` reads this first; the dev panel writes it. Only the
+ * dev panel offers it, and `isDev()` gates that, so a prod build has no way to set it.
+ */
+export async function getServerUrlOverride(): Promise<string | null> {
+  return getString(SERVER_URL_OVERRIDE);
+}
+
+export async function setServerUrlOverride(url: string): Promise<void> {
+  await setString(SERVER_URL_OVERRIDE, url);
+}
+
+export async function clearServerUrlOverride(): Promise<void> {
+  await SecureStore.deleteItemAsync(SERVER_URL_OVERRIDE);
+}
+
+/**
  * Wipes every secret. Used on logout and on account deletion -- after this the device
  * cannot read any token it previously built, which is the point.
+ *
+ * The server override is deliberately left alone: it is not a secret, and wiping it on
+ * logout would point the device back at a dead compiled-in address, which is exactly the
+ * situation it exists to rescue.
  */
 export async function clearAll(): Promise<void> {
   await Promise.all(

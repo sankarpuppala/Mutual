@@ -22,6 +22,7 @@ import { useEffect, useMemo, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { loadServerUrlOverride } from '@/api/client';
 import { ThemeProvider, useTheme } from '@/design/theme';
 import { useAppFonts } from '@/design/typography';
 import { registerNightlyTask } from '@/presence/schedule';
@@ -91,6 +92,13 @@ export default function RootLayout(): ReactNode {
   // runs whenever the app is opened before the cutoff.
   useEffect(() => {
     void registerNightlyTask().catch(() => undefined);
+  }, []);
+
+  // Dev builds only, and a no-op unless the dev panel has pointed this device somewhere
+  // else. Runs before the first screen renders, so no request can go to the stale
+  // compiled-in address first.
+  useEffect(() => {
+    void loadServerUrlOverride().catch(() => undefined);
   }, []);
 
   return (

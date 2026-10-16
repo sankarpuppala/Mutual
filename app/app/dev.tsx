@@ -17,7 +17,7 @@ import { router } from 'expo-router';
 import { useCallback, useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { isDev } from '@/api/client';
+import { baseUrl, isDev, overrideServerUrl } from '@/api/client';
 import { dev, getConfig } from '@/api/endpoints';
 import { runProtocolSelfTest, type SelfTestResult } from '@/dev/protocolSelfTest';
 import { Icon } from '@/design/icons';
@@ -74,6 +74,7 @@ export default function DevScreen(): ReactNode {
     enabled: isDev(),
   });
   const [offsetHours, setOffsetHours] = useState('24');
+  const [serverUrl, setServerUrl] = useState(() => (isDev() ? baseUrl() : ''));
   const [peerId, setPeerId] = useState('');
   const [seedUserId, setSeedUserId] = useState('');
   const [seedSessionToken, setSeedSessionToken] = useState('');
@@ -145,6 +146,22 @@ export default function DevScreen(): ReactNode {
           outcome.presence?.presence.map((p) => `${p.day}:${p.status}`).join(', ') ?? 'none'
         }.`,
       );
+    },
+    pointAtServer: async () => {
+      const url = serverUrl.trim();
+      if (!/^https?:\/\/\S+$/.test(url)) {
+        say('Needs a full address, e.g. http://10.0.0.5:8000.');
+        return;
+      }
+      await overrideServerUrl(url);
+      await config.refetch();
+      say(`Now talking to ${url}.`);
+    },
+    useBuiltInServer: async () => {
+      await overrideServerUrl(null);
+      setServerUrl(baseUrl());
+      await config.refetch();
+      say(`Back to the compiled-in address, ${baseUrl()}.`);
     },
     loginAsSeeded: async () => {
       const userId = seedUserId.trim();
@@ -230,6 +247,33 @@ export default function DevScreen(): ReactNode {
             ? 'Tonight’s upload minute has not been drawn yet. Run the nightly work once.'
             : `Tonight’s upload minute: ${formatMinute(planned)} (dev only — this is deliberately unknowable in a real build).`}
         </AppText>
+      </Card>
+
+      <SectionHeading>Server address</SectionHeading>
+      <Card>
+        <AppText variant="small" tone="muted">
+          A sideloaded build has its server address compiled in, and a laptop on DHCP
+          changes address every day or two -- which otherwise means rebuilding the APK
+          just to find it again. Point this device somewhere else here instead. Stored on
+          the device, survives logout, dev builds only.
+        </AppText>
+        <TextField
+          label="Base URL"
+          value={serverUrl}
+          onChangeText={setServerUrl}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+          hint="For example http://10.0.0.5:8000 -- no trailing /v1."
+        />
+        <Stack gap={space.sm}>
+          <Button label="Use this address" kind="ink" onPress={() => void actions.pointAtServer()} />
+          <Button
+            label="Back to the built-in address"
+            kind="ghost"
+            onPress={() => void actions.useBuiltInServer()}
+          />
+        </Stack>
       </Card>
 
       <SectionHeading>Clock travel</SectionHeading>
