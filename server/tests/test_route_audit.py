@@ -62,6 +62,7 @@ def test_dev_routes_absent_outside_dev(h: Harness) -> None:
         ("/v1/dev/clock", "POST"),
         ("/v1/dev/seed", "POST"),
         ("/v1/dev/crossing", "POST"),
+        ("/v1/dev/demo-accounts", "GET"),
     ):
         r = h.client.request(method, path, json={})
         assert r.status_code == 404

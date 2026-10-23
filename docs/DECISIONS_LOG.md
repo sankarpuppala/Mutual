@@ -18,7 +18,9 @@ the reason), **Parked** (good idea, not now), **Open** (waiting for an answer).
 |---|---|---|
 | Q3 | Do you have two Android 12+ phones for the Bluetooth test? | Phase 9 — **answered 2026-10-07: yes, but it is the last thing to be done** |
 | Q4 | Which ethics body approves research with students at your institution, and what is its timeline? **Only you can answer this**: it names a real committee, and invariant 9 turns on `study/APPROVAL.md` recording its actual reference. Nothing in this repository may stand in for it. | Phase 12 |
-| Q6 | Where will the server run for a demo with more than one phone? | Phase 11 |
+| Q6 | Where will the server run for a demo with more than one phone? **Partly answered 2026-10-23:** `docs/DEPLOYMENT.md` gives two free options (an Oracle Always Free VM with DuckDNS and Caddy, or the laptop with a `cloudflared` quick tunnel). Which one is yours to pick, and only you can create the accounts. | Before a multi-phone pilot |
+| Q13 | The report sheet says "A moderator reads every report." With campus moderators (entry 34), that moderator may be the college's own safety officer. Should the copy say so, for example "A moderator reads every report: the Mutual team, or the safety contact your college named"? It is approved screen copy, so not changed without you. **Claude recommends yes.** | Before a partner college gets a moderator login |
+| Q14 | How should an open campus be **closed**: refuse new sign-ins only, or also end existing accounts, and with how much notice? No close action exists yet (`docs/COLLEGE_ONBOARDING.md` §4). | Before a second college opens |
 
 ### Resolved since 2026-10-07
 | # | Question | How it was settled |
@@ -1683,3 +1685,69 @@ deleting the two throwaway test messages. This cannot occur outside dev mode,
 since no dev clock exists in `MUTUAL_ENV=prod`.
 
 No spec change. Logged per CLAUDE.md §8 rule 8, same session.
+
+### 34. "Fix everything, add college access, admin controls, test accounts, deploy it" — Adopted (SPEC v1.5, D25)
+
+- **What came up (2026-10-23):** the human asked Claude to go through the whole project,
+  fix what was wrong, make it deployable, add official college access ("think how to
+  implement it in real life"), admin controls and test accounts, improve where useful
+  without making anything worse, and finish "without looking back". That is standing
+  approval for this scope in one session, outside the usual one-phase-per-session rule
+  (CLAUDE.md §8 rule 2). The privacy invariants were kept as they are: none of the work
+  needed to bend one.
+- **State found:** every suite green (282 Python, 214 app, 29 protocol-ts). One cold first
+  run of `npm run verify` showed 2 app failures that 8 further runs, including one with
+  the Jest cache cleared, did not reproduce. Recorded rather than "fixed".
+- **College access, in the software (SPEC §4.2):** officials apply at `/colleges` and
+  prove an address at the college's domain with an emailed code. Owners review and open
+  the campus as a **partner** from the console. Nothing opens automatically (D24 kept).
+  This route also lets a college with a non-academic domain join.
+  *Decision for the human to know about:* the applicant's **work email is stored in
+  plaintext** so the operator can reply. Invariant 5 is about students' identity, which is
+  untouched. Applications are deleted after 24 h if never verified, and 180 days after a
+  decision.
+- **College access, in real life:** `docs/COLLEGE_ONBOARDING.md`: who to ask (the Dean of
+  Student Affairs, with the supervisor), what to agree (a safety contact, sender
+  allow-listing), the DPDP Act question for the institution's legal or ethics office,
+  launching densely because of cold start, and an email template.
+- **Admin controls (SPEC §11.3):** a web console at `/admin`. Owners: overview counts,
+  colleges, applications, reports, user suspension and lifting, operators, audit log.
+  **Campus moderators** see only their own college. Security: scrypt passwords, a
+  `SameSite=Strict` `HttpOnly` cookie, CSRF tokens, a per-IP sign-in limit, CSP. No IP is
+  stored. No path takes a user id, so `test_route_audit.py` still passes unchanged in
+  substance.
+  - *Found by an existing test:* the first draft read the client IP in the web modules.
+    `test_no_client_address_is_read` caught it, and the read now goes through
+    `deps.within_ip_rate_limit`, so `deps.py` stays the only place.
+  - *Two new privacy-relevant facts, both raised as Board questions rather than decided:*
+    a moderator is college staff reading report excerpts (**Q13**), and no campus can be
+    closed yet (**Q14**).
+- **Test accounts:** `demo_seed` already made synthetic students, but using one meant
+  pasting four fields. New dev-only route `GET /v1/dev/demo-accounts` (added to the
+  route-audit absence check) and one-tap name buttons in the dev panel. Dev builds get a
+  *Try a demo account* link on Welcome and a *Dev panel* row in You. Production builds
+  render neither, so the approved design is unchanged there. `demo_seed` also creates an
+  `admin` owner and prints its password once.
+- **Deployment:** `server/deploy/` (Dockerfile, a cross-platform Python `start.py`, Compose
+  with Caddy for free HTTPS, a production config, an env template), `app/eas.json`
+  (release profiles must be `prod` and `https`, enforced by a test), and
+  `docs/DEPLOYMENT.md`. The image was built and run in prod mode: migrations applied,
+  `/healthz` ok, `/v1/dev/*` 404, no request lines in the log, operator CLI works in the
+  container. **Not done, and only the human can do it:** create the hosting, DNS and SMTP
+  accounts. The real deployment is therefore not live.
+  - *Found while building:* FastAPI's pinned version depends on `opentelemetry-api`. It is
+    a no-op facade, and no SDK or exporter is installed. New
+    `test_no_telemetry_sdk_installed`, and `OTEL_SDK_DISABLED=true` in the image
+    (invariant 6).
+- **Fixes:** the login email always said "expires in 10 minutes" whatever
+  `otp_ttl_seconds` said. The app's "college not open" message claimed a college opens
+  "once someone is set up as its operator", which was never true; it now names the
+  `/colleges` route. A failed SMTP send on `/colleges/apply` now shows a message instead
+  of a 500, and leaves no row behind. New `test_migrations.py` checks
+  `alembic upgrade head` equals `models.py`.
+- **Not changed on purpose:** approved screen copy and visuals (Q13 instead), the
+  protocol (no byte changed, `protocol_version` stays 2), the study gate, and
+  `sim/config.yaml`.
+- **Numbers:** 315 Python (was 282), 217 app (was 214), 29 protocol-ts. Ruff, ESLint,
+  `tsc`, `check:privacy` and `check:contrast` all clean.
+

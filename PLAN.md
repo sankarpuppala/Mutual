@@ -2012,3 +2012,37 @@ Tests: 214 app. Lint, typecheck, check:privacy all clean.
         freshly-sent live messages chronologically before the seeded ones
         until real wall-clock time catches up (or you nudge the clock
         forward again via the dev panel / `POST /v1/dev/clock`).
+
+### 2026-10-23 — college access, an operator console, one-tap test accounts, a deployment kit
+
+The human asked for the whole project to be finished in one pass: fix what is wrong, add
+official college access and how to do it in real life, admin controls, test accounts,
+and deployment. Full reasoning in `docs/DECISIONS_LOG.md` 34. SPEC is now **v1.5** (§4.2,
+§11.3, §12, §9, §17, §18, §20, D25). No protocol byte changed.
+
+**New:** `/colleges` (official applications, domain-proven by emailed code, operator
+approval opens a *partner* campus); `/admin` (owners and campus moderators: overview,
+reports, users, colleges, applications, operators, audit log); migration `0005`;
+`operators` CLI commands; `GET /v1/dev/demo-accounts` and one-tap demo login in the dev
+panel, reachable from Welcome and You in dev builds only; `server/deploy/` (Dockerfile,
+`start.py`, Compose + Caddy, prod config); `app/eas.json`; `docs/DEPLOYMENT.md`,
+`docs/COLLEGE_ONBOARDING.md`; THREAT_MODEL §3.7a and residual risk 7.
+
+**Verified:** the production image built and ran in prod mode (migrations, `/healthz`,
+dev routes 404, no request log, operator CLI). Every console page was screenshotted in
+Chromium in light, dark and at 390 px, with no horizontal scroll.
+
+**Tests:** 315 Python (+33: `test_admin_web`, `test_colleges`, `test_email`,
+`test_migrations`, plus app and route-audit additions), 217 app (+3), 29 protocol-ts. All
+lint, type and privacy checks are clean. `test_route_audit.py` gained one assertion (the new
+dev route is absent outside dev). Nothing in it was loosened.
+
+- Human review checklist (this entry):
+  - [ ] **Q13**: should the report sheet say a college safety officer may read reports?
+  - [ ] **Q14**: what closing a campus should mean.
+  - [ ] **Q6**: pick a host, then create the DuckDNS/Oracle (or tunnel) and SMTP accounts.
+        Only you can. Then follow `docs/DEPLOYMENT.md` §2.
+  - [ ] Confirm storing a college applicant's work email in plaintext (SPEC §4.2) is
+        acceptable.
+  - [ ] Look at `/admin` and `/colleges` yourself. They are new surfaces with no
+        prototype to match. They reuse the app's tokens, Fraunces-style headings and cards.

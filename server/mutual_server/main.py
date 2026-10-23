@@ -14,6 +14,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
+from fastapi.responses import RedirectResponse
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -42,6 +43,8 @@ from mutual_server.services.email import EmailSender, make_sender
 from mutual_server.services.matching import sync_matches
 from mutual_server.services.rate_limit import RateLimiter
 from mutual_server.services.retention import run_retention
+from mutual_server.web import admin as admin_web
+from mutual_server.web import colleges as colleges_web
 
 _RETENTION_INTERVAL_SECONDS = 3600  # CLAUDE.md §6 / SPEC.md §9: "runs at startup and every hour"
 
@@ -83,7 +86,7 @@ def create_app(
         settings=settings,
         clock=resolved_clock,
         ids=ids or UuidIds(),
-        email=email or make_sender(settings.email),
+        email=email or make_sender(settings),
         rate_limiter=RateLimiter(clock=resolved_clock),
     )
     engine = engine or make_engine(settings.database_url)
@@ -127,4 +130,18 @@ def create_app(
     if settings.env == "dev":
         v1.include_router(dev.router)  # never mounted outside dev (invariant 11)
     app.include_router(v1)
+
+    # Server-rendered pages, outside /v1: the public college application form (SPEC §4.2)
+    # and the operator console (SPEC §11.3). Neither is used by the app.
+    app.include_router(colleges_web.router)
+    admin_web.install(app)
+
+    @app.get("/", include_in_schema=False)
+    def _root() -> RedirectResponse:
+        return RedirectResponse("/colleges", status_code=307)
+
+    @app.get("/healthz", include_in_schema=False)
+    def _health() -> dict[str, str]:
+        return {"status": "ok"}
+
     return app

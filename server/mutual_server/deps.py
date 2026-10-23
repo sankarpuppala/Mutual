@@ -95,6 +95,13 @@ def check_ip_rate_limit(request: Request, ctx: AppContext, bucket: str, limit: i
     this exists and what it deliberately never stores). Called from a route body, the same
     way `messages.py` checks `ctx.settings.messages.rate_limit_per_minute`, so the limit is
     read from settings at request time rather than captured into a dependency at import time."""
-    ip = request.client.host if request.client is not None else "unknown"
-    if not ctx.rate_limiter.hit(bucket, ip, limit):
+    if not within_ip_rate_limit(request, ctx, bucket, limit):
         raise ApiError(429, "rate_limited", "Too many requests. Try again in a while.")
+
+
+def within_ip_rate_limit(request: Request, ctx: AppContext, bucket: str, limit: int) -> bool:
+    """The same hourly per-IP counter, returning False instead of raising -- for the HTML
+    pages (/admin, /colleges), which answer with a page rather than a JSON error. The one
+    place outside clock.py that reads the client address (test_no_client_address_is_read)."""
+    ip = request.client.host if request.client is not None else "unknown"
+    return ctx.rate_limiter.hit(bucket, ip, limit)

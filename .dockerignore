@@ -1,0 +1,17 @@
+# Only packages/ and server/ go into the server image (server/deploy/Dockerfile).
+**/.venv
+**/node_modules
+**/__pycache__
+**/*.db
+**/.pytest_cache
+**/.ruff_cache
+.git
+app
+sim
+docs
+study
+server/media
+server/config.yaml
+server/demo_accounts.json
+server/deploy/.env
+server/deploy/config.yaml

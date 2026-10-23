@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from mutual_server.clock import Clock
+from mutual_server.config import DOMAIN_PATTERN as DOMAIN_RE
 from mutual_server.config import Settings
 from mutual_server.ids import IdFactory
 from mutual_server.models import Campus
@@ -90,8 +91,20 @@ def resolve(
     return Resolution("pending", row)
 
 
-def approve(db: Session, key: str, name: str, ids: IdFactory, clock: Clock) -> Campus:
-    """Open a campus (operator action via the admin CLI)."""
+def approve(
+    db: Session,
+    key: str,
+    name: str,
+    ids: IdFactory,
+    clock: Clock,
+    *,
+    domains: list[str] | None = None,
+    partner: bool = False,
+) -> Campus:
+    """Open a campus (operator action via the admin CLI or console).
+
+    ``domains`` are added to the campus's list; ``partner`` records that a verified
+    official of the college asked for it (SPEC.md §4.2)."""
     row = db.scalar(select(Campus).where(Campus.key == key))
     if row is None:
         row = Campus(
@@ -105,10 +118,39 @@ def approve(db: Session, key: str, name: str, ids: IdFactory, clock: Clock) -> C
         )
         db.add(row)
     row.name, row.status = name, "open"
-    if key not in row.domains:
-        row.domains = [*row.domains, key]
+    wanted = [key, *(domains or [])]
+    row.domains = [*row.domains, *(d for d in wanted if d not in row.domains)]
+    if partner and row.partner_verified_at is None:
+        row.partner_verified_at = clock.now()
     db.commit()
     return row
+
+
+def set_domains(db: Session, campus: Campus, domains: list[str]) -> None:
+    """Replace a campus's domain list (operator action). Each must be a lowercase domain
+    that no *other* open campus already lists, so two campuses never claim one address."""
+    clean: list[str] = []
+    for d in domains:
+        d = d.strip().lower()
+        if not d:
+            continue
+        if not DOMAIN_RE.match(d):
+            raise ValueError(f"not a domain: {d}")
+        if d not in clean:
+            clean.append(d)
+    if not clean:
+        raise ValueError("a campus needs at least one domain")
+    for other in db.scalars(select(Campus).where(Campus.status == "open", Campus.id != campus.id)):
+        clash = set(clean) & set(other.domains)
+        if clash:
+            raise ValueError(f"already listed by {other.key}: {', '.join(sorted(clash))}")
+    campus.domains = clean
+    db.commit()
+
+
+def key_for_domain(domain: str, suffixes: list[str]) -> str:
+    """The campus key a domain would get: the academic key if it has one, else itself."""
+    return academic_key(domain, suffixes) or domain
 
 
 def reject(db: Session, key: str) -> None:

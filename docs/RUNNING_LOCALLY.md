@@ -23,8 +23,8 @@ R="$PWD"
 PY="C:/Users/sanka/AppData/Roaming/uv/python/cpython-3.11-windows-x86_64-none/python.exe"
 export PYTHONPATH="$R/.venv/Lib/site-packages;$R/packages/protocol_py;$R/server;$R/sim"
 
-"$PY" -m pytest packages/protocol_py server sim -q      # 272 tests
-npm test -w app                                          # 174 tests
+"$PY" -m pytest packages/protocol_py server sim -q      # 315 tests (2026-10-23)
+npm test -w app                                          # 217 tests (2026-10-23)
 ```
 
 ---
@@ -245,6 +245,23 @@ MUTUAL_ENV=dev "$PY" -m uvicorn mutual_server.main:create_app --factory \
 
 `MUTUAL_ENV=dev` is required for the admin CLI too: `config.example.yaml` has
 `email.mode: console`, which the config refuses outside dev/test.
+
+### Demo data, test accounts and the operator console
+
+With the dev server running, in a second terminal:
+
+```bash
+MUTUAL_ENV=dev "$PY" -m mutual_server.demo_seed
+```
+
+It opens Example College, seeds 12 synthetic students with crossings and two finished
+mutuals, and creates an `/admin` owner called `admin`, printing its password once. Then:
+
+- **In the app** (a dev build): Welcome → *Try a demo account*, then tap a name. Already
+  signed in? You tab → *Dev panel*. Both links exist only in dev builds.
+- **In a browser:** `http://<laptop-ip>:8000/admin`, as `admin`.
+- **College applications:** `http://<laptop-ip>:8000/colleges`. In dev, the verification
+  code is printed to the server console, like login codes.
 
 ## Screenshots
 

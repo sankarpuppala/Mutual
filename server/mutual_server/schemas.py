@@ -232,6 +232,14 @@ class ReportIn(_In):
 
 class DevSeededUser(_Out):
     user_id: str
+    first_name: str
     session_token: str
     identity_sk: str
     identity_pk: str
+
+
+class DevDemoAccounts(_Out):
+    """What ``python -m mutual_server.demo_seed`` last wrote (dev only, synthetic only)."""
+
+    campus: str
+    users: list[DevSeededUser]

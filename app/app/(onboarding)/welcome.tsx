@@ -7,16 +7,17 @@
  * exactly what the server will and will not learn *before* entering an email address.
  */
 
-import { router } from 'expo-router';
-import type { ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router } from "expo-router";
+import type { ReactNode } from "react";
+import { StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Logo } from '@/design/icons';
-import { AppText, Button, LinkButton } from '@/design/primitives';
-import { useTheme } from '@/design/theme';
-import { space } from '@/design/tokens';
-import { fonts, type } from '@/design/typography';
+import { isDev } from "@/api/client";
+import { Logo } from "@/design/icons";
+import { AppText, Button, LinkButton } from "@/design/primitives";
+import { useTheme } from "@/design/theme";
+import { space } from "@/design/tokens";
+import { fonts, type } from "@/design/typography";
 
 export default function WelcomeScreen(): ReactNode {
   const theme = useTheme();
@@ -37,16 +38,16 @@ export default function WelcomeScreen(): ReactNode {
       <View style={styles.top}>
         <Logo size={64} />
         <AppText style={type.welcome} accessibilityRole="header">
-          Meet the people you{' '}
+          Meet the people you{" "}
           <AppText style={[type.welcome, styles.italic]} tone="signal">
             almost
-          </AppText>{' '}
+          </AppText>{" "}
           meet.
         </AppText>
         <AppText variant="body" tone="muted">
-          Mutual quietly notices who you spend time near on campus, never where. Each morning
-          you meet them through their words. Send a private signal, and they only find out if
-          they signal you back.
+          Mutual quietly notices who you spend time near on campus, never where.
+          Each morning you meet them through their words. Send a private signal,
+          and they only find out if they signal you back.
         </AppText>
       </View>
 
@@ -55,13 +56,22 @@ export default function WelcomeScreen(): ReactNode {
           label="Get started"
           kind="ink"
           wide
-          onPress={() => router.push('/(onboarding)/how-it-works')}
+          onPress={() => router.push("/(onboarding)/how-it-works")}
         />
         <LinkButton
           label="What Mutual can and can never see"
           center
-          onPress={() => router.push('/privacy')}
+          onPress={() => router.push("/privacy")}
         />
+        {/* Dev builds only (invariant 11): the way in to the seeded demo accounts. A
+            production build never renders this, so the approved design is unchanged. */}
+        {isDev() ? (
+          <LinkButton
+            label="Try a demo account"
+            center
+            onPress={() => router.push("/dev")}
+          />
+        ) : null}
       </View>
     </View>
   );
@@ -70,7 +80,7 @@ export default function WelcomeScreen(): ReactNode {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    justifyContent: 'space-between',
+    justifyContent: "space-between",
     paddingHorizontal: space.xl + 2,
   },
   top: { gap: space.xl, paddingTop: space.xxl + space.lg },

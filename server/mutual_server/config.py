@@ -18,7 +18,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _HHMM = re.compile(r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
-_DOMAIN = re.compile(r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+DOMAIN_PATTERN = re.compile(r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+_DOMAIN = DOMAIN_PATTERN
 
 
 class ConfigError(ValueError):
@@ -167,6 +168,25 @@ class BleConfig(_Strict):
     advertise_tx_power: Literal["ultra_low", "low", "medium", "high"]
 
 
+class AdminConfig(_Strict):
+    """The operator web console at /admin (SPEC.md §11.3)."""
+
+    session_ttl_hours: int = Field(default=12, gt=0)
+    login_ip_limit_per_hour: int = Field(default=10, gt=0)
+    password_min_length: int = Field(default=12, ge=10)
+
+
+class CollegesConfig(_Strict):
+    """College applications at /colleges (SPEC.md §4.2)."""
+
+    apply_ip_limit_per_hour: int = Field(default=5, gt=0)
+    verify_ip_limit_per_hour: int = Field(default=20, gt=0)
+    code_ttl_seconds: int = Field(default=1800, gt=0)
+    code_max_attempts: int = Field(default=5, gt=0)
+    unverified_retention_hours: int = Field(default=24, gt=0)
+    decided_retention_days: int = Field(default=180, gt=0)
+
+
 class StudyConfig(_Strict):
     enabled: bool
     approval_reference: str
@@ -193,6 +213,9 @@ class Settings(_Strict):
     ranking: RankingConfig
     ble: BleConfig
     study: StudyConfig
+    # Defaulted so a config.yaml written before these sections existed still loads.
+    admin: AdminConfig = Field(default_factory=AdminConfig)
+    colleges: CollegesConfig = Field(default_factory=CollegesConfig)
 
     @field_validator("timezone")
     @classmethod

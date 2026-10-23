@@ -16,6 +16,7 @@ node_modules/
 *.sqlite
 *.sqlite3
 server/config.yaml
+server/deploy/config.yaml
 server/media/
 # session tokens for synthetic demo_seed.py accounts
 server/demo_accounts.json

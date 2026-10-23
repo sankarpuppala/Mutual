@@ -11,24 +11,34 @@
  *    is what stops it becoming a way to test whether someone uses Mutual.
  */
 
-import { router } from 'expo-router';
-import { useState, type ReactNode } from 'react';
-import { StyleSheet } from 'react-native';
+import { router } from "expo-router";
+import { useState, type ReactNode } from "react";
+import { StyleSheet } from "react-native";
 
-import { ApiError, NetworkError } from '@/api/client';
-import { requestOtp } from '@/api/endpoints';
-import { AppText, BarButton, Button, LockNote, Screen, ScreenHeader, Stack, TextField } from '@/design/primitives';
-import { space } from '@/design/tokens';
-import { useOnboarding, validateEmail } from '@/onboarding/store';
+import { ApiError, NetworkError, baseUrl } from "@/api/client";
+import { requestOtp } from "@/api/endpoints";
+import {
+  AppText,
+  BarButton,
+  Button,
+  LockNote,
+  Screen,
+  ScreenHeader,
+  Stack,
+  TextField,
+} from "@/design/primitives";
+import { space } from "@/design/tokens";
+import { useOnboarding, validateEmail } from "@/onboarding/store";
 
 /** Server error codes this screen can explain better than the server's generic message. */
-const MESSAGES: Record<string, string> = {
-  not_a_college_email:
-    'That has to be a college address. Mutual only works inside a campus, which is how it ' +
-    'knows you are a student.',
-  campus_not_open:
-    'Your college is not open yet. We have noted the domain, and it opens once someone ' +
-    'from your campus is set up as its operator.',
+const MESSAGES: Record<string, () => string> = {
+  not_a_college_email: () =>
+    "That has to be a college address. Mutual only works inside a campus, which is how it " +
+    "knows you are a student.",
+  campus_not_open: () =>
+    "Your college is not open yet. We have noted that a student asked. It opens once " +
+    "someone at the college — a dean, or the student council — applies at " +
+    `${baseUrl()}/colleges and we have spoken to them.`,
 };
 
 export default function EmailScreen(): ReactNode {
@@ -48,11 +58,12 @@ export default function EmailScreen(): ReactNode {
     try {
       await requestOtp(value);
       setEmail(value);
-      router.push('/(onboarding)/code');
+      router.push("/(onboarding)/code");
     } catch (e) {
-      if (e instanceof ApiError) setError(MESSAGES[e.code] ?? e.message);
-      else if (e instanceof NetworkError) setError('Could not reach Mutual. Check your connection.');
-      else setError('Something went wrong. Try again.');
+      if (e instanceof ApiError) setError(MESSAGES[e.code]?.() ?? e.message);
+      else if (e instanceof NetworkError)
+        setError("Could not reach Mutual. Check your connection.");
+      else setError("Something went wrong. Try again.");
     } finally {
       setSending(false);
     }
@@ -89,7 +100,7 @@ export default function EmailScreen(): ReactNode {
         />
 
         <Button
-          label={sending ? 'Sending…' : 'Send me a code'}
+          label={sending ? "Sending…" : "Send me a code"}
           kind="ink"
           wide
           disabled={sending}
@@ -97,13 +108,14 @@ export default function EmailScreen(): ReactNode {
         />
 
         <LockNote>
-          Mutual stores a one-way hash of your address, never the address itself, and never
-          your date of birth. See &ldquo;What Mutual can and can never see&rdquo;.
+          Mutual stores a one-way hash of your address, never the address
+          itself, and never your date of birth. See &ldquo;What Mutual can and
+          can never see&rdquo;.
         </LockNote>
 
         <AppText variant="small" tone="muted" style={styles.note}>
-          If your college is not open yet, we will say so rather than leaving you waiting for
-          a code that is not coming.
+          If your college is not open yet, we will say so rather than leaving
+          you waiting for a code that is not coming.
         </AppText>
       </Stack>
     </Screen>

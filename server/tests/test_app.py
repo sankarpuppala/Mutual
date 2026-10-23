@@ -142,3 +142,47 @@ def test_integrity_error_becomes_a_uniform_409_not_a_500() -> None:
     assert r.status_code == 409
     assert r.json() == {"error": "conflict", "message": "That already exists."}
     assert "should-not-appear" not in r.text  # never echoes the underlying SQL/params
+
+
+def test_dev_demo_accounts_serves_only_surviving_synthetic_accounts(
+    make_harness, tmp_path, monkeypatch
+) -> None:
+    import json
+
+    from mutual_server.routers import dev
+
+    h = make_harness(env="dev")
+    assert h.client.get("/v1/dev/demo-accounts").status_code in (200, 404)
+    seeded = h.client.post("/v1/dev/seed", json={"campus_key": "example.ac.in", "count": 2})
+    users = seeded.json()
+    assert [u["first_name"] for u in users] == ["Meera", "Arjun"]
+    path = tmp_path / "demo_accounts.json"
+    gone = {**users[1], "user_id": "00000000-0000-4000-8000-ffffffffffff"}
+    path.write_text(json.dumps({"campus": "example.ac.in", "users": [users[0], gone]}))
+    monkeypatch.setattr(dev, "DEMO_ACCOUNTS_FILE", path)
+    r = h.client.get("/v1/dev/demo-accounts")
+    assert r.status_code == 200
+    assert [u["first_name"] for u in r.json()["users"]] == ["Meera"]
+
+
+def test_production_example_config_is_valid(monkeypatch) -> None:
+    """server/deploy/config.prod.example.yaml must load as a prod config (docs/DEPLOYMENT.md)."""
+    from mutual_server.config import REPO_ROOT, load_settings
+
+    monkeypatch.setenv("MUTUAL_ENV", "prod")
+    settings = load_settings(REPO_ROOT / "server" / "deploy" / "config.prod.example.yaml")
+    assert settings.env == "prod" and settings.email.mode == "smtp"
+    assert settings.campuses == [] and not settings.study.enabled
+
+
+def test_no_telemetry_sdk_installed() -> None:
+    """Invariant 6. FastAPI depends on ``opentelemetry-api``, which is a no-op facade: it
+    records and sends nothing unless an SDK and an exporter are installed. Neither may be."""
+    import importlib.util
+
+    for module in ("opentelemetry.sdk", "opentelemetry.exporter", "sentry_sdk"):
+        try:
+            found = importlib.util.find_spec(module) is not None
+        except ModuleNotFoundError:
+            found = False
+        assert not found, module

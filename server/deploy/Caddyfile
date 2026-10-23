@@ -1,0 +1,10 @@
+# HTTPS in front of Mutual. No `log` directive on purpose: Caddy writes no access log
+# unless asked, and an access log would record client IP addresses (invariant 5, D22).
+{$MUTUAL_DOMAIN} {
+	encode gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+	reverse_proxy mutual:8000
+}

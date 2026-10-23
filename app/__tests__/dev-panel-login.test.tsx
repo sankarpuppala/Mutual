@@ -10,19 +10,19 @@
  * account, instead of a blank one.
  */
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import { router } from 'expo-router';
-import type { ReactNode } from 'react';
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { router } from "expo-router";
+import type { ReactNode } from "react";
 
-import DevScreen from '@/../app/dev';
-import { setIdentity, setSessionToken, setUserId } from '@/storage/secure';
+import DevScreen from "@/../app/dev";
+import { setIdentity, setSessionToken, setUserId } from "@/storage/secure";
 
-jest.mock('expo-router', () => ({
+jest.mock("expo-router", () => ({
   router: { push: jest.fn(), replace: jest.fn(), back: jest.fn() },
 }));
 
-jest.mock('react-native-safe-area-context', () => ({
+jest.mock("react-native-safe-area-context", () => ({
   SafeAreaProvider: ({ children }: { children: ReactNode }) => children,
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
@@ -32,30 +32,42 @@ jest.mock('react-native-safe-area-context', () => ({
 // screen's guard rather than inside it.
 const FULL_CONFIG = {
   campus: null,
-  server_time: '2026-10-08T09:00:00Z',
-  epoch: '2026-10-08',
+  server_time: "2026-10-08T09:00:00Z",
+  epoch: "2026-10-08",
   protocol_version: 1,
-  reveal_policy: 'M',
+  reveal_policy: "M",
   next_policy_change: null,
-  signal_upload_window: { start: '18:00', end: '23:30' },
-  presence_upload_window: { start: '00:05', end: '06:00' },
-  match_batch_time: '23:45',
-  digest_release_time: '08:00',
+  signal_upload_window: { start: "18:00", end: "23:30" },
+  presence_upload_window: { start: "00:05", end: "06:00" },
+  match_batch_time: "23:45",
+  digest_release_time: "08:00",
   interest_ttl_days: 7,
   ble: {},
   study_enabled: false,
 };
 
-jest.mock('@/api/endpoints', () => ({
+jest.mock("@/api/endpoints", () => ({
   getConfig: jest.fn(async () => FULL_CONFIG),
   dev: {
+    demoAccounts: jest.fn(async () => ({
+      campus: "example.ac.in",
+      users: [
+        {
+          user_id: "u-meera",
+          first_name: "Meera",
+          session_token: "sess-meera",
+          identity_sk: "c2stbWVlcmEtdGhpcnR5LXR3by1ieXRlcy1sb25n",
+          identity_pk: "cGstbWVlcmEtdGhpcnR5LXR3by1ieXRlcy1sb25n",
+        },
+      ],
+    })),
     setClockOffset: jest.fn(),
     makeCrossing: jest.fn(),
     seed: jest.fn(),
   },
 }));
 
-jest.mock('@/presence/schedule', () => ({
+jest.mock("@/presence/schedule", () => ({
   plannedUploadMinute: jest.fn(async () => null),
   runNightlyWork: jest.fn(),
 }));
@@ -63,7 +75,7 @@ jest.mock('@/presence/schedule', () => ({
 // Mocked rather than exercised against the real expo-secure-store fake: that fake's Map is
 // module-scoped and shared across every test in the run, so "nothing was written" cannot be
 // asserted by reading it back without one test's writes leaking into the next.
-jest.mock('@/storage/secure', () => ({
+jest.mock("@/storage/secure", () => ({
   getUserId: jest.fn(async () => null),
   setSessionToken: jest.fn(),
   setIdentity: jest.fn(),
@@ -71,20 +83,22 @@ jest.mock('@/storage/secure', () => ({
 }));
 
 const ACCOUNT = {
-  user_id: 'u-meera',
-  session_token: 'sess-meera',
-  identity_sk: 'c2stbWVlcmEtdGhpcnR5LXR3by1ieXRlcy1sb25n',
-  identity_pk: 'cGstbWVlcmEtdGhpcnR5LXR3by1ieXRlcy1sb25n',
+  user_id: "u-meera",
+  session_token: "sess-meera",
+  identity_sk: "c2stbWVlcmEtdGhpcnR5LXR3by1ieXRlcy1sb25n",
+  identity_pk: "cGstbWVlcmEtdGhpcnR5LXR3by1ieXRlcy1sb25n",
 };
 
 async function mount(): Promise<void> {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   await render(
     <QueryClientProvider client={client}>
       <DevScreen />
     </QueryClientProvider>,
   );
-  await screen.findByText('Log in as a seeded account');
+  await screen.findByText("Log in as a seeded account");
 }
 
 afterEach(() => {
@@ -105,40 +119,62 @@ async function fillAndSubmit(fields: Partial<typeof ACCOUNT>): Promise<void> {
     });
   }
   await act(async () => {
-    fireEvent.press(screen.getByRole('button', { name: 'Log in as this account' }));
+    fireEvent.press(
+      screen.getByRole("button", { name: "Log in as this account" }),
+    );
   });
 }
 
-describe('logging in as a seeded demo account', () => {
-  it('writes the session, identity and user id, then opens Today', async () => {
+describe("logging in as a seeded demo account", () => {
+  it("writes the session, identity and user id, then opens Today", async () => {
     await mount();
     await fillAndSubmit(ACCOUNT);
 
-    expect(setSessionToken).toHaveBeenCalledWith('sess-meera');
+    expect(setSessionToken).toHaveBeenCalledWith("sess-meera");
     expect(setIdentity).toHaveBeenCalledWith({
       sk: ACCOUNT.identity_sk,
       pk: ACCOUNT.identity_pk,
     });
-    expect(setUserId).toHaveBeenCalledWith('u-meera');
-    expect(router.replace).toHaveBeenCalledWith('/(tabs)/today');
+    expect(setUserId).toHaveBeenCalledWith("u-meera");
+    expect(router.replace).toHaveBeenCalledWith("/(tabs)/today");
   });
 
-  it('rejects a missing field, without writing anything', async () => {
+  it("rejects a missing field, without writing anything", async () => {
     await mount();
     await fillAndSubmit({ user_id: ACCOUNT.user_id }); // the other three left blank
 
     expect(setSessionToken).not.toHaveBeenCalled();
     expect(router.replace).not.toHaveBeenCalled();
     expect(
-      screen.getByText('Fill in all four fields from one user in demo_accounts.json.'),
+      screen.getByText(
+        "Fill in all four fields from one user in demo_accounts.json.",
+      ),
     ).toBeTruthy();
   });
 
-  it('treats whitespace-only input the same as empty', async () => {
+  it("treats whitespace-only input the same as empty", async () => {
     await mount();
-    await fillAndSubmit({ ...ACCOUNT, session_token: '   ' });
+    await fillAndSubmit({ ...ACCOUNT, session_token: "   " });
 
     expect(setSessionToken).not.toHaveBeenCalled();
     expect(router.replace).not.toHaveBeenCalled();
+  });
+});
+
+describe("one-tap demo accounts", () => {
+  it("lists the seeded students and logs in as one with a single tap", async () => {
+    await mount();
+    const meera = await screen.findByRole("button", { name: "Meera" });
+    await act(async () => {
+      fireEvent.press(meera);
+    });
+
+    expect(setSessionToken).toHaveBeenCalledWith("sess-meera");
+    expect(setIdentity).toHaveBeenCalledWith({
+      sk: ACCOUNT.identity_sk,
+      pk: ACCOUNT.identity_pk,
+    });
+    expect(setUserId).toHaveBeenCalledWith("u-meera");
+    expect(router.replace).toHaveBeenCalledWith("/(tabs)/today");
   });
 });

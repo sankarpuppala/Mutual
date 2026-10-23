@@ -13,7 +13,7 @@
  * Added to SPEC §20's file list in the same change that introduced it (Phase 10).
  */
 
-import { api } from './client';
+import { api } from "./client";
 import type {
   AccountMe,
   CreateAccountRequest,
@@ -28,7 +28,7 @@ import type {
   ServerConfig,
   SignalsUpload,
   VerifyOtpResponse,
-} from './types';
+} from "./types";
 
 // ------------------------------------------------------------------- auth
 
@@ -38,15 +38,22 @@ import type {
  * response to probe whether an address is already registered.
  */
 export async function requestOtp(email: string): Promise<void> {
-  await api.post<void>('/auth/request-otp', { email }, { auth: false });
+  await api.post<void>("/auth/request-otp", { email }, { auth: false });
 }
 
-export async function verifyOtp(email: string, code: string): Promise<VerifyOtpResponse> {
-  return api.post<VerifyOtpResponse>('/auth/verify-otp', { email, code }, { auth: false });
+export async function verifyOtp(
+  email: string,
+  code: string,
+): Promise<VerifyOtpResponse> {
+  return api.post<VerifyOtpResponse>(
+    "/auth/verify-otp",
+    { email, code },
+    { auth: false },
+  );
 }
 
 export async function logout(): Promise<void> {
-  await api.post<void>('/auth/logout');
+  await api.post<void>("/auth/logout");
 }
 
 // ---------------------------------------------------------------- account
@@ -58,30 +65,30 @@ export async function logout(): Promise<void> {
 export async function createAccount(
   body: CreateAccountRequest,
 ): Promise<CreateAccountResponse> {
-  return api.post<CreateAccountResponse>('/account', body);
+  return api.post<CreateAccountResponse>("/account", body);
 }
 
 export async function getMe(): Promise<AccountMe> {
-  return api.get<AccountMe>('/account/me');
+  return api.get<AccountMe>("/account/me");
 }
 
 /** For a reinstall. Rate-limited server-side to once per `identity_key_change_min_days`. */
 export async function replaceIdentityKey(identityPk: string): Promise<void> {
-  await api.put<void>('/account/identity-key', { identity_pk: identityPk });
+  await api.put<void>("/account/identity-key", { identity_pk: identityPk });
 }
 
 export async function deleteAccount(): Promise<void> {
-  await api.delete<void>('/account');
+  await api.delete<void>("/account");
 }
 
 // ---------------------------------------------------------------- profile
 
 export async function getPromptLibrary(): Promise<PromptLibrary> {
-  return api.get<PromptLibrary>('/prompts');
+  return api.get<PromptLibrary>("/prompts");
 }
 
 export async function putProfile(body: ProfileRequest): Promise<void> {
-  await api.put<void>('/profile', body);
+  await api.put<void>("/profile", body);
 }
 
 /**
@@ -96,12 +103,12 @@ export async function uploadVoice(
   waveform: readonly number[],
 ): Promise<{ media_id: string }> {
   const form = new FormData();
-  form.append('audio', {
+  form.append("audio", {
     uri: file.uri,
     name: file.name,
-    type: 'audio/m4a',
+    type: "audio/m4a",
   } as unknown as Blob);
-  form.append('waveform', JSON.stringify(waveform));
+  form.append("waveform", JSON.stringify(waveform));
   return api.upload<{ media_id: string }>(`/profile/voice/${promptId}`, form);
 }
 
@@ -116,12 +123,15 @@ export async function uploadPhoto(file: {
   mimeType: string;
 }): Promise<{ media_id: string; index: number }> {
   const form = new FormData();
-  form.append('image', {
+  form.append("image", {
     uri: file.uri,
     name: file.name,
     type: file.mimeType,
   } as unknown as Blob);
-  return api.upload<{ media_id: string; index: number }>('/profile/photos', form);
+  return api.upload<{ media_id: string; index: number }>(
+    "/profile/photos",
+    form,
+  );
 }
 
 export async function deletePhoto(index: number): Promise<void> {
@@ -137,7 +147,10 @@ export async function deletePhoto(index: number): Promise<void> {
  * sighting time may ever be passed to this function (invariant 3); a jest test asserts it
  * for the whole presence path (AC-T2-2).
  */
-export async function uploadPresence(day: string, body: PresenceUpload): Promise<void> {
+export async function uploadPresence(
+  day: string,
+  body: PresenceUpload,
+): Promise<void> {
   await api.post<void>(`/presence/${day}`, body);
 }
 
@@ -149,7 +162,7 @@ export async function uploadPresence(day: string, body: PresenceUpload): Promise
  * user opened (invariant 1).
  */
 export async function getDigest(): Promise<DigestResponse> {
-  return api.get<DigestResponse>('/digest');
+  return api.get<DigestResponse>("/digest");
 }
 
 /** Only `src/digest/prefetch.ts` may call this. See the note at the top of this file. */
@@ -166,20 +179,29 @@ export async function getMedia(mediaId: string): Promise<ArrayBuffer> {
  * This is the single most privacy-sensitive call in the app. It must never be triggered by a
  * user action -- only by `src/signals/scheduler.ts` at its chosen time.
  */
-export async function uploadSignals(epoch: string, body: SignalsUpload): Promise<void> {
+export async function uploadSignals(
+  epoch: string,
+  body: SignalsUpload,
+): Promise<void> {
   await api.put<void>(`/signals/${epoch}`, body);
 }
 
 export async function getMatches(): Promise<Match[]> {
-  return api.get<Match[]>('/matches');
+  return api.get<Match[]>("/matches");
 }
 
-export async function getMessages(matchId: string, after?: string): Promise<Message[]> {
-  const query = after ? `?after=${encodeURIComponent(after)}` : '';
+export async function getMessages(
+  matchId: string,
+  after?: string,
+): Promise<Message[]> {
+  const query = after ? `?after=${encodeURIComponent(after)}` : "";
   return api.get<Message[]>(`/matches/${matchId}/messages${query}`);
 }
 
-export async function sendMessage(matchId: string, body: string): Promise<Message> {
+export async function sendMessage(
+  matchId: string,
+  body: string,
+): Promise<Message> {
   return api.post<Message>(`/matches/${matchId}/messages`, { body });
 }
 
@@ -205,7 +227,7 @@ export function matchPhotoPath(matchId: string, index: number): string {
  * is what keeps a block from becoming a probe.
  */
 export async function blockPeer(peerId: string): Promise<void> {
-  await api.post<void>('/blocks', { peer_id: peerId });
+  await api.post<void>("/blocks", { peer_id: peerId });
 }
 
 export async function reportPeer(
@@ -213,7 +235,7 @@ export async function reportPeer(
   reason: ReportReason,
   messageIds: string[] = [],
 ): Promise<void> {
-  await api.post<void>('/reports', {
+  await api.post<void>("/reports", {
     peer_id: peerId,
     reason,
     message_ids: messageIds,
@@ -221,28 +243,47 @@ export async function reportPeer(
 }
 
 export async function pauseDiscovery(): Promise<void> {
-  await api.post<void>('/discovery/pause');
+  await api.post<void>("/discovery/pause");
 }
 
 export async function resumeDiscovery(): Promise<void> {
-  await api.post<void>('/discovery/resume');
+  await api.post<void>("/discovery/resume");
 }
 
 export async function getConfig(): Promise<ServerConfig> {
-  return api.get<ServerConfig>('/config');
+  return api.get<ServerConfig>("/config");
 }
 
 // ------------------------------------------------------------------ dev only
 
 /** Dev server only; absent otherwise (invariant 11). */
+/** One synthetic account from `python -m mutual_server.demo_seed` (dev only). */
+export interface DemoAccount {
+  user_id: string;
+  first_name: string;
+  session_token: string;
+  identity_sk: string;
+  identity_pk: string;
+}
+
 export const dev = {
+  /** The last demo_seed run's accounts, for one-tap login in the dev panel. */
+  async demoAccounts(): Promise<{ campus: string; users: DemoAccount[] }> {
+    return api.get<{ campus: string; users: DemoAccount[] }>(
+      "/dev/demo-accounts",
+    );
+  },
   async setClockOffset(offsetSeconds: number): Promise<void> {
-    await api.post<void>('/dev/clock', { offset_seconds: offsetSeconds });
+    await api.post<void>("/dev/clock", { offset_seconds: offsetSeconds });
   },
   async makeCrossing(userA: string, userB: string, day: string): Promise<void> {
-    await api.post<void>('/dev/crossing', { user_a: userA, user_b: userB, day });
+    await api.post<void>("/dev/crossing", {
+      user_a: userA,
+      user_b: userB,
+      day,
+    });
   },
   async seed(count: number, campusKey: string): Promise<unknown> {
-    return api.post<unknown>('/dev/seed', { count, campus_key: campusKey });
+    return api.post<unknown>("/dev/seed", { count, campus_key: campusKey });
   },
 };

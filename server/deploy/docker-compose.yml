@@ -1,0 +1,43 @@
+# Mutual on one small server: the app server behind Caddy, which gets and renews a free
+# Let's Encrypt certificate on its own. See docs/DEPLOYMENT.md.
+#
+#   cd server/deploy
+#   cp env.example .env          # then fill it in
+#   cp config.prod.example.yaml config.yaml
+#   docker compose up -d --build
+services:
+  mutual:
+    build:
+      context: ../..
+      dockerfile: server/deploy/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MUTUAL_CONFIG: /data/config.yaml
+      # Only Caddy can reach this container (no published port), so its
+      # X-Forwarded-For is the one to trust for the per-IP rate limits.
+      MUTUAL_FORWARDED_ALLOW_IPS: "*"
+    volumes:
+      - mutual-data:/data
+      - ./config.yaml:/data/config.yaml:ro
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [mutual]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      MUTUAL_DOMAIN: ${MUTUAL_DOMAIN:?set MUTUAL_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  mutual-data:
+  caddy-data:
+  caddy-config:
