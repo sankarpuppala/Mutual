@@ -2046,3 +2046,28 @@ dev route is absent outside dev). Nothing in it was loosened.
         acceptable.
   - [ ] Look at `/admin` and `/colleges` yourself. They are new surfaces with no
         prototype to match. They reuse the app's tokens, Fraunces-style headings and cards.
+
+### 2026-10-23 (later) — the human's answers: a central admin, student feedback, keep the records
+
+Entry 35 in `docs/DECISIONS_LOG.md`. SPEC **v1.6** (§4.2, §9, §11.3, §11.4, §12, §13.2,
+§18, §20, D26).
+
+**New:** a central admin created at first start from `MUTUAL_ADMIN_USERNAME` /
+`MUTUAL_ADMIN_PASSWORD`; student feedback (`POST /v1/feedback`, `app/app/feedback.tsx`,
+the You tab row, `/admin` → Feedback, migration `0006`); decided college applications
+kept. **Fixed:** the privacy screen's stale "20 signals". **Reverted:** the accidental
+Prettier reformat of seven app files from the previous entry.
+
+**Verified:** the server printed `created owner 'central' from the environment` and
+the Feedback page was screenshotted at 1280 px light and 390 px dark.
+
+**Tests:** 325 Python, 220 app, 29 protocol-ts. All checks clean.
+
+- Human review checklist (this entry):
+  - [ ] Put the admin credentials from the chat into `server/deploy/.env`, then change the
+        password after the first sign-in.
+  - [ ] Look at the new "Send feedback" screen on the emulator. It has no prototype
+        screen of its own and is built from existing primitives.
+  - [ ] Q6: create the Oracle, DuckDNS and Brevo accounts and follow
+        `docs/DEPLOYMENT.md` §2.
+

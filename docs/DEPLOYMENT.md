@@ -68,7 +68,7 @@ cd server/deploy
 cp env.example .env                       # gitignored
 cp config.prod.example.yaml config.yaml   # gitignored
 python3 -c "import secrets; print(secrets.token_urlsafe(48))"   # paste as MUTUAL_EMAIL_PEPPER
-nano .env          # MUTUAL_DOMAIN, MUTUAL_EMAIL_PEPPER, MUTUAL_SMTP_USER, MUTUAL_SMTP_PASSWORD
+nano .env          # MUTUAL_DOMAIN, MUTUAL_EMAIL_PEPPER, SMTP user/password, MUTUAL_ADMIN_*
 nano config.yaml   # email.smtp_host and email.from_address
 docker compose up -d --build
 docker compose logs -f mutual             # "Application startup complete", then Ctrl+C
@@ -82,14 +82,19 @@ Check `https://<your-host>/healthz` returns `{"status":"ok"}` and `https://<your
 shows the college page. `/v1/dev/*` must return 404. It does, because `MUTUAL_ENV=prod` is
 baked into the image (invariant 11).
 
-### 2.4 The first operator
+### 2.4 The central admin
+
+Put `MUTUAL_ADMIN_USERNAME` and `MUTUAL_ADMIN_PASSWORD` in `.env` before the first start.
+The server creates that **owner** account the first time it starts: one login that sees
+every college's reports and feedback. Sign in at `https://<your-host>/admin`, then change
+the password under **Account**. After that the environment value is ignored, so it can
+never overwrite the new password.
+
+You can also add an owner from the command line at any time:
 
 ```bash
 docker compose exec mutual python -m mutual_server.admin operators add <your-username>
-```
-
-It prompts for a password (at least 12 characters). Then sign in at
-`https://<your-host>/admin`. Add the supervisor as a second owner from the **Operators**
+``` Add the supervisor as a second owner from the **Operators**
 page. Neither of you may hold a participant account on this deployment (SPEC §19, Q8).
 
 ### 2.5 Backups

@@ -23,8 +23,8 @@ R="$PWD"
 PY="C:/Users/sanka/AppData/Roaming/uv/python/cpython-3.11-windows-x86_64-none/python.exe"
 export PYTHONPATH="$R/.venv/Lib/site-packages;$R/packages/protocol_py;$R/server;$R/sim"
 
-"$PY" -m pytest packages/protocol_py server sim -q      # 315 tests (2026-10-23)
-npm test -w app                                          # 217 tests (2026-10-23)
+"$PY" -m pytest packages/protocol_py server sim -q      # 325 tests (2026-10-23)
+npm test -w app                                          # 220 tests (2026-10-23)
 ```
 
 ---

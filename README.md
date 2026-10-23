@@ -32,7 +32,9 @@ python -m mutual_server.demo_seed      # second terminal: synthetic students + a
 - **Test accounts:** in a dev build of the app (`EXPO_PUBLIC_MUTUAL_ENV=dev`), tap
   *Try a demo account* on the Welcome screen, then a name. Every account is synthetic.
 - **Admin:** open `http://127.0.0.1:8000/admin` and sign in as `admin` with the password
-  `demo_seed` printed. Owners open colleges, review applications, handle reports,
+  `demo_seed` printed, or set `MUTUAL_ADMIN_USERNAME` / `MUTUAL_ADMIN_PASSWORD` before
+  starting the server to create a central admin. It reads every college's reports and
+  the feedback students send from the app's You tab. Owners open colleges, review applications, handle reports,
   suspend accounts and add operators. Campus moderators see only their own college.
 - **Colleges:** officials apply at `/colleges`. How to win a college over in real life:
   `docs/COLLEGE_ONBOARDING.md`.

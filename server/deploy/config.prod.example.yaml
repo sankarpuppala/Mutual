@@ -79,7 +79,10 @@ colleges:                                # official college applications at /col
   code_ttl_seconds: 1800
   code_max_attempts: 5
   unverified_retention_hours: 24
-  decided_retention_days: 180
+  decided_retention_days: 0              # 0 = keep decided applications (DECISIONS_LOG 35)
+feedback:                                # students' messages to the team (SPEC §11.4)
+  max_length: 2000
+  per_user_per_day: 5
 study:
   enabled: false
   approval_reference: ""

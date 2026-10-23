@@ -340,3 +340,24 @@ class CollegeApplication(Base):
     verified_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
     decided_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
     decided_by: Mapped[str | None] = mapped_column(String(40))
+
+
+class Feedback(Base):
+    """A student's message to the Mutual team (SPEC.md §11.4): ideas, problems, anything.
+
+    Kept for the deployment's lifetime (the human's choice, DECISIONS_LOG 35). If the
+    author deletes their account the row stays, with ``user_id`` set to NULL, so the
+    feedback survives but no longer points at a person (S11).
+    """
+
+    __tablename__ = "feedback"
+    id: Mapped[str] = mapped_column(ID, primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    campus_id: Mapped[str] = mapped_column(ForeignKey("campuses.id", ondelete="CASCADE"))
+    category: Mapped[str] = mapped_column(String(10))  # idea | problem | other
+    body: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(6))  # new | read
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    read_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    read_by: Mapped[str | None] = mapped_column(String(40))
+    __table_args__ = (Index("ix_feedback_campus_created", "campus_id", "created_at"),)

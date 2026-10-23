@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import re
+import sys
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -57,6 +59,26 @@ def create(
     db.add(op)
     db.commit()
     return op
+
+
+BOOTSTRAP_USERNAME_ENV = "MUTUAL_ADMIN_USERNAME"
+BOOTSTRAP_PASSWORD_ENV = "MUTUAL_ADMIN_PASSWORD"
+
+
+def ensure_bootstrap_owner(db: Session, settings: Settings, ids: IdFactory, clock: Clock) -> None:
+    """Create the first owner from ``MUTUAL_ADMIN_USERNAME`` / ``MUTUAL_ADMIN_PASSWORD``
+    at startup (docs/DEPLOYMENT.md), so a fresh deployment has a central admin without a
+    shell. Does nothing if either is unset or the operator already exists: a password
+    changed later in the console is never overwritten by the environment."""
+    username = os.environ.get(BOOTSTRAP_USERNAME_ENV, "").strip().lower()
+    password = os.environ.get(BOOTSTRAP_PASSWORD_ENV, "")
+    if not username or not password:
+        return
+    if db.scalar(select(Operator).where(Operator.username == username)) is not None:
+        return
+    create(db, settings, ids, clock, username=username, password=password, campus_key=None)
+    audit(db, ids, clock, "startup", "operator_add", f"{username} (owner, from environment)")
+    print(f"[admin] created owner {username!r} from the environment", file=sys.stderr)
 
 
 def audit(

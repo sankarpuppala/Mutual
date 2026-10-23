@@ -39,6 +39,7 @@ from mutual_server.models import (
     AdminAudit,
     Campus,
     CollegeApplication,
+    Feedback,
     Match,
     Operator,
     OperatorSession,
@@ -104,7 +105,12 @@ def _owner_only(auth: Auth) -> None:
 
 
 def _nav(auth: Auth, here: str) -> list[tuple[str, str, bool]]:
-    items = [("Overview", "/admin"), ("Reports", "/admin/reports"), ("Users", "/admin/users")]
+    items = [
+        ("Overview", "/admin"),
+        ("Reports", "/admin/reports"),
+        ("Feedback", "/admin/feedback"),
+        ("Users", "/admin/users"),
+    ]
     if auth.owner:
         items += [
             ("Colleges", "/admin/campuses"),
@@ -324,6 +330,12 @@ def overview(
             f"<td>{students}</td><td>{new}</td><td>{matches}</td>"
             f"<td>{f'<a href=/admin/reports>{reports}</a>' if reports else '0'}</td></tr>"
         )
+    new_feedback = (
+        db.scalar(
+            select(func.count()).where(Feedback.status == "new", Feedback.campus_id.in_(campus_ids))
+        )
+        or 0
+    )
     extra = ""
     if auth.owner:
         waiting = (
@@ -363,6 +375,8 @@ Counts only — the server never holds anyone's signals.</p>
 <div class="stat"><b>{totals["new"]}</b><span>joined in the last 7 days</span></div>
 <div class="stat"><b>{totals["matches"]}</b><span>active mutuals</span></div>
 <div class="stat"><b>{totals["reports"]}</b><span>open reports</span></div>
+<a class="stat" href="/admin/feedback" style="text-decoration:none;color:inherit">
+<b>{new_feedback}</b><span>new feedback</span></a>
 </div>
 {extra}
 <h2>Open campuses</h2>
@@ -481,6 +495,82 @@ def report_resolve(
     db.commit()
     _log(db, ctx, auth, "report_resolve", r.id)
     return _done(f"/admin/reports/view?id={r.id}", "Report resolved.")
+
+
+# --- feedback ------------------------------------------------------------------------
+
+
+@router.get("/feedback", response_class=HTMLResponse)
+def feedback(
+    status: str = Query("new", pattern="^(new|read)$"),
+    ok: str | None = None,
+    error: str | None = None,
+    auth: Auth = Depends(require),
+    db: Session = Depends(get_db),
+    ctx: AppContext = Depends(get_ctx),
+) -> HTMLResponse:
+    tz = ctx.settings.tz
+    campuses = {c.id: c for c in db.scalars(select(Campus))}
+    query = (
+        select(Feedback)
+        .where(Feedback.status == status, Feedback.campus_id.in_(_scoped_campus_ids(db, auth)))
+        .order_by(Feedback.created_at.desc())
+        .limit(300)
+    )
+    cards = []
+    for f in db.scalars(query):
+        author = db.get(User, f.user_id) if f.user_id else None
+        who = (
+            f'{e(author.first_name)} · <a href="/admin/users?id={e(author.id)}">user record</a>'
+            if author
+            else '<span class="muted">deleted account</span>'
+        )
+        campus = campuses.get(f.campus_id)
+        chip = {"problem": "danger", "idea": "ok"}.get(f.category, "")
+        action = (
+            _button_form(auth, "/admin/feedback/read", {"id": f.id}, "Mark read", "ghost")
+            if f.status == "new"
+            else f'<span class="muted">read by {e(f.read_by)} · {when(f.read_at, tz)}</span>'
+        )
+        cards.append(
+            f'<div class="card"><div class="row"><span class="chip {chip}">{e(f.category)}</span>'
+            f"<b>{e(campus.name if campus else '—')}</b>"
+            f'<span class="muted">{when(f.created_at, tz)}</span></div>'
+            f'<p style="white-space:pre-wrap">{e(f.body)}</p>'
+            f'<div class="row"><span>{who}</span><span style="margin-left:auto">{action}</span>'
+            f"</div></div>"
+        )
+    tabs = " · ".join(
+        f"<b>{s}</b>" if s == status else f'<a href="/admin/feedback?status={s}">{s}</a>'
+        for s in ("new", "read")
+    )
+    empty = f'<div class="card muted">No {e(status)} feedback.</div>'
+    body = f"""
+{_flashes(ok, error)}
+<h1>Feedback</h1>
+<p class="lede">{tabs}. What students sent from the app's You tab — ideas, problems,
+anything. It is about the app, never about a person; reports are separate.</p>
+{"".join(cards) or empty}"""
+    return page("Feedback", body, nav=_nav(auth, "/admin/feedback"), brand_href="/admin")
+
+
+@router.post("/feedback/read")
+def feedback_read(
+    id: str = Form(..., max_length=36),
+    csrf: str = Form(""),
+    auth: Auth = Depends(require),
+    db: Session = Depends(get_db),
+    ctx: AppContext = Depends(get_ctx),
+) -> Response:
+    _csrf(auth, csrf)
+    f = db.get(Feedback, id)
+    if f is None or f.campus_id not in _scoped_campus_ids(db, auth):
+        raise _Redirect("/admin/feedback?error=No+such+feedback.")
+    if f.status == "new":
+        f.status, f.read_at, f.read_by = "read", ctx.clock.now(), auth.operator.username
+        db.commit()
+        _log(db, ctx, auth, "feedback_read", f.id)
+    return _done("/admin/feedback", "Marked read.")
 
 
 # --- users ---------------------------------------------------------------------------

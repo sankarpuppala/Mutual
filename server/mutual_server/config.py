@@ -184,7 +184,17 @@ class CollegesConfig(_Strict):
     code_ttl_seconds: int = Field(default=1800, gt=0)
     code_max_attempts: int = Field(default=5, gt=0)
     unverified_retention_hours: int = Field(default=24, gt=0)
-    decided_retention_days: int = Field(default=180, gt=0)
+    # 0 keeps decided applications for the deployment's lifetime (the default, the
+    # human's choice, DECISIONS_LOG 35); a positive number deletes them that many days
+    # after the decision.
+    decided_retention_days: int = Field(default=0, ge=0)
+
+
+class FeedbackConfig(_Strict):
+    """Student feedback to the team (SPEC.md §11.4)."""
+
+    max_length: int = Field(default=2000, gt=0)
+    per_user_per_day: int = Field(default=5, gt=0)
 
 
 class StudyConfig(_Strict):
@@ -216,6 +226,7 @@ class Settings(_Strict):
     # Defaulted so a config.yaml written before these sections existed still loads.
     admin: AdminConfig = Field(default_factory=AdminConfig)
     colleges: CollegesConfig = Field(default_factory=CollegesConfig)
+    feedback: FeedbackConfig = Field(default_factory=FeedbackConfig)
 
     @field_validator("timezone")
     @classmethod

@@ -19,12 +19,13 @@ the reason), **Parked** (good idea, not now), **Open** (waiting for an answer).
 | Q3 | Do you have two Android 12+ phones for the Bluetooth test? | Phase 9 — **answered 2026-10-07: yes, but it is the last thing to be done** |
 | Q4 | Which ethics body approves research with students at your institution, and what is its timeline? **Only you can answer this**: it names a real committee, and invariant 9 turns on `study/APPROVAL.md` recording its actual reference. Nothing in this repository may stand in for it. | Phase 12 |
 | Q6 | Where will the server run for a demo with more than one phone? **Partly answered 2026-10-23:** `docs/DEPLOYMENT.md` gives two free options (an Oracle Always Free VM with DuckDNS and Caddy, or the laptop with a `cloudflared` quick tunnel). Which one is yours to pick, and only you can create the accounts. | Before a multi-phone pilot |
-| Q13 | The report sheet says "A moderator reads every report." With campus moderators (entry 34), that moderator may be the college's own safety officer. Should the copy say so, for example "A moderator reads every report: the Mutual team, or the safety contact your college named"? It is approved screen copy, so not changed without you. **Claude recommends yes.** | Before a partner college gets a moderator login |
-| Q14 | How should an open campus be **closed**: refuse new sign-ins only, or also end existing accounts, and with how much notice? No close action exists yet (`docs/COLLEGE_ONBOARDING.md` §4). | Before a second college opens |
 
 ### Resolved since 2026-10-07
 | # | Question | How it was settled |
 |---|---|---|
+| Q13 | Who reads reports, and should the report sheet say a college officer might? | **One central admin reads every college's reports and feedback** (the human, 2026-10-23). The sheet's "A moderator reads every report" stays true and unchanged. Campus moderators stay possible but optional. Entry 35. |
+| Q14 | How should an open campus be closed? | **Not needed** (the human, 2026-10-23). The gap note was removed from `COLLEGE_ONBOARDING.md`. Entry 35. |
+| — | Store a college applicant's work email in plaintext? | **Yes, and keep the records** ("store everything in a database for our safety of data"). Verified and decided applications are now kept. Students' emails are still never stored (invariant 5). Entry 35. |
 | Q8 | Who holds operator access in a pilot? | The student and the supervisor, and **neither holds a participant account on that deployment**. A rule, not a fix — §7.2 says why no technical fix exists. In SPEC §19 and `study/ETHICS_APPLICATION_DRAFT.md` §6. |
 | Q9 | Does declining consent mean not using Mutual at all? | **No, and that is now enforced.** `POST /account` creates the account either way; the consent screen offers "Use Mutual without taking part". Consent that is the price of using a campus social app is not freely given. SPEC §16. |
 | Q10 | How to fix the legacy BLE split advertisement? | **Withdrawn, not fixed** (user's call, 2026-10-07: "most people use latest phones"). BLE 5 extended advertising is the only supported layout; a device without it is told so plainly. SPEC §14.2, D23. |
@@ -1750,4 +1751,47 @@ No spec change. Logged per CLAUDE.md §8 rule 8, same session.
   `sim/config.yaml`.
 - **Numbers:** 315 Python (was 282), 217 app (was 214), 29 protocol-ts. Ruff, ESLint,
   `tsc`, `check:privacy` and `check:contrast` all clean.
+
+### 35. The human's answers to entry 34: a central admin, feedback, keep the records — Adopted (SPEC v1.6, D26)
+
+- **What came up (2026-10-23):** five one-line answers to the five questions at the end of
+  entry 34.
+  1. *"What do you recommend, step by step?"* (host, Q6): Claude recommends an Oracle
+     Cloud Always Free VM, a DuckDNS name, Caddy and Brevo SMTP, all free. The steps are
+     `docs/DEPLOYMENT.md` §2, repeated in the reply. Q6 stays open until the human creates
+     the accounts. Nobody else can.
+  2. *"Give an admin account who checks all the colleges for any feedbacks and reports"*
+     (Q13): read as "one central admin reads everything".
+     - **Central admin:** the server now creates an owner from `MUTUAL_ADMIN_USERNAME` /
+       `MUTUAL_ADMIN_PASSWORD` on its first start, and never touches it again, so a
+       password changed in the console sticks. Credentials were generated for the human in
+       the reply, **not** written anywhere in the repository.
+     - **Feedback did not exist.** Students could only *report a person*. New: a "Send
+       feedback" row in the You tab, a screen built from existing primitives, `POST
+       /v1/feedback` (no peer id, rate-limited), and an `/admin` Feedback page scoped by
+       campus. The privacy page and the approved prototype both gain the line "Feedback you
+       choose to send the Mutual team." The new screen's copy says feedback is kept after
+       account deletion, no longer linked to the student.
+     - The report sheet's copy was left as it is: with a central admin it is accurate.
+  3. *"No need to close campus"* (Q14): closed. The gap section was removed from
+     `COLLEGE_ONBOARDING.md`.
+  4. *"Store everything in a database for our safety of data"*: applied to what the
+     question was about, the college applications. Verified and decided applications are
+     now kept (`decided_retention_days: 0`), and feedback is kept. **Not** applied to
+     students' emails, codes or tokens, which invariant 5 forbids storing. Changing that
+     would break the product's central promise and is a spec change Claude would not make
+     on a one-line answer. Unverified applications are still deleted after 24 h: their
+     address was typed by a stranger and never proven to be theirs.
+     - The old test `test_decided_applications_expire` encoded the overruled rule. It was
+       rewritten as two tests (kept by default; deleted when configured), not deleted.
+  5. *"ok"*: the ethics gate (Q4) stays as it is.
+- **Found on the way:** the app's privacy screen still said "nightly set of **20**
+  signals". Entry 31 lowered the cap to 7 and updated the prototype, but missed this
+  screen. It now reads the number from `SIGNAL_SET_SIZE`, so it cannot drift again.
+- **Corrected from entry 34:** the earlier commit reformatted seven app files with Prettier's
+  defaults (double quotes, 80 columns). There is no Prettier config, and the codebase is
+  hand-formatted. Those files were restored and only the real edits re-applied, so the diff
+  is the change and nothing else.
+- **Numbers:** 325 Python (+10), 220 app (+3), 29 protocol-ts. All checks clean. Migration
+  `0006_feedback`.
 

@@ -4,37 +4,35 @@
  * server over HTTPS, because Android release builds refuse cleartext HTTP.
  */
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 interface Profile {
   developmentClient?: boolean;
   env?: Record<string, string>;
 }
 
-const eas = JSON.parse(
-  readFileSync(join(__dirname, "..", "eas.json"), "utf8"),
-) as {
+const eas = JSON.parse(readFileSync(join(__dirname, '..', 'eas.json'), 'utf8')) as {
   build: Record<string, Profile>;
 };
 
-describe("eas.json build profiles", () => {
-  it("only the development profile is a dev build", () => {
+describe('eas.json build profiles', () => {
+  it('only the development profile is a dev build', () => {
     for (const [name, profile] of Object.entries(eas.build)) {
       const env = profile.env?.EXPO_PUBLIC_MUTUAL_ENV;
-      if (name === "development") {
-        expect(env).toBe("dev");
+      if (name === 'development') {
+        expect(env).toBe('dev');
         expect(profile.developmentClient).toBe(true);
       } else {
-        expect(env).toBe("prod");
+        expect(env).toBe('prod');
         expect(profile.developmentClient).toBeFalsy();
       }
     }
   });
 
-  it("every release profile points at an https server", () => {
+  it('every release profile points at an https server', () => {
     for (const [name, profile] of Object.entries(eas.build)) {
-      if (name === "development") continue;
+      if (name === 'development') continue;
       expect(profile.env?.EXPO_PUBLIC_SERVER_URL).toMatch(/^https:\/\//);
     }
   });

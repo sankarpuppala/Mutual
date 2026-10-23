@@ -31,6 +31,7 @@ from mutual_server.routers import (
     config_route,
     dev,
     digest,
+    feedback,
     matches,
     messages,
     presence,
@@ -41,6 +42,7 @@ from mutual_server.routers import (
 from mutual_server.services.campus import seed_config_campuses
 from mutual_server.services.email import EmailSender, make_sender
 from mutual_server.services.matching import sync_matches
+from mutual_server.services.operators import ensure_bootstrap_owner
 from mutual_server.services.rate_limit import RateLimiter
 from mutual_server.services.retention import run_retention
 from mutual_server.web import admin as admin_web
@@ -96,6 +98,7 @@ def create_app(
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         with session_factory() as db:
             seed_config_campuses(db, settings, ctx.ids, ctx.clock)
+            ensure_bootstrap_owner(db, settings, ctx.ids, ctx.clock)
             _check_study_campuses(db, settings)
             sync_matches(db, ctx.clock, settings, ctx.ids)
             run_retention(db, ctx.clock, settings)
@@ -125,6 +128,7 @@ def create_app(
         matches,
         messages,
         safety,
+        feedback,
     ):
         v1.include_router(module.router)
     if settings.env == "dev":

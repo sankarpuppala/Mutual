@@ -52,7 +52,8 @@ def run_retention(db: Session, clock: Clock, settings: Settings) -> None:
     db.execute(delete(Match).where(Match.ended_at.is_not(None), Match.ended_at <= ended_cutoff))
 
     # Operator sessions, and college applications with their contact address (SPEC §4.2):
-    # never verified -> gone after a day; decided -> gone after decided_retention_days.
+    # never verified -> gone after a day (the address was never proven to be the
+    # applicant's own); decided -> kept, unless decided_retention_days is set above 0.
     db.execute(delete(OperatorSession).where(OperatorSession.expires_at <= now))
     unverified_cutoff = now - timedelta(hours=settings.colleges.unverified_retention_hours)
     db.execute(
@@ -61,12 +62,13 @@ def run_retention(db: Session, clock: Clock, settings: Settings) -> None:
             CollegeApplication.created_at <= unverified_cutoff,
         )
     )
-    decided_cutoff = now - timedelta(days=settings.colleges.decided_retention_days)
-    db.execute(
-        delete(CollegeApplication).where(
-            CollegeApplication.decided_at.is_not(None),
-            CollegeApplication.decided_at <= decided_cutoff,
+    if settings.colleges.decided_retention_days > 0:
+        decided_cutoff = now - timedelta(days=settings.colleges.decided_retention_days)
+        db.execute(
+            delete(CollegeApplication).where(
+                CollegeApplication.decided_at.is_not(None),
+                CollegeApplication.decided_at <= decided_cutoff,
+            )
         )
-    )
 
     db.commit()

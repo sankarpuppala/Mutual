@@ -224,6 +224,11 @@ ReportReason = Literal[
 ]
 
 
+class FeedbackIn(_In):
+    category: Literal["idea", "problem", "other"]
+    body: str = Field(min_length=1, max_length=10000)
+
+
 class ReportIn(_In):
     peer_id: str
     reason: ReportReason

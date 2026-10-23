@@ -1,6 +1,8 @@
 # SPEC.md — Mutual
 
-Status: **v1.5 — the contract.** (v1.5, 2026-10-23: official college applications §4.2,
+Status: **v1.6 — the contract.** (v1.6, 2026-10-23: student feedback §11.4, a central
+admin created from the environment §11.3, college applications kept §4.2/§9; D26.
+v1.5, 2026-10-23: official college applications §4.2,
 the operator console §11.3, operators and audit tables §12, the deployment kit §17 and
 §20; D25. v1.4, 2026-10-05: many colleges, each a
 closed campus, §4.1 and D24; Q1 and Q2 resolved. v1.3, 2026-10-05: second protocol
@@ -144,9 +146,12 @@ script-free HTML form outside `/v1`.
   the verified domain, and sets `campuses.partner_verified_at`.
 - **The contact email is stored in plaintext.** It is an institutional work address
   volunteered for a partnership so the operator can reply, not a student's identity.
-  Invariant 5 still holds for students. Retention: unverified applications are deleted after
-  `colleges.unverified_retention_hours`, decided ones `colleges.decided_retention_days`
-  after the decision (§9).
+  Invariant 5 still holds for students. Retention (v1.6, D26): verified and decided
+  applications are **kept** as the record of who asked for which college
+  (`colleges.decided_retention_days: 0`; a positive value deletes them that many days
+  after the decision). Unverified applications are still deleted after
+  `colleges.unverified_retention_hours`, because their address was never proven to be the
+  applicant's own (§9).
 - **Abuse limits.** Per-IP hourly limits on applying and verifying (the IP is counted in
   memory only, as in §9). An already-open domain is refused. A failed email send deletes
   the application.
@@ -598,7 +603,8 @@ rounded up to a multiple of 256; silence is not a size.
 | Matches | Server | Until unmatch, block or account deletion; then kept as `ended` for the other party until fetched or 30 days (§6.9) |
 | Messages | Server | Deleted on unmatch/block/deletion (report excerpts retained) |
 | Reports | Server | Until resolved + 90 days |
-| College applications, including the official's contact email (§4.2) | Server | Unverified: `colleges.unverified_retention_hours` (24 h). Decided: `colleges.decided_retention_days` (180) after the decision |
+| College applications, including the official's contact email (§4.2) | Server | Unverified: `colleges.unverified_retention_hours` (24 h). Verified and decided: kept (v1.6, D26) |
+| Student feedback (§11.4) | Server | Kept. On account deletion `user_id` becomes NULL |
 | Operator passwords | scrypt hash (§11.3) | Until the operator is removed |
 | Operator sessions | SHA-256 hash | `admin.session_ttl_hours` (12 h) |
 | Operator audit log | Username, action, target, time; never an IP | Deployment lifetime |
@@ -736,6 +742,7 @@ unhandled error, never echoing the underlying write.
 | `POST /blocks` | `{peer_id}` (allowed pre-match; explicit user disclosure). Acts only on ids in the caller's current digest window or notified matches; any other id gets the same 204 with no effect. The request only records the block; its effect on pending tokens is applied at release (§6.9) |
 | `POST /reports` | `{peer_id, reason, message_ids?}`. Same id rule and uniform 204 as blocks |
 | `POST /discovery/pause`, `POST /discovery/resume` | S6 |
+| `POST /feedback` | `{category: idea\|problem\|other, body}` → 204. A message to the team (§11.4); no peer id; `feedback.per_user_per_day` |
 | `GET /config` | `{campus:{id, name}?, server_time, epoch, protocol_version, reveal_policy, next_policy_change?, signal_upload_window, presence_upload_window, match_batch_time, digest_release_time, interest_ttl_days, ble:{...}, study_enabled}` |
 | `POST /dev/clock` | `{offset_seconds}` — **dev only** |
 | `POST /dev/crossing` | `{user_a, user_b, day}` — **dev only**, creates a confirmed crossing |
@@ -744,8 +751,10 @@ unhandled error, never echoing the underlying write.
 
 ### 11.3 Operator console (`/admin`, HTML, outside `/v1`) — v1.5, D25
 For the people who run a deployment (§19, Q8). Never used by the app.
-- **Operators** are created with `python -m mutual_server.admin operators add <name>`
-  or by an owner in the console. Passwords are stored as stdlib scrypt hashes
+- **Operators** are created with `python -m mutual_server.admin operators add <name>`,
+  by an owner in the console, or (v1.6) as the **central admin**: an owner made at the
+  first start from `MUTUAL_ADMIN_USERNAME` / `MUTUAL_ADMIN_PASSWORD`. It is never touched
+  again once it exists, so a password changed in the console sticks. Passwords are stored as stdlib scrypt hashes
   (N=2^14, r=8, p=1) and are at least `admin.password_min_length` long. Two roles:
   **owner** (`campus_id` NULL, every campus) and **campus moderator** (one campus:
   its reports, its users, its counts, nothing else; invariant 13).
@@ -755,7 +764,7 @@ For the people who run a deployment (§19, Q8). Never used by the app.
   limited per IP (`admin.login_ip_limit_per_hour`), and an unknown username costs the
   same scrypt check as a wrong password.
 - **Pages:** overview (counts per campus only: students, new in 7 days, active mutuals,
-  open reports, most-requested unopened colleges); reports (excerpt, resolve, suspend
+  open reports, new feedback, most-requested unopened colleges); feedback (§11.4); reports (excerpt, resolve, suspend
   the reported user); users (lookup by id only, with no list of all students; suspend and
   lift); colleges (open, decline, edit domains; owners); applications (owners);
   operators (add, disable; owners); audit log (owners); own password.
@@ -767,6 +776,19 @@ For the people who run a deployment (§19, Q8). Never used by the app.
 - Every page sends `Content-Security-Policy: default-src 'none'; style-src
   'unsafe-inline'; form-action 'self'; frame-ancestors 'none'`, `X-Frame-Options: DENY`,
   `Referrer-Policy: no-referrer` and `Cache-Control: no-store`.
+
+### 11.4 Student feedback — v1.6, D26
+Students send the team ideas, problems or anything else from the You tab ("Send
+feedback"). `POST /v1/feedback` stores the text with the author's id and campus.
+- **Not about a person.** The request has no peer field, and the screen points to Report
+  for that. It is sent only when the student presses Send, so it is never
+  attention-dependent (invariant 1).
+- **Limits:** `feedback.max_length` characters, `feedback.per_user_per_day` messages.
+- **Read in `/admin` → Feedback**, scoped by campus like reports. The central owner sees
+  every college; a moderator sees only their own. Marking one read is audited.
+- **Retention:** kept for the deployment's lifetime (D26). Deleting the account keeps the
+  feedback but sets `user_id` to NULL, so it no longer points at the person. The screen and
+  the privacy page say so.
 
 ### 11.1 Digest ranking
 `ranking.method: reciprocal_content` (Tier 2) or `random` (Tier 1 default).
@@ -845,6 +867,8 @@ date strings.
   contact_email, note, status[unverified|verified|approved|rejected], code_hash NULL,
   code_expires_at NULL, code_attempts, created_at, verified_at NULL, decided_at NULL,
   decided_by NULL)` (v1.5, §4.2)
+- `feedback(id, user_id NULL ON DELETE SET NULL, campus_id, category[idea|problem|other],
+  body, status[new|read], created_at, read_at NULL, read_by NULL)` (v1.6, §11.4)
 
 ---
 
@@ -872,7 +896,9 @@ app/app/
   match/[id].tsx        # chat
   reveal/[id].tsx       # the Reveal moment (modal)
   privacy.tsx           # "What Mutual can and can never see"
-  dev.tsx               # dev panel, only when MUTUAL_ENV=dev
+  feedback.tsx          # "Send feedback", from the You tab (§11.4, v1.6)
+  dev.tsx               # dev panel, only when MUTUAL_ENV=dev; reached from Welcome
+                        # ("Try a demo account") and You, in dev builds only (v1.5)
 ```
 
 ### 13.3 Design concept: "a morning letter, not a slot machine"
@@ -1293,7 +1319,10 @@ colleges:                     # v1.5, §4.2; defaulted if absent
   code_ttl_seconds: 1800
   code_max_attempts: 5
   unverified_retention_hours: 24
-  decided_retention_days: 180
+  decided_retention_days: 0   # 0 = keep (v1.6, D26)
+feedback:                     # v1.6, §11.4; defaulted if absent
+  max_length: 2000
+  per_user_per_day: 5
 ```
 
 ### `sim/config.yaml`
@@ -1477,9 +1506,9 @@ server/mutual_server/web/{__init__,html,admin,colleges}.py      (operator consol
 server/deploy/{Dockerfile,start.py,docker-compose.yml,Caddyfile,config.prod.example.yaml,env.example}   (docs/DEPLOYMENT.md)
 .dockerignore
 server/mutual_server/data/prompts.json
-server/mutual_server/routers/{auth,account,profile,presence,digest,signals,matches,messages,safety,config_route,dev}.py
+server/mutual_server/routers/{auth,account,profile,presence,digest,signals,matches,messages,safety,config_route,dev,feedback}.py
 server/mutual_server/services/{campus,resolution,matching,ranking,digest,arms,cards,retention,email,media,rate_limit,operators,colleges}.py
-server/tests/{conftest,test_app,test_auth,test_account,test_profile,test_presence,test_digest,test_signals,test_matches,test_reveal,test_messages,test_safety,test_retention,test_leak_two_worlds,test_route_audit,test_study_gate,test_costs,test_rate_limit,test_admin_web,test_colleges,test_email,test_migrations}.py
+server/tests/{conftest,test_app,test_auth,test_account,test_profile,test_presence,test_digest,test_signals,test_matches,test_reveal,test_messages,test_safety,test_retention,test_leak_two_worlds,test_route_audit,test_study_gate,test_costs,test_rate_limit,test_admin_web,test_colleges,test_email,test_migrations,test_feedback}.py
 sim/{pyproject.toml,config.yaml}
 sim/mutual_sim/{__init__,population,copresence,policies,behaviour,metrics,run,sweep,report}.py
 sim/tests/{test_metrics,test_determinism,test_policies}.py
@@ -1536,6 +1565,7 @@ study/analysis/export.py                                 (GATED: written only af
 | D16 | One account per verified college email | Sybil resistance without collecting ID documents |
 | D24 | One server, many colleges; each campus is a closed partition; new colleges open after a one-time operator approval (§4.1) | The human's choice (2026-10-05): "make it for all colleges, people see only their college". Approval because `.ac.in` and similar suffixes also cover some schools, and age is self-declared |
 | D25 | Colleges can apply officially at `/colleges`, proving an address at their domain; operators work in a web console at `/admin` with owner and campus-moderator roles and an audit log; a single-server deployment kit (§4.2, §11.3, v1.5) | The human asked on 2026-10-23 for official college access, admin controls, test accounts and deployment, "without looking back". Every opening still needs an operator (D24). Moderators give partner colleges a safety role without seeing other campuses. The applicant's work email is stored in plaintext so they can be answered, deleted on a schedule |
+| D26 | Students can send feedback to the team; one central admin (an owner) reads every college's reports and feedback; college applications and feedback are kept (§4.2, §9, §11.3, §11.4, v1.6) | The human's answers on 2026-10-23: "an admin account who checks all the colleges for any feedbacks and reports", "store everything in a database for our safety of data", and no campus-closing action needed. Students' emails are still never stored (invariant 5). Unverified applications are still deleted, since their address was never proven |
 | D17 | BLE company id 0xFFFF (SIG test id) | Free and acceptable for a prototype; must change before any public release |
 | D18 | Ranking never uses signal, match or attention data | Impossible by design and must stay identical across reveal policies |
 | D19 | The app's interface matches `docs/design/prototype.html` exactly (§13.9) | Interface quality is the human's top priority; approved 2026-10-05 |

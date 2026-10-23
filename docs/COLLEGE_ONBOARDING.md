@@ -83,6 +83,8 @@ Opening a campus quietly produces empty mornings, and people uninstall. So:
 
 ## 4. Running a campus
 
+- **Feedback:** Admin → Feedback. Students send it from the app's You tab: ideas,
+  problems, anything. The central admin sees every college's.
 - **Reports:** Admin → Reports, every day. A report carries the conversation excerpt the
   reporter chose to share. *Suspend reported user* stops the account at once. *Mark
   resolved* closes the report. Every action goes into the audit log.
@@ -92,15 +94,6 @@ Opening a campus quietly produces empty mornings, and people uninstall. So:
   answered by email (deleting an account is in their own You tab).
 - **Your moderator leaves the college:** Admin → Operators → Disable. Their sessions end
   immediately.
-
-### Known gap: closing a campus
-
-There is no "close campus" action yet. Declining works only for colleges that are not
-yet open, and an open campus always keeps at least one domain. To wind a campus down
-today, ask students to delete their accounts from the app, and suspend any that remain
-(Admin → Users). A proper close action needs a spec decision first: what happens to
-existing mutuals and messages, and how much notice students get. It is on the Board in
-`docs/DECISIONS_LOG.md`.
 
 ## 5. Email to send a college (template)
 

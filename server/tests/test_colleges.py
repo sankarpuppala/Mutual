@@ -159,13 +159,29 @@ def test_unverified_applications_and_their_contacts_expire(h: Harness) -> None:
     assert "dean@christuniversity.in" not in h.dump()
 
 
-def test_decided_applications_expire(h: Harness) -> None:
+def _decided(h: Harness) -> str:
     app_id = apply(h)
     h.client.post("/colleges/verify", data={"application": app_id, "code": h.email.sent[-1][1]})
     add_operator(h)
     csrf = sign_in(h)
     h.client.post("/admin/applications/reject", data={"id": app_id, "csrf": csrf})
-    h.clock.advance(days=h.settings.colleges.decided_retention_days + 1)
+    return app_id
+
+
+def test_decided_applications_are_kept_by_default(h: Harness) -> None:
+    """DECISIONS_LOG 35: the human chose to keep decided applications (records of who
+    asked for which college) for the deployment's lifetime."""
+    app_id = _decided(h)
+    h.clock.advance(days=3650)
+    with h.db() as db:
+        run_retention(db, h.clock, h.settings)
+        assert db.get(CollegeApplication, app_id) is not None
+
+
+def test_decided_applications_expire_when_configured(make_harness) -> None:
+    h = make_harness(colleges={"decided_retention_days": 30})
+    _decided(h)
+    h.clock.advance(days=31)
     with h.db() as db:
         run_retention(db, h.clock, h.settings)
         assert db.scalar(select(CollegeApplication)) is None
