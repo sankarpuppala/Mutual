@@ -51,7 +51,11 @@ Start with the college you study at. It is the only one where you are not a stra
      c) IT allow-listing of the login-code sender address,
      d) optionally, the student council's endorsement and a launch slot at an event;
    - how to stop it: you close the campus on request, and accounts can be deleted from the
-     app's You tab at any time.
+     app's You tab at any time;
+   - **where it runs**, plainly, if you are hosting it yourself rather than on a cloud
+     server: the service depends on one computer's power and internet connection, not a
+     data centre (`docs/DEPLOYMENT.md` option C). Say so rather than letting them assume
+     otherwise.
 4. **Have the official apply at `/colleges`** with their college address, even though you
    know them. That leaves a verified record in the system of who asked, and when.
 5. **Open the campus** from the application, then add their moderator account:

@@ -2071,3 +2071,32 @@ the Feedback page was screenshotted at 1280 px light and 390 px dark.
   - [ ] Q6: create the Oracle, DuckDNS and Brevo accounts and follow
         `docs/DEPLOYMENT.md` §2.
 
+
+### 2026-10-23 (later still) — a credit-card-free deployment path
+
+Entry 36 in `docs/DECISIONS_LOG.md`. SPEC **v1.7** (§17, §20, D27). Supersedes the
+previous entry's checklist item about creating Oracle Cloud accounts: the human doesn't
+have a credit card, and Oracle's sign-up requires one even though the VM itself is free.
+
+**New:** `server/deploy/docker-compose.selfhost.yml` (the server alone, published on
+loopback only, no Caddy) and `docs/DEPLOYMENT.md` §3a: a computer the human already owns,
+reached through a free ngrok static domain instead of a cloud VM. Checked and rejected
+first: Render, Railway and Fly.io now require a card on their free tiers too;
+PythonAnywhere's free tier blocks outbound SMTP; Hugging Face Spaces wipes storage on
+restart. None of those were recommended.
+
+**Fixed on the way:** a markdown fence in §2.4 of `docs/DEPLOYMENT.md` had swallowed the
+next paragraph onto one line (an artifact of an earlier edit), unrelated to this entry.
+
+**Verified:** built the production image, ran it with the new compose file and a prod
+config, confirmed `/healthz`, `/colleges`, a 404 on `/v1/dev/*`, and a sign-in as the
+environment-created central admin, then removed the test container and image.
+
+**Tests:** unchanged (325 Python, 220 app, 29 protocol-ts) — nothing here is covered by a
+test suite; the deployment docs and compose files were checked by hand as above.
+
+- Human review checklist (this entry):
+  - [ ] Follow `docs/DEPLOYMENT.md` §3a yourself: create the free ngrok account, claim a
+        static domain, and keep the machine on. Only you can.
+  - [ ] Read the new "where it runs" bullet in `docs/COLLEGE_ONBOARDING.md` §2 before
+        asking a college to say yes, if you go this route.

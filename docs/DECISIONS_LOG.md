@@ -18,7 +18,7 @@ the reason), **Parked** (good idea, not now), **Open** (waiting for an answer).
 |---|---|---|
 | Q3 | Do you have two Android 12+ phones for the Bluetooth test? | Phase 9 — **answered 2026-10-07: yes, but it is the last thing to be done** |
 | Q4 | Which ethics body approves research with students at your institution, and what is its timeline? **Only you can answer this**: it names a real committee, and invariant 9 turns on `study/APPROVAL.md` recording its actual reference. Nothing in this repository may stand in for it. | Phase 12 |
-| Q6 | Where will the server run for a demo with more than one phone? **Partly answered 2026-10-23:** `docs/DEPLOYMENT.md` gives two free options (an Oracle Always Free VM with DuckDNS and Caddy, or the laptop with a `cloudflared` quick tunnel). Which one is yours to pick, and only you can create the accounts. | Before a multi-phone pilot |
+| Q6 | Where will the server run for a demo with more than one phone? **Answered 2026-10-23:** the human has no credit card, so Oracle's Always Free VM (which asks for one to verify identity) is out. `docs/DEPLOYMENT.md` option C: a computer the human owns, running the real server, reached through a free ngrok static domain. Still only the human can create that ngrok account and keep the machine on. | Before a multi-phone pilot |
 
 ### Resolved since 2026-10-07
 | # | Question | How it was settled |
@@ -1795,3 +1795,35 @@ No spec change. Logged per CLAUDE.md §8 rule 8, same session.
 - **Numbers:** 325 Python (+10), 220 app (+3), 29 protocol-ts. All checks clean. Migration
   `0006_feedback`.
 
+### 36. "I don't have a credit card" — a self-hosted path with no card anywhere — Adopted (SPEC v1.7, D27)
+
+- **What came up (2026-10-23):** the human tried Oracle Cloud's Always Free VM (entry 34's
+  recommendation) and could not sign up without a credit card, and asked for a different
+  method.
+- **Why the other free options don't actually solve this.** Checked before answering,
+  because the honest answer matters more than a quick one: Render, Railway and Fly.io all
+  now require a card on their free tiers too (introduced to stop crypto-mining abuse).
+  PythonAnywhere's free tier needs none, but blocks outbound SMTP on free accounts, which
+  would break login codes. Hugging Face Spaces' free storage is wiped on every restart,
+  which would silently delete every account. None of these were recommended.
+- **The path that actually works: self-host + a free ngrok static domain.** A computer the
+  human already owns runs the real production server (Docker, real SMTP, real students) on
+  `127.0.0.1` only; ngrok's free plan gives one *static* `https://` domain — unlike a
+  Cloudflare quick tunnel, it doesn't change on restart — with its own certificate, and
+  needs only an email address to sign up. New `server/deploy/docker-compose.selfhost.yml`
+  (no Caddy; the port is loopback-only, so trusting the one process that can reach it is
+  the same reasoning the existing Caddy-only network already relies on, not a weaker rule).
+  `docs/DEPLOYMENT.md` §3a. Verified by building the image, running it with this compose
+  file and a prod config, and confirming `/healthz`, `/colleges`, a 404 on `/v1/dev/*`, and
+  a sign-in as the environment-created central admin all worked exactly as documented.
+- **A real bug found and fixed on the way:** a markdown fence in §2.4 had swallowed the
+  start of the next paragraph (`` ``` Add the supervisor as a second owner... ``, run
+  together on one line) — a leftover from an earlier edit. Fixed; unrelated to this entry's
+  topic but caught while reading the file.
+- **Not changed:** nothing about the protocol, the server's API, or any privacy invariant.
+  This is a second way to reach the same Docker image, documented as what it honestly is:
+  less reliable than a data centre, and said so to students and to a partner college
+  (`docs/COLLEGE_ONBOARDING.md` §2).
+- **Numbers:** no test suite covers deployment docs or compose files (nothing to assert
+  against); verified by hand as described above. 325 Python, 220 app, 29 protocol-ts
+  unchanged from entry 35.

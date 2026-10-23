@@ -1,6 +1,7 @@
 # SPEC.md — Mutual
 
-Status: **v1.6 — the contract.** (v1.6, 2026-10-23: student feedback §11.4, a central
+Status: **v1.7 — the contract.** (v1.7, 2026-10-23: a no-credit-card self-hosted
+deployment path, §17/§20, D27. v1.6, 2026-10-23: student feedback §11.4, a central
 admin created from the environment §11.3, college applications kept §4.2/§9; D26.
 v1.5, 2026-10-23: official college applications §4.2,
 the operator console §11.3, operators and audit tables §12, the deployment kit §17 and
@@ -1242,6 +1243,9 @@ salt; no crossing pairs exported.
   lockfiles; pins recorded in the Progress log when first chosen.
 - Pilot deployment (v1.5): Docker, Caddy (free Let's Encrypt certificates), any free SMTP
   account, EAS Build free tier or a local Gradle release build. `docs/DEPLOYMENT.md`.
+- No-credit-card deployment (v1.7): the same Docker image, published on loopback only and
+  reached through a free ngrok static domain instead of Caddy
+  (`server/deploy/docker-compose.selfhost.yml`). `docs/DEPLOYMENT.md` §3a.
 
 ---
 
@@ -1503,7 +1507,7 @@ server/{pyproject.toml,config.example.yaml,alembic.ini}
 server/migrations/{env.py,script.py.mako,versions/}     (Alembic)
 server/mutual_server/{__init__,main,config,clock,ids,db,models,security,errors,deps,schemas,admin,demo_seed}.py
 server/mutual_server/web/{__init__,html,admin,colleges}.py      (operator console §11.3, college applications §4.2)
-server/deploy/{Dockerfile,start.py,docker-compose.yml,Caddyfile,config.prod.example.yaml,env.example}   (docs/DEPLOYMENT.md)
+server/deploy/{Dockerfile,start.py,docker-compose.yml,docker-compose.selfhost.yml,Caddyfile,config.prod.example.yaml,env.example}   (docs/DEPLOYMENT.md)
 .dockerignore
 server/mutual_server/data/prompts.json
 server/mutual_server/routers/{auth,account,profile,presence,digest,signals,matches,messages,safety,config_route,dev,feedback}.py
@@ -1566,6 +1570,7 @@ study/analysis/export.py                                 (GATED: written only af
 | D24 | One server, many colleges; each campus is a closed partition; new colleges open after a one-time operator approval (§4.1) | The human's choice (2026-10-05): "make it for all colleges, people see only their college". Approval because `.ac.in` and similar suffixes also cover some schools, and age is self-declared |
 | D25 | Colleges can apply officially at `/colleges`, proving an address at their domain; operators work in a web console at `/admin` with owner and campus-moderator roles and an audit log; a single-server deployment kit (§4.2, §11.3, v1.5) | The human asked on 2026-10-23 for official college access, admin controls, test accounts and deployment, "without looking back". Every opening still needs an operator (D24). Moderators give partner colleges a safety role without seeing other campuses. The applicant's work email is stored in plaintext so they can be answered, deleted on a schedule |
 | D26 | Students can send feedback to the team; one central admin (an owner) reads every college's reports and feedback; college applications and feedback are kept (§4.2, §9, §11.3, §11.4, v1.6) | The human's answers on 2026-10-23: "an admin account who checks all the colleges for any feedbacks and reports", "store everything in a database for our safety of data", and no campus-closing action needed. Students' emails are still never stored (invariant 5). Unverified applications are still deleted, since their address was never proven |
+| D27 | A deployment path that needs no credit card anywhere: the server runs on a computer the human already owns, published to `127.0.0.1` only and reached through a free ngrok static domain, trusted the same way Caddy is trusted in the cloud option (§17, v1.7) | The human asked for a different method after Oracle Cloud's sign-up required a card. ngrok's free static domain gives a stable `https://` address without owning a domain or forwarding a router port. The honest trade-off (uptime depends on the human's own machine, not a data centre) is stated in `docs/DEPLOYMENT.md` and `docs/COLLEGE_ONBOARDING.md` rather than hidden |
 | D17 | BLE company id 0xFFFF (SIG test id) | Free and acceptable for a prototype; must change before any public release |
 | D18 | Ranking never uses signal, match or attention data | Impossible by design and must stay identical across reveal policies |
 | D19 | The app's interface matches `docs/design/prototype.html` exactly (§13.9) | Interface quality is the human's top priority; approved 2026-10-05 |

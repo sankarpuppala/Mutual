@@ -18,7 +18,8 @@ Everything below is in `server/deploy/`:
 |---|---|
 | `Dockerfile` | The server image. Build context is the repository root. |
 | `start.py` | Entry point: validates the config, runs `alembic upgrade head`, starts uvicorn with the access log **off** and proxy headers trusted only from the proxy. |
-| `docker-compose.yml` | The server plus Caddy for HTTPS. |
+| `docker-compose.yml` | The server plus Caddy for HTTPS (options A/B). |
+| `docker-compose.selfhost.yml` | The server alone, for a tunnel to terminate HTTPS instead (option C, no card needed). |
 | `Caddyfile` | Caddy config. No `log` directive, so no access log and no IP addresses (invariant 5). |
 | `config.prod.example.yaml` | Production config: SMTP email, data under `/data`, no pre-approved colleges. |
 | `env.example` | The secrets the server reads from the environment. |
@@ -27,12 +28,14 @@ Everything below is in `server/deploy/`:
 
 ## 1. Pick a host (all free)
 
-| Option | Cost | Good for | Catch |
-|---|---|---|---|
-| **A. Oracle Cloud "Always Free" VM** + a free **DuckDNS** hostname | 0 | A pilot that stays up for weeks | Sign-up asks for a card to verify identity. Always Free resources are not charged, but choose the Always Free shape and region carefully. |
-| **B. Your laptop** + `cloudflared` quick tunnel | 0 | A demo for an afternoon | The `*.trycloudflare.com` URL changes every time the tunnel restarts, and the server is down whenever the laptop sleeps. |
+| Option | Cost | Needs a card? | Good for | Catch |
+|---|---|---|---|---|
+| **A. Oracle Cloud "Always Free" VM** + a free **DuckDNS** hostname | 0 | **Yes**, to verify identity (never charged) | A pilot that stays up for weeks, on a machine built for it | Choose the Always Free shape and region carefully, or the VM is not actually free |
+| **B. Your laptop** + `cloudflared` quick tunnel | 0 | No | A demo for an afternoon | The `*.trycloudflare.com` URL changes every time the tunnel restarts, and the server is down whenever the laptop sleeps |
+| **C. Your own computer** + a free **ngrok** static domain | 0 | No | A real pilot, if the machine can stay on | Uptime depends on your own power and internet, not a data centre; see §3a |
 
-Any other Linux machine with a public IP and Docker works the same way as option A.
+Any other Linux machine with a public IP and Docker works the same way as option A. **No
+credit card at all:** skip straight to option C.
 
 ## 2. Option A: a server that stays up
 
@@ -132,11 +135,84 @@ Start Metro with `EXPO_PUBLIC_SERVER_URL` set to the printed `https://….tryclo
 URL and a dev build of the app will use it. **Never** use dev mode for real students:
 it prints login codes to the console and lets anyone move the server clock.
 
+## 3a. Option C: your own computer, no credit card anywhere
+
+Oracle (option A) asks for a card to prove you're a real person, even though the VM
+itself is never charged. If you don't have one, this option needs none at all: a
+computer you own stays switched on and connected to the internet, running the real
+production server (not dev mode, real SMTP, real students), and a free **ngrok** tunnel
+gives it a stable `https://` address with its own certificate — no router
+configuration, no port forwarding.
+
+The trade-off, stated plainly: the service is only as reliable as your machine's power
+and internet connection. That's a real difference from a data centre, and it's worth
+saying so to your partner college (`docs/COLLEGE_ONBOARDING.md` §2).
+
+### 3a.1 Get a free, stable address
+
+1. Create a free account at [ngrok.com](https://ngrok.com) — email only, no card.
+2. Install the agent (`winget install ngrok.ngrok` on Windows, or download from their
+   site), then authenticate it once:
+   ```powershell
+   ngrok config add-authtoken <your-token-from-the-ngrok-dashboard>
+   ```
+3. On the ngrok dashboard, under **Domains**, claim your one free static domain —
+   something like `your-name.ngrok-free.app`. Unlike a quick tunnel, this address never
+   changes.
+
+### 3a.2 Configure and start the server
+
+Same as §2.2 for email, then:
+
+```powershell
+cd server/deploy
+cp env.example .env                       # gitignored
+cp config.prod.example.yaml config.yaml   # gitignored
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"   # paste as MUTUAL_EMAIL_PEPPER
+notepad .env          # MUTUAL_EMAIL_PEPPER, SMTP user/password, MUTUAL_ADMIN_* (MUTUAL_DOMAIN is not used here)
+notepad config.yaml   # email.smtp_host and email.from_address
+docker compose -f docker-compose.selfhost.yml up -d --build
+```
+
+This uses `docker-compose.selfhost.yml`, not the usual `docker-compose.yml`: it skips
+Caddy and publishes the server on `127.0.0.1:8000` only, since ngrok terminates HTTPS
+and talks to it over plain HTTP on the same machine. Nothing outside this computer can
+reach that port, which is why it's safe for the server to trust the tunnel the same way
+it trusts Caddy in option A.
+
+In a second terminal, start the tunnel and leave it running:
+
+```powershell
+ngrok http --url=your-name.ngrok-free.app 8000
+```
+
+Check `https://your-name.ngrok-free.app/healthz` returns `{"status":"ok"}` from another
+device. **Back up `MUTUAL_EMAIL_PEPPER`** exactly as in §2.3 — losing it locks every
+student out for good, with no recovery.
+
+### 3a.3 Keep it running
+
+Both the server and the tunnel need to survive a reboot and stay running unattended:
+
+- **Docker Desktop:** Settings → General → "Start Docker Desktop when you log in."
+- **Power:** Settings → System → Power & battery → set sleep to *Never*, and if it's a
+  laptop, set "When I close the lid, plugged in" to *Do nothing* (`powercfg` does the
+  same from PowerShell). Leave it plugged in.
+- **Autostart ngrok and the compose stack at login:** Task Scheduler → Create Task →
+  trigger *At log on*, action `ngrok http --url=your-name.ngrok-free.app 8000`, with
+  "Run whether user is logged on or not." Point a second task at
+  `docker compose -f server/deploy/docker-compose.selfhost.yml up -d` the same way, or
+  simply run that command once — containers restart on their own
+  (`restart: unless-stopped`) as long as Docker Desktop itself comes back up.
+
+Updating and backups work exactly as in §2.5–§2.6, with
+`-f docker-compose.selfhost.yml` added to every `docker compose` command.
+
 ## 4. Building the app for real phones
 
 The app reads two build-time variables (`app/app.config.ts`):
 `EXPO_PUBLIC_MUTUAL_ENV` (`dev` or `prod`, default `prod`) and `EXPO_PUBLIC_SERVER_URL`.
-A release build refuses plain `http://`, so it needs the HTTPS host from §2.
+A release build refuses plain `http://`, so it needs the HTTPS host from §2 or §3a.
 
 Edit `app/eas.json`, replacing `https://REPLACE-WITH-YOUR-SERVER` in the `preview` and
 `production` profiles. `__tests__/release-profiles.test.ts` fails if a release profile is
