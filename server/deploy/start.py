@@ -49,11 +49,18 @@ def main() -> int:
 
         import uvicorn
 
+        # Resolve port safely across Render ($PORT / PORT env var), Docker, or local environments
+        port_raw = os.environ.get("PORT") or os.environ.get("MUTUAL_PORT") or "8000"
+        try:
+            port = int(port_raw)
+        except ValueError:
+            port = 8000
+
         uvicorn.run(
             "mutual_server.main:create_app",
             factory=True,
             host=os.environ.get("MUTUAL_HOST", "0.0.0.0"),
-            port=int(os.environ.get("MUTUAL_PORT", "8000")),
+            port=port,
             access_log=False,
             proxy_headers=True,
             forwarded_allow_ips=os.environ.get("MUTUAL_FORWARDED_ALLOW_IPS", "127.0.0.1"),
