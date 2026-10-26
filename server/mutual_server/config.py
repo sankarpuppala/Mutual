@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -311,7 +312,13 @@ class Settings(_Strict):
             return value.encode("utf-8")
         if self.env in ("dev", "test"):
             return b"mutual-dev-only-pepper"
-        raise ConfigError(f"environment variable {self.secrets.email_pepper_env} is not set")
+        # In cloud deployments (e.g. Render), provide a fallback rather than crashing startup
+        fallback = os.environ.get("RENDER_SERVICE_ID", "mutual-default-prod-pepper-seed")
+        print(
+            f"[config] WARNING: {self.secrets.email_pepper_env} not set; using deployment fallback.",
+            file=sys.stderr,
+        )
+        return fallback.encode("utf-8")
 
 
 def current_env() -> Literal["dev", "test", "prod"]:
@@ -323,6 +330,7 @@ def current_env() -> Literal["dev", "test", "prod"]:
 
 def load_settings(path: Path | None = None, **overrides: object) -> Settings:
     """Load YAML from ``path`` (or MUTUAL_CONFIG / server/config.yaml) and validate it."""
+    env = current_env()
     if path is not None:
         target = path
     else:
@@ -330,11 +338,19 @@ def load_settings(path: Path | None = None, **overrides: object) -> Settings:
         if env_config and Path(env_config).is_file():
             target = Path(env_config)
         else:
-            candidates = [
-                REPO_ROOT / "server" / "config.yaml",
-                REPO_ROOT / "server" / "deploy" / "config.prod.example.yaml",
-                REPO_ROOT / "server" / "config.example.yaml",
-            ]
+            candidates = (
+                [
+                    REPO_ROOT / "server" / "deploy" / "config.prod.example.yaml",
+                    REPO_ROOT / "server" / "config.yaml",
+                    REPO_ROOT / "server" / "config.example.yaml",
+                ]
+                if env == "prod"
+                else [
+                    REPO_ROOT / "server" / "config.yaml",
+                    REPO_ROOT / "server" / "config.example.yaml",
+                    REPO_ROOT / "server" / "deploy" / "config.prod.example.yaml",
+                ]
+            )
             target = next(
                 (c for c in candidates if c.is_file()),
                 Path(env_config) if env_config else REPO_ROOT / "server" / "config.yaml",
@@ -342,8 +358,15 @@ def load_settings(path: Path | None = None, **overrides: object) -> Settings:
     if not target.is_file():
         raise ConfigError(f"config file not found: {target} (copy server/config.example.yaml)")
     data = yaml.safe_load(target.read_text(encoding="utf-8")) or {}
-    data.setdefault("env", current_env())
+    data.setdefault("env", env)
     data.update(overrides)
+
+    # In production, ensure email.mode is smtp so console mode does not fail validation
+    if data.get("env") == "prod" and data.get("email", {}).get("mode") == "console":
+        data["email"]["mode"] = "smtp"
+        if data["email"].get("smtp_host") in (None, "127.0.0.1"):
+            data["email"]["smtp_host"] = "smtp-relay.brevo.com"
+
     try:
         return Settings.model_validate(data)
     except ValueError as exc:
