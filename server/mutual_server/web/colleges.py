@@ -22,38 +22,29 @@ router = APIRouter(prefix="/colleges", tags=["colleges"])
 _NAV = [("For colleges", "/colleges", True)]
 
 _ABOUT = """
-<h1>Bring Mutual to your college</h1>
-<p class="lede">Mutual helps students meet the people they already share a campus with —
+<div class="hero">
+  <div class="eyebrow">Bring Mutual to your college</div>
+  <h1>Meet the people you <em class="italic-accent">almost</em> meet.</h1>
+  <p class="lede">Mutual helps students meet the people they already share a campus with —
 for study, a project, fitness, friendship or a date — without feeds, swiping or location
 tracking. It opens one college at a time, and only after someone at the college asks.</p>
-
-<div class="card">
-<h2 style="margin-top:0">What students get</h2>
-<p>Each morning, a short list of fellow students they actually spent time near the day
-before — noticed by Bluetooth between phones, never GPS, never a place, never live. They
-can send a private signal to anyone on it. If two people signal each other for the same
-reason, both find out the next morning. If not, <b>nobody ever learns the signal existed</b>
-— not the other student, and not us. Photos appear only after a mutual match.</p>
 </div>
 
-<div class="card">
-<h2 style="margin-top:0">What opening a college involves</h2>
-<p><b>1. Apply below</b> with your official college email. We send a code to that address
-— it proves the request comes from someone at the college.<br>
-<b>2. We talk.</b> We review every application by hand and agree the basics with you: who
-the student-safety contact is, how reports are handled, and when to launch.<br>
-<b>3. We open the campus.</b> Students sign in with their college email; anyone outside
-the college's domain cannot join, and nobody at one college ever sees another.<br>
-<b>4. Optional: a campus moderator.</b> Your safety officer can get a moderator login
-that shows only your college's reports, never anything else.</p>
-</div>
-
-<div class="card">
-<h2 style="margin-top:0">What we never collect</h2>
-<p>No location. No contact lists. No advertising or analytics SDKs. Student emails,
-dates of birth, login codes and IP addresses are never stored. Mutual is a research
-prototype and has <b>not</b> been independently security-audited; we will say so to your
-students too.</p>
+<div class="grid">
+  <div class="card-grid-item">
+    <h3>What students get</h3>
+    <p>Each morning, a short list of fellow students they spent time near yesterday — noticed by Bluetooth between phones, never GPS, never a place, never live. Signals stay secret unless both students signal each other.</p>
+  </div>
+  <div class="card-grid-item">
+    <h3>What opening involves</h3>
+    <p>1. <b>Apply below</b> with your official college email to receive a verification code.<br>
+    2. <b>We talk:</b> agree safety basics, moderation, and schedule.<br>
+    3. <b>Campus opens:</b> only @college domain accounts can join.</p>
+  </div>
+  <div class="card-grid-item">
+    <h3>Privacy by design</h3>
+    <p>No location. No contact lists. No third-party analytics or ad SDKs. Student emails, dates of birth, login codes and IP addresses are never stored. Mutual is an unaudited research prototype built for genuine student privacy.</p>
+  </div>
 </div>
 """
 
@@ -64,31 +55,34 @@ def _form(values: dict[str, str], error: str | None = None) -> str:
         for k in ("college_name", "domain", "contact_name", "contact_role", "contact_email", "note")
     }
     return f"""
-<h2 id="apply">Apply</h2>
+<div class="card">
+<h2 id="apply" style="margin-top:0">Apply to open your college</h2>
+<p class="lede" style="margin-bottom:18px">Provide your official address to start the verification process.</p>
 {flash(error, error=True)}
-<form class="card" method="post" action="/colleges/apply">
+<form method="post" action="/colleges/apply">
 <label for="college_name">College name</label>
 <input type="text" id="college_name" name="college_name" required maxlength="120"
- value="{v["college_name"]}">
+ placeholder="e.g. Indian Institute of Science" value="{v["college_name"]}">
 <label for="domain">The college's email domain</label>
 <input type="text" id="domain" name="domain" required maxlength="253"
- placeholder="college.ac.in" value="{v["domain"]}">
+ placeholder="e.g. iisc.ac.in" value="{v["domain"]}">
 <p class="hint">The part after the @ in student addresses. Subdomains are included.</p>
 <label for="contact_name">Your name</label>
 <input type="text" id="contact_name" name="contact_name" required maxlength="80"
- value="{v["contact_name"]}">
+ placeholder="Your full name" value="{v["contact_name"]}">
 <label for="contact_role">Your role at the college</label>
 <input type="text" id="contact_role" name="contact_role" required maxlength="80"
- placeholder="Dean of Students, Student Council President, …" value="{v["contact_role"]}">
+ placeholder="Dean of Students, Student Council President, Student, …" value="{v["contact_role"]}">
 <label for="contact_email">Your official email</label>
 <input type="email" id="contact_email" name="contact_email" required maxlength="254"
- value="{v["contact_email"]}">
+ placeholder="you@college.ac.in" value="{v["contact_email"]}">
 <p class="hint">Must be at the domain above. We use it only to reply about this
 application, and delete it once the application is closed.</p>
 <label for="note">Anything we should know (optional)</label>
-<textarea id="note" name="note" maxlength="2000">{v["note"]}</textarea>
-<p style="margin-top:16px"><button type="submit">Send verification code</button></p>
+<textarea id="note" name="note" maxlength="2000" placeholder="Campus size, student initiatives, or special requests...">{v["note"]}</textarea>
+<p style="margin-top:20px"><button type="submit">Send verification code</button></p>
 </form>
+</div>
 """
 
 
