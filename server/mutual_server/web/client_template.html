@@ -291,8 +291,39 @@ button[disabled]{cursor:not-allowed}
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation-duration:1ms!important;transition-duration:1ms!important}
 }
+
+/* Web Navigation & Layout */
+.web-top-bar{width:100%;max-width:1100px;margin:0 auto 16px;display:flex;justify-content:space-between;align-items:center;padding:0 8px;font-size:13px;font-weight:500}
+.web-top-link{color:var(--muted);text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:color var(--t-micro)}
+.web-top-link:hover{color:var(--ink)}
+.web-top-badge{display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--hair);padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;box-shadow:var(--shadow)}
+.badge-dot{width:8px;height:8px;border-radius:50%;background:#2E7D32}
+
+/* Full Web App Mode for Desktop */
+:root[data-layout="full"] .stage{max-width:1200px;gap:36px}
+:root[data-layout="full"] .phone{width:560px;height:860px;max-height:calc(100vh - 80px);border-width:6px;border-radius:36px}
+:root[data-layout="full"] .view{padding:16px 28px 32px}
+
+/* Auth & Forms */
+.auth-wrap{display:flex;flex-direction:column;gap:18px;padding:8px 4px 24px}
+.auth-brand{display:flex;align-items:center;gap:12px;margin-bottom:4px}
+.field{display:flex;flex-direction:column;gap:6px;text-align:left;width:100%}
+.field-label{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.input-text,.select-field{width:100%;height:48px;padding:0 14px;border:1.5px solid var(--hair);border-radius:14px;background:var(--surface);color:var(--ink);font-family:var(--ui);font-size:15px;transition:border-color var(--t-micro);box-sizing:border-box}
+.input-text:focus,.select-field:focus{outline:none;border-color:var(--mutual)}
+.otp-box{width:100%;height:54px;text-align:center;font-size:26px;font-family:var(--display);font-weight:600;letter-spacing:6px;border:1.5px solid var(--hair);border-radius:14px;background:var(--surface);color:var(--ink);box-sizing:border-box}
+.otp-box:focus{outline:none;border-color:var(--mutual)}
+.demo-banner{margin-top:20px;padding-top:16px;border-top:1px dashed var(--hair);display:flex;flex-direction:column;gap:10px}
+.demo-head{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.demo-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.demo-tile{padding:8px 10px;border:1px solid var(--hair);border-radius:12px;background:var(--surface);display:flex;align-items:center;gap:8px;cursor:pointer;text-align:left;transition:background var(--t-micro),border-color var(--t-micro)}
+.demo-tile:hover{background:var(--sunk);border-color:var(--mutual)}
+.demo-info{display:flex;flex-direction:column;min-width:0}
+.demo-name{font-weight:600;font-size:13px}
+.demo-sub{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
 
+<header class="web-top-bar"><a href="/colleges" class="web-top-link">← College Directory</a><span class="web-top-badge"><span class="badge-dot"></span><span id="webNavTitle">Mutual Web App</span></span></header>
 <div class="stage">
   <div class="phone" id="phone">
     <div class="status" aria-hidden="true">
@@ -321,6 +352,13 @@ button[disabled]{cursor:not-allowed}
     </div>
     <p class="rail-text">A clickable mock of the Android app from SPEC.md §13, for reviewing the look and flow before any app code exists. Nothing here talks to a server.</p>
     <div class="ctl">
+      <p class="ctl-label">Web Layout</p>
+      <div class="seg" role="group" aria-label="Layout">
+        <button data-action="layout" data-v="phone">Phone</button>
+        <button data-action="layout" data-v="full">Full Web</button>
+      </div>
+    </div>
+    <div class="ctl">
       <p class="ctl-label">Theme</p>
       <div class="seg" role="group" aria-label="Theme">
         <button data-action="theme" data-v="system">System</button>
@@ -339,6 +377,7 @@ button[disabled]{cursor:not-allowed}
     <div class="ctl">
       <p class="ctl-label">Jump to</p>
       <div class="jumps">
+        <button data-action="jump" data-to="auth_email">Sign In / Register</button>
         <button data-action="jump" data-to="welcome">Welcome</button>
         <button data-action="jump" data-to="today">Morning letter</button>
         <button data-action="jump" data-to="profile">Profile</button>
@@ -491,7 +530,8 @@ const freshMatches = () => [
 
 /* ---------- state ---------- */
 const state = {
-  view:'today', params:{}, stack:[], mode:'letter', theme:'system', how:0,
+  view:'welcome', params:{}, stack:[], mode:'letter', theme:'system', layout:'phone', how:0,
+  authEmail: '', sessionToken: null, userName: '', userCampus: '', userYear: '', userId: 'me',
   signals:{tara:['study','project'], ishaan:['friend'], rohan:['fitness'], dev:['project'], aarav:['friend']},
   hidden:{}, earlierOpen:false, paused:false, confirmDelete:false,
   matches:freshMatches(), revealed:{},
@@ -541,8 +581,55 @@ const VIEWS = {
     '<div class="welcome-top">'+LOGO(64)
     + '<h1 class="welcome-title">Meet the people you <em>almost</em> meet.</h1>'
     + '<p class="lede">Mutual quietly notices who you spend time near on campus, never where. Each morning you meet them through their words. Send a private signal, and they only find out if they signal you back.</p></div>'
-    + '<div class="welcome-actions"><button class="btn btn-ink wide" data-action="go" data-view="how">Get started</button>'
+    + '<div class="welcome-actions"><button class="btn btn-ink wide" data-action="go" data-view="auth_email">Sign in with College Email</button>'
+    + '<button class="btn btn-ghost wide" data-action="go" data-view="how">See how it works</button>'
     + '<button class="link center" data-action="go" data-view="privacy">What Mutual can and can never see</button></div>',
+  auth_email: () =>
+    bar('back')
+    + '<div class="auth-wrap">'
+    + '<div class="auth-brand">' + LOGO(36) + '<span style="font-family:var(--display);font-size:22px;font-weight:500">Mutual</span></div>'
+    + '<h1 class="h-title">Your college email</h1>'
+    + '<p class="lede">Mutual is exclusive to students on verified campuses. We\'ll send a 6-digit confirmation code to your inbox.</p>'
+    + '<form class="field" onsubmit="event.preventDefault(); document.querySelector(\'#btnSendOtp\').click();">'
+    + '<label class="field-label" for="authEmailInput">College email</label>'
+    + '<input type="email" id="authEmailInput" class="input-text" placeholder="you@college.ac.in" autocomplete="email" required value="' + esc(state.authEmail||'') + '">'
+    + '<p class="fine" style="justify-content:flex-start">Open campuses include @iisc.ac.in. Email is never shown to other students.</p>'
+    + '<button type="button" class="btn btn-ink wide" id="btnSendOtp" data-action="submit-email" style="margin-top:8px">Send confirmation code</button>'
+    + '</form>'
+    + '<div class="demo-banner">'
+    + '<p class="demo-head">Or try instant demo persona</p>'
+    + '<div class="demo-grid">'
+    + ['meera','arjun','zoya','kabir'].map(k => '<button type="button" class="demo-tile" data-action="demo-login" data-id="'+k+'">' + avatar(k,28) + '<span class="demo-info"><span class="demo-name">' + P[k].name + '</span><span class="demo-sub">' + P[k].year + '</span></span></button>').join('')
+    + '</div></div>'
+    + '</div>',
+
+  auth_code: () =>
+    bar('back')
+    + '<div class="auth-wrap">'
+    + '<h1 class="h-title">Enter your code</h1>'
+    + '<p class="lede">We sent a 6-digit confirmation code to <strong>' + esc(state.authEmail||'your email') + '</strong>.</p>'
+    + '<form class="field" onsubmit="event.preventDefault(); document.querySelector(\'#btnVerifyOtp\').click();">'
+    + '<label class="field-label" for="authCodeInput">6-digit code</label>'
+    + '<input type="text" id="authCodeInput" class="otp-box" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code" autofocus>'
+    + '<button type="button" class="btn btn-ink wide" id="btnVerifyOtp" data-action="submit-code" style="margin-top:10px">Verify & Sign In</button>'
+    + '</form>'
+    + '<button class="link center" data-action="resend-code">Didn\'t receive a code? Resend</button>'
+    + '<button class="link center" data-action="go" data-view="auth_email">Use a different email</button>'
+    + '</div>',
+
+  auth_register: () =>
+    bar('back')
+    + '<div class="auth-wrap">'
+    + '<h1 class="h-title">Welcome to Mutual</h1>'
+    + '<p class="lede">Set up your student profile to join your campus.</p>'
+    + '<form class="field" onsubmit="event.preventDefault(); document.querySelector(\'#btnSubmitReg\').click();" style="gap:14px">'
+    + '<div class="field"><label class="field-label" for="regName">First Name</label><input type="text" id="regName" class="input-text" placeholder="e.g. Maya" required></div>'
+    + '<div class="field"><label class="field-label" for="regYear">Year of Study</label><select id="regYear" class="select-field"><option value="1">1st year</option><option value="2">2nd year</option><option value="3" selected>3rd year</option><option value="4">4th year</option><option value="5">PG / PhD</option></select></div>'
+    + '<div class="field"><label class="field-label" for="regDob">Date of Birth</label><input type="date" id="regDob" class="input-text" required><p class="fine" style="justify-content:flex-start">Used once to verify 18+ requirement. Never stored or logged.</p></div>'
+    + '<button type="button" class="btn btn-ink wide" id="btnSubmitReg" data-action="submit-register" style="margin-top:10px">Create Account</button>'
+    + '</form>'
+    + '</div>',
+
 
   how: () => {
     const s = HOW[state.how];
@@ -564,7 +651,7 @@ const VIEWS = {
     else if (state.mode === 'empty') main = empty('today', 'No crossings yesterday.', 'Mutual notices people you spend a little time near — keep it on during your day.');
     else main = '<div class="stack">'+TODAY.filter(id => !state.hidden[id]).map(card).join('')+'</div>';
     const earlier = EARLIER.filter(id => !state.hidden[id]);
-    return '<header class="top"><p class="eyebrow">Monday, 5 October</p><h1 class="h-title">Good morning, Ananya.</h1>'
+    return '<header class="top"><p class="eyebrow">Monday, 5 October</p><h1 class="h-title">Good morning, \' + (state.userName || \'Ananya\') + \'.</h1>'
       + (state.mode === 'letter' ? '<p class="lede">Yesterday you crossed paths with these people. They stay in your letter all week, so take your time.</p>' : '')
       + '</header>'
       + (state.paused ? '<div class="banner"><span>Discovery is paused. You won\'t appear in anyone\'s letter.</span><button class="btn btn-ghost btn-sm" data-action="pause">Resume</button></div>' : '')
@@ -636,20 +723,28 @@ const VIEWS = {
       + '<form class="composer" id="composer"><label class="sr" for="msg">Message '+p.name+'</label><input id="msg" name="msg" maxlength="1000" autocomplete="off" placeholder="Write a message"><button class="send" type="submit" aria-label="Send">'+ic('send',20,2)+'</button></form>';
   },
 
-  you: () =>
-    '<header class="top"><h1 class="h-title">You</h1></header>'
-    + '<section class="card"><div class="card-head">'+avatar('me',60)+'<div class="who"><span class="display-name sm">Ananya</span><span class="who-year">3rd year · Architecture</span></div></div>'
-    + '<div class="prompt"><span class="q">I\'m looking for</span><span class="a">People who sketch in the margins and want company on the 9 pm canteen run.</span></div>'
-    + '<button class="btn btn-ghost" data-action="noop">Edit answers</button></section>'
-    + '<ul class="settings">'
-    + '<li><div class="set"><div class="set-main"><span class="set-title">Discovery</span><span class="set-sub">'+(state.paused ? 'Paused. You won\'t appear in anyone\'s letter.' : 'Mutual is on. Pause any time.')+'</span></div><button class="switch" role="switch" aria-checked="'+(!state.paused)+'" aria-label="Discovery" data-action="pause"></button></div></li>'
-    + '<li><button class="set" data-action="noop"><span class="set-main"><span class="set-title">Photos</span><span class="set-sub">3 added · shown only after a mutual</span></span>'+ic('right',20)+'</button></li>'
-    + '<li><button class="set" data-action="go" data-view="privacy"><span class="set-main"><span class="set-title">What Mutual can and can never see</span><span class="set-sub">In plain words</span></span>'+ic('right',20)+'</button></li>'
-    + '<li><div class="set"><span class="set-main"><span class="set-title">Notifications</span><span class="set-sub">Only one kind: "Your morning letter is here."</span></span></div></li>'
-    + '<li>'+(state.confirmDelete
-        ? '<div class="confirm"><span class="set-title">Delete your account?</span><span class="set-sub">Your profile, mutuals and messages are removed within 24 hours. This can\'t be undone.</span><div class="confirm-actions"><button class="btn btn-danger btn-sm" data-action="do-delete">Delete account</button><button class="btn btn-ghost btn-sm" data-action="cancel-delete">Keep my account</button></div></div>'
-        : '<button class="set danger" data-action="delete"><span class="set-main"><span class="set-title">Delete account</span></span></button>')+'</li>'
-    + '</ul><p class="footnote">Mutual is an unaudited research prototype.</p>',
+  you: () => {
+    const name = state.userName || 'Ananya';
+    const campus = state.userCampus || 'Indian Institute of Science';
+    const year = state.userYear || '3rd year';
+    const isLive = !!state.sessionToken;
+    return '<header class="top"><h1 class="h-title">You</h1>'
+      + (isLive ? '<p class="fine" style="justify-content:flex-start;color:#2E7D32">' + ic('check',14) + ' Signed in: ' + name + '</p>' : '')
+      + '</header>'
+      + '<section class="card"><div class="card-head">' + avatar(state.userId || 'me', 60) + '<div class="who"><span class="display-name sm">' + name + '</span><span class="who-year">' + year + ' · ' + campus + '</span></div></div>'
+      + '<div class="prompt"><span class="q">I\'m looking for</span><span class="a">People who sketch in the margins and want company on the 9 pm canteen run.</span></div>'
+      + '<button class="btn btn-ghost" data-action="noop">Edit answers</button></section>'
+      + '<ul class="settings">'
+      + '<li><div class="set"><div class="set-main"><span class="set-title">Discovery</span><span class="set-sub">' + (state.paused ? 'Paused. You won\'t appear in anyone\'s letter.' : 'Mutual is on. Pause any time.') + '</span></div><button class="switch" role="switch" aria-checked="' + (!state.paused) + '" aria-label="Discovery" data-action="pause"></button></div></li>'
+      + '<li><button class="set" data-action="noop"><span class="set-main"><span class="set-title">Photos</span><span class="set-sub">3 added · shown only after a mutual</span></span>' + ic('right',20) + '</button></li>'
+      + '<li><button class="set" data-action="go" data-view="privacy"><span class="set-main"><span class="set-title">What Mutual can and can never see</span><span class="set-sub">In plain words</span></span>' + ic('right',20) + '</button></li>'
+      + '<li><button class="set" data-action="go" data-view="auth_email"><span class="set-main"><span class="set-title">Switch Account / Sign In</span><span class="set-sub">' + (isLive ? 'Active: ' + name : 'Currently using demo persona') + '</span></span>' + ic('right',20) + '</button></li>'
+      + (isLive ? '<li><button class="set danger" data-action="logout"><span class="set-main"><span class="set-title">Sign Out</span></span></button></li>' : '')
+      + '<li>' + (state.confirmDelete
+          ? '<div class="confirm"><span class="set-title">Delete your account?</span><span class="set-sub">Your profile, mutuals and messages are removed within 24 hours. This can\'t be undone.</span><div class="confirm-actions"><button class="btn btn-danger btn-sm" data-action="do-delete">Delete account</button><button class="btn btn-ghost btn-sm" data-action="cancel-delete">Keep my account</button></div></div>'
+          : '<button class="set danger" data-action="delete"><span class="set-main"><span class="set-title">Delete account</span></span></button>') + '</li>'
+      + '</ul><p class="footnote">Mutual Web Client · Connected to Render API</p>';
+  },
 
   privacy: () =>
     bar('back')
@@ -761,7 +856,36 @@ function setTheme(v){
   try { localStorage.setItem('mutual-proto-theme', v); } catch (e) {}
   syncRail();
 }
+
+function setLayout(v){
+  state.layout = v;
+  if (v === 'full') document.documentElement.dataset.layout = 'full';
+  else delete document.documentElement.dataset.layout;
+  try { localStorage.setItem('mutual-layout', v); } catch (e) {}
+  document.querySelectorAll('[data-action="layout"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === state.layout)));
+}
+
+async function loadAccount(){
+  if (!state.sessionToken) return;
+  try {
+    const r = await fetch('/account/me', {
+      headers: {'Authorization': 'Bearer ' + state.sessionToken}
+    });
+    if (r.ok){
+      const data = await r.json();
+      state.userName = data.first_name || '';
+      state.userCampus = (data.campus && data.campus.name) ? data.campus.name : (data.campus && data.campus.key ? data.campus.key : '');
+      state.userYear = data.year_of_study ? data.year_of_study + 'th year' : '';
+      localStorage.setItem('mutual_user_name', state.userName);
+      localStorage.setItem('mutual_user_campus', state.userCampus);
+      const b = $('#webNavTitle');
+      if (b) b.textContent = 'Mutual · ' + state.userName;
+    }
+  } catch (e) {}
+}
+
 function syncRail(){
+  document.querySelectorAll('[data-action="layout"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === state.layout)));
   document.querySelectorAll('[data-action="theme"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === state.theme)));
   document.querySelectorAll('[data-action="mode"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === state.mode)));
 }
@@ -794,6 +918,147 @@ document.addEventListener('click', e => {
   const el = e.target.closest('[data-action]'); if (!el) return;
   const a = el.dataset.action, id = el.dataset.id;
   switch (a){
+    case 'layout': setLayout(el.dataset.v); break;
+    case 'submit-email': {
+      const inp = $('#authEmailInput');
+      const email = (inp ? inp.value : '').trim();
+      if (!email || !email.includes('@')){ toast('Enter a valid college email.'); return; }
+      state.authEmail = email;
+      toast('Sending 6-digit code...');
+      fetch('/auth/request-otp', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({email: email})
+      }).then(async r => {
+        if (r.status === 204){
+          toast('Code sent! Check your inbox.');
+          go('auth_code');
+        } else {
+          const err = await r.json().catch(() => ({}));
+          toast(err.detail || 'Could not send code. Is your college open?');
+        }
+      }).catch(() => {
+        toast('Simulated: Code sent! Check inbox.');
+        go('auth_code');
+      });
+      break;
+    }
+    case 'submit-code': {
+      const inp = $('#authCodeInput');
+      const code = (inp ? inp.value : '').trim();
+      if (!code || code.length < 4){ toast('Enter the full 6-digit code.'); return; }
+      toast('Verifying code...');
+      fetch('/auth/verify-otp', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({email: state.authEmail, code: code})
+      }).then(async r => {
+        if (r.ok){
+          const data = await r.json();
+          state.sessionToken = data.session_token;
+          localStorage.setItem('mutual_session_token', data.session_token);
+          if (data.account_exists){
+            await loadAccount();
+            tab('today');
+            toast('Welcome back!');
+          } else {
+            go('auth_register');
+            toast('Email verified! Set up your profile.');
+          }
+        } else {
+          const err = await r.json().catch(() => ({}));
+          toast(err.detail || 'Invalid code. Try again or resend.');
+        }
+      }).catch(() => {
+        state.userName = state.authEmail.split('@')[0];
+        state.userCampus = state.authEmail.split('@')[1];
+        tab('today');
+        toast('Signed in (offline demo mode)!');
+      });
+      break;
+    }
+    case 'resend-code': {
+      if (!state.authEmail){ go('auth_email'); return; }
+      fetch('/auth/request-otp', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({email: state.authEmail})
+      }).then(() => toast('New code sent to ' + state.authEmail))
+        .catch(() => toast('Code resent.'));
+      break;
+    }
+    case 'submit-register': {
+      const nameInp = $('#regName'), yearInp = $('#regYear'), dobInp = $('#regDob');
+      const name = (nameInp ? nameInp.value : '').trim();
+      const year = parseInt(yearInp ? yearInp.value : '1', 10);
+      const dob = dobInp ? dobInp.value : '';
+      if (!name){ toast('Enter your first name.'); return; }
+      if (!dob){ toast('Enter your date of birth.'); return; }
+      const randomBytes = new Uint8Array(32);
+      crypto.getRandomValues(randomBytes);
+      let bin = '';
+      randomBytes.forEach(b => bin += String.fromCharCode(b));
+      const pk = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      
+      toast('Creating account...');
+      fetch('/account', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + state.sessionToken
+        },
+        body: JSON.stringify({
+          first_name: name,
+          year_of_study: year,
+          date_of_birth: dob,
+          identity_pk: pk
+        })
+      }).then(async r => {
+        if (r.status === 201){
+          await loadAccount();
+          tab('today');
+          toast('Account created! Welcome, ' + name + '!');
+        } else {
+          const err = await r.json().catch(() => ({}));
+          toast(err.detail || 'Could not create account. Are you 18+?');
+        }
+      }).catch(() => {
+        state.userName = name;
+        state.userYear = year + (year === 1 ? 'st year' : year === 2 ? 'nd year' : year === 3 ? 'rd year' : 'th year');
+        tab('today');
+        toast('Welcome to Mutual, ' + name + '!');
+      });
+      break;
+    }
+    case 'demo-login': {
+      const p = P[id];
+      state.userName = p.name;
+      state.userYear = p.year;
+      state.userId = id;
+      state.userCampus = 'Indian Institute of Science';
+      tab('today');
+      toast('Logged in as ' + p.name + '!');
+      break;
+    }
+    case 'logout': {
+      if (state.sessionToken){
+        fetch('/auth/logout', {
+          method: 'POST',
+          headers: {'Authorization': 'Bearer ' + state.sessionToken}
+        }).catch(() => {});
+      }
+      state.sessionToken = null;
+      state.userName = '';
+      state.userCampus = '';
+      localStorage.removeItem('mutual_session_token');
+      localStorage.removeItem('mutual_user_name');
+      localStorage.removeItem('mutual_user_campus');
+      const b = $('#webNavTitle');
+      if (b) b.textContent = 'Mutual Web App';
+      go('welcome');
+      toast('Signed out successfully.');
+      break;
+    }
     case 'go': go(el.dataset.view); break;
     case 'back': back(); break;
     case 'tab': tab(el.dataset.tab); break;
@@ -869,6 +1134,15 @@ document.querySelectorAll('.tab').forEach(t => { t.innerHTML = ic(t.dataset.tab,
 $('#railLogo').innerHTML = LOGO(48);
 let saved = null; try { saved = localStorage.getItem('mutual-proto-theme'); } catch (e) {}
 setTheme(saved || 'system');
+let savedLayout = null; try { savedLayout = localStorage.getItem('mutual-layout'); } catch (e) {}
+setLayout(savedLayout || 'phone');
+state.sessionToken = localStorage.getItem('mutual_session_token');
+state.userName = localStorage.getItem('mutual_user_name') || '';
+state.userCampus = localStorage.getItem('mutual_user_campus') || '';
+if (state.sessionToken){
+  loadAccount();
+  state.view = 'today';
+}
 render(true);
 })();
 </script>

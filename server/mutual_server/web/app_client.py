@@ -22,7 +22,7 @@ _SECURITY_HEADERS = {
         "script-src 'unsafe-inline' 'unsafe-eval'; "
         "style-src 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src https://fonts.gstatic.com data:; "
-        "connect-src 'self'; "
+        "connect-src 'self' https:; "
         "img-src 'self' data: https:; "
         "media-src 'self' data: blob:; "
         "frame-ancestors 'none'; base-uri 'none'"
