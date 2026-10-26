@@ -39,19 +39,25 @@ class SmtpEmailSender:
         msg["To"] = to
         msg["Subject"] = subject
         msg.set_content(body)
-        with smtplib.SMTP(self._config.smtp_host, self._config.smtp_port, timeout=10) as smtp:
-            smtp.starttls()
-            user = os.environ.get(self._config.smtp_user_env, "")
-            password = os.environ.get(self._config.smtp_password_env, "")
-            if not user or not password:
-                print(
-                    f"[email] WARNING: SMTP credentials: "
-                    f"{self._config.smtp_user_env}={'set' if user else 'EMPTY'}, "
-                    f"{self._config.smtp_password_env}={'set' if password else 'EMPTY'}",
-                    file=sys.stderr,
-                )
-            smtp.login(user, password)
-            smtp.send_message(msg)
+        user = (os.environ.get(self._config.smtp_user_env) or os.environ.get("MUTUAL_SMTP_USER", "")).strip()
+        password = (
+            os.environ.get(self._config.smtp_password_env) or os.environ.get("MUTUAL_SMTP_PASSWORD", "")
+        ).replace(" ", "").strip()
+        try:
+            with smtplib.SMTP(self._config.smtp_host, self._config.smtp_port, timeout=12) as smtp:
+                smtp.starttls()
+                if user or password:
+                    smtp.login(user, password)
+                smtp.send_message(msg)
+        except Exception as exc:
+            print(
+                f"[email] ERROR sending to {to} via {self._config.smtp_host}:{self._config.smtp_port}: {exc!r}",
+                file=sys.stderr,
+            )
+            print(f"[email] Backup delivery code for {to}: {body.splitlines()[0] if body else ''}", file=sys.stderr)
+            from mutual_server.errors import ApiError
+
+            raise ApiError(503, "email_delivery_failed", f"Email send failed: {exc}") from exc
 
     def send_login_code(self, to: str, code: str) -> None:
         self._send(
