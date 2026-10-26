@@ -151,6 +151,10 @@ def create_app(
 
     @app.get("/healthz", include_in_schema=False)
     def _health() -> dict[str, str]:
-        return {"status": "ok"}
+        return {
+            "status": "ok",
+            "version": "0.1.0",
+            "media_backend": type(ctx.media_store).__name__,
+        }
 
     return app
