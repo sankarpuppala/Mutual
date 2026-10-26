@@ -148,11 +148,23 @@ class MediaStore(Protocol):
         ...
 
 
+def _safe_media_dir(directory: Path | None = None) -> Path:
+    if directory is not None:
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            return directory
+        except (PermissionError, OSError):
+            pass
+    fallback = Path(tempfile.gettempdir()) / "mutual_media"
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
+
+
 class DiskStore:
     """Stores files under a local directory.  Used in dev/test and on any self-hosted VM."""
 
     def __init__(self, directory: Path) -> None:
-        self._dir = directory
+        self._dir = _safe_media_dir(directory)
 
     def store(self, name: str, data: bytes) -> tuple[int, str]:
         return store(self._dir, name, data)
@@ -189,8 +201,7 @@ class R2Store:
 
             raise ConfigError("R2 storage requires boto3: pip install 'mutual-server[r2]'") from exc
         self._bucket = bucket
-        fallback_path = fallback_dir or Path(tempfile.gettempdir()) / "mutual_media"
-        fallback_path.mkdir(parents=True, exist_ok=True)
+        fallback_path = _safe_media_dir(fallback_dir)
         self._fallback_disk = DiskStore(fallback_path)
         endpoint = (
             endpoint_url
