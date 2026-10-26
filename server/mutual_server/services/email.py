@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import smtplib
+import sys
 from email.message import EmailMessage
 from typing import Protocol
 
@@ -40,10 +41,16 @@ class SmtpEmailSender:
         msg.set_content(body)
         with smtplib.SMTP(self._config.smtp_host, self._config.smtp_port, timeout=10) as smtp:
             smtp.starttls()
-            smtp.login(
-                os.environ.get(self._config.smtp_user_env, ""),
-                os.environ.get(self._config.smtp_password_env, ""),
-            )
+            user = os.environ.get(self._config.smtp_user_env, "")
+            password = os.environ.get(self._config.smtp_password_env, "")
+            if not user or not password:
+                print(
+                    f"[email] WARNING: SMTP credentials: "
+                    f"{self._config.smtp_user_env}={'set' if user else 'EMPTY'}, "
+                    f"{self._config.smtp_password_env}={'set' if password else 'EMPTY'}",
+                    file=sys.stderr,
+                )
+            smtp.login(user, password)
             smtp.send_message(msg)
 
     def send_login_code(self, to: str, code: str) -> None:

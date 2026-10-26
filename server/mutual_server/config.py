@@ -367,6 +367,22 @@ def load_settings(path: Path | None = None, **overrides: object) -> Settings:
         if data["email"].get("smtp_host") in (None, "127.0.0.1"):
             data["email"]["smtp_host"] = "smtp-relay.brevo.com"
 
+    # Allow environment variables to override email configuration (e.g. on Render)
+    email_data = data.setdefault("email", {})
+    if os.environ.get("MUTUAL_SMTP_HOST"):
+        email_data["smtp_host"] = os.environ["MUTUAL_SMTP_HOST"]
+    if os.environ.get("MUTUAL_SMTP_PORT"):
+        try:
+            email_data["smtp_port"] = int(os.environ["MUTUAL_SMTP_PORT"])
+        except ValueError:
+            pass
+    if os.environ.get("MUTUAL_FROM_ADDRESS"):
+        email_data["from_address"] = os.environ["MUTUAL_FROM_ADDRESS"]
+    elif os.environ.get("MUTUAL_SMTP_USER") and "@" in os.environ["MUTUAL_SMTP_USER"]:
+        # If from_address is absent or contains example.org, derive from SMTP user email
+        if not email_data.get("from_address") or "example.org" in email_data.get("from_address", ""):
+            email_data["from_address"] = f"Mutual <{os.environ['MUTUAL_SMTP_USER']}>"
+
     try:
         return Settings.model_validate(data)
     except ValueError as exc:

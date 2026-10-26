@@ -7,6 +7,8 @@ here opens a campus.
 
 from __future__ import annotations
 
+import sys
+
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
@@ -132,9 +134,10 @@ def apply(
         return page("For colleges", _ABOUT + _form(values, str(exc)), nav=_NAV, status_code=400)
     try:
         ctx.email.send_college_code(row.contact_email, code)
-    except OSError:  # smtplib errors are OSErrors; nothing about the request is printed
+    except OSError as exc:  # smtplib errors are OSErrors; user data is not logged
         db.delete(row)
         db.commit()
+        print(f"[colleges] ERROR sending verification email: {type(exc).__name__}: {exc}", file=sys.stderr)
         return page(
             "For colleges",
             _ABOUT + _form(values, "We couldn't send the code just now. Try again in a while."),
