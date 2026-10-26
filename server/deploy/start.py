@@ -23,40 +23,49 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def main() -> int:
-    from alembic import command
-    from alembic.config import Config
+    import traceback
 
-    from mutual_server.config import load_settings
+    try:
+        from alembic import command
+        from alembic.config import Config
 
-    settings = load_settings()  # fail fast, before touching the database, on a bad config
-    os.environ.setdefault("MUTUAL_DATABASE_URL", settings.database_url)
-    has_r2 = settings.media.r2 is not None or bool(
-        os.environ.get("MUTUAL_R2_BUCKET") and os.environ.get("MUTUAL_R2_ACCOUNT_ID")
-    )
-    if not has_r2:
-        try:
-            media = settings.resolve_path(settings.media.storage_dir)
-            media.mkdir(parents=True, exist_ok=True)
-        except OSError:
-            pass
+        from mutual_server.config import load_settings
 
-    cfg = Config(str(REPO_ROOT / "server" / "alembic.ini"))
-    cfg.set_main_option("script_location", str(REPO_ROOT / "server" / "migrations"))
-    command.upgrade(cfg, "head")
+        settings = load_settings()  # fail fast, before touching the database, on a bad config
+        os.environ.setdefault("MUTUAL_DATABASE_URL", settings.database_url)
+        has_r2 = settings.media.r2 is not None or bool(
+            os.environ.get("MUTUAL_R2_BUCKET") and os.environ.get("MUTUAL_R2_ACCOUNT_ID")
+        )
+        if not has_r2:
+            try:
+                media = settings.resolve_path(settings.media.storage_dir)
+                media.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                pass
 
-    import uvicorn
+        cfg = Config(str(REPO_ROOT / "server" / "alembic.ini"))
+        cfg.set_main_option("script_location", str(REPO_ROOT / "server" / "migrations"))
+        command.upgrade(cfg, "head")
 
-    uvicorn.run(
-        "mutual_server.main:create_app",
-        factory=True,
-        host=os.environ.get("MUTUAL_HOST", "0.0.0.0"),
-        port=int(os.environ.get("MUTUAL_PORT", "8000")),
-        access_log=False,
-        proxy_headers=True,
-        forwarded_allow_ips=os.environ.get("MUTUAL_FORWARDED_ALLOW_IPS", "127.0.0.1"),
-        server_header=False,
-    )
-    return 0
+        import uvicorn
+
+        uvicorn.run(
+            "mutual_server.main:create_app",
+            factory=True,
+            host=os.environ.get("MUTUAL_HOST", "0.0.0.0"),
+            port=int(os.environ.get("MUTUAL_PORT", "8000")),
+            access_log=False,
+            proxy_headers=True,
+            forwarded_allow_ips=os.environ.get("MUTUAL_FORWARDED_ALLOW_IPS", "127.0.0.1"),
+            server_header=False,
+        )
+        return 0
+    except Exception as exc:  # noqa: BLE001
+        print("\n" + "=" * 60, file=sys.stderr)
+        print(f"FATAL STARTUP ERROR: {exc}", file=sys.stderr)
+        print("=" * 60 + "\n", file=sys.stderr)
+        traceback.print_exc()
+        return 1
 
 
 if __name__ == "__main__":

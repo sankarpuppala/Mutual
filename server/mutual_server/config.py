@@ -323,10 +323,25 @@ def current_env() -> Literal["dev", "test", "prod"]:
 
 def load_settings(path: Path | None = None, **overrides: object) -> Settings:
     """Load YAML from ``path`` (or MUTUAL_CONFIG / server/config.yaml) and validate it."""
-    path = path or Path(os.environ.get("MUTUAL_CONFIG", REPO_ROOT / "server" / "config.yaml"))
-    if not path.is_file():
-        raise ConfigError(f"config file not found: {path} (copy server/config.example.yaml)")
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if path is not None:
+        target = path
+    else:
+        env_config = os.environ.get("MUTUAL_CONFIG")
+        if env_config and Path(env_config).is_file():
+            target = Path(env_config)
+        else:
+            candidates = [
+                REPO_ROOT / "server" / "config.yaml",
+                REPO_ROOT / "server" / "deploy" / "config.prod.example.yaml",
+                REPO_ROOT / "server" / "config.example.yaml",
+            ]
+            target = next(
+                (c for c in candidates if c.is_file()),
+                Path(env_config) if env_config else REPO_ROOT / "server" / "config.yaml",
+            )
+    if not target.is_file():
+        raise ConfigError(f"config file not found: {target} (copy server/config.example.yaml)")
+    data = yaml.safe_load(target.read_text(encoding="utf-8")) or {}
     data.setdefault("env", current_env())
     data.update(overrides)
     try:
