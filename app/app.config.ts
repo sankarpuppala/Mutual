@@ -115,6 +115,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ]),
   experiments: { typedRoutes: true },
   extra: {
+    eas: {
+      projectId: '47d4cf68-7017-4196-a652-6d63019fc896',
+    },
     // Overridable per machine without editing code; see src/api/client.ts.
     serverBaseUrl: process.env.EXPO_PUBLIC_SERVER_URL ?? 'http://10.0.2.2:8000',
     // Fail closed. `isDev()` gates the dev panel (clock travel, synthetic crossings, and
