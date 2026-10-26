@@ -19,7 +19,7 @@ from mutual_server.web.html import SECURITY_HEADERS, e, flash, page
 
 router = APIRouter(prefix="/colleges", tags=["colleges"])
 
-_NAV = [("For colleges", "/colleges", True)]
+_NAV = [("Open Web App", "/app", False), ("For colleges", "/colleges", True)]
 
 _ABOUT = """
 <div class="hero">
@@ -28,6 +28,10 @@ _ABOUT = """
   <p class="lede">Mutual helps students meet the people they already share a campus with —
 for study, a project, fitness, friendship or a date — without feeds, swiping or location
 tracking. It opens one college at a time, and only after someone at the college asks.</p>
+  <div style="margin-top:18px;display:flex;gap:12px;flex-wrap:wrap">
+    <a href="/app" style="display:inline-flex;align-items:center;gap:8px;padding:12px 24px;border-radius:999px;background:var(--ink);color:var(--bg);font-weight:600;">Launch Mutual Web App &rarr;</a>
+    <a href="#apply" style="display:inline-flex;align-items:center;gap:8px;padding:12px 24px;border-radius:999px;background:var(--sunk);color:var(--ink);font-weight:600;border:1px solid var(--line);">Apply for Campus Opening</a>
+  </div>
 </div>
 
 <div class="grid">

@@ -168,6 +168,7 @@ export default function DevScreen(): ReactNode {
       setServerUrl(baseUrl());
       await config.refetch();
       say(`Back to the compiled-in address, ${baseUrl()}.`);
+    },
     loginAs: async (account: DemoAccount) => {
       await actions.become(
         account.user_id,

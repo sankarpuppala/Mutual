@@ -47,6 +47,7 @@ from mutual_server.services.operators import ensure_bootstrap_owner
 from mutual_server.services.rate_limit import RateLimiter
 from mutual_server.services.retention import run_retention
 from mutual_server.web import admin as admin_web
+from mutual_server.web import app_client as app_client_web
 from mutual_server.web import colleges as colleges_web
 
 _RETENTION_INTERVAL_SECONDS = 3600  # CLAUDE.md §6 / SPEC.md §9: "runs at startup and every hour"
@@ -138,9 +139,10 @@ def create_app(
         v1.include_router(dev.router)  # never mounted outside dev (invariant 11)
     app.include_router(v1)
 
-    # Server-rendered pages, outside /v1: the public college application form (SPEC §4.2)
-    # and the operator console (SPEC §11.3). Neither is used by the app.
+    # Server-rendered pages, outside /v1: the public college application form (SPEC §4.2),
+    # the operator console (SPEC §11.3), and the interactive web client at /app.
     app.include_router(colleges_web.router)
+    app.include_router(app_client_web.router)
     admin_web.install(app)
 
     @app.get("/", include_in_schema=False)

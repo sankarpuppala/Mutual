@@ -205,7 +205,7 @@ export default function YouScreen(): ReactNode {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Send feedback"
-          onPress={() => router.push('/feedback')}
+          onPress={() => router.push('/feedback' as any)}
           style={styles.row}
         >
           <View style={styles.rowMain}>
