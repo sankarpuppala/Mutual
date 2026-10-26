@@ -9,7 +9,6 @@ gets the same 404 on every one of these routes (SPEC §11) — enforced by
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Response
-from fastapi.responses import FileResponse
 from mutual_protocol.encoding import b64url_encode
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -129,7 +128,7 @@ def get_match_photo(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
     ctx: AppContext = Depends(get_ctx),
-) -> FileResponse:
+) -> Response:
     match = get_active_match(match_id, user, db)
     if match.revealed_at is None:
         raise ApiError(404, "not_found", "Not found.")
@@ -141,7 +140,12 @@ def get_match_photo(
     ).scalar_one_or_none()
     if photo is None:
         raise ApiError(404, "not_found", "Not found.")
-    return FileResponse(ctx.media_dir / photo.path, media_type="image/jpeg", filename=photo.path)
+    data = ctx.media_store.read(photo.path)
+    return Response(
+        content=data,
+        media_type="image/jpeg",
+        headers={"Content-Disposition": f'attachment; filename="{photo.path}"'},
+    )
 
 
 @router.post("/matches/{match_id}/reveal-consent", status_code=204)

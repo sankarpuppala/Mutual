@@ -25,6 +25,8 @@ dev = ["pytest==9.1.1", "ruff==0.16.10", "httpx==0.28.1"]
 # Only needed against a Postgres database_url (e.g. Render + a free Neon database,
 # docs/DEPLOYMENT.md option D). SQLite (the default) needs none of this.
 postgres = ["psycopg2-binary==2.9.10"]
+# Only needed when media.r2 is set in config (Cloudflare R2, docs/DEPLOYMENT.md §3b.5).
+r2 = ["boto3==1.38.28"]
 
 [tool.setuptools.packages.find]
 include = ["mutual_server*"]

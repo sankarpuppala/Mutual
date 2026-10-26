@@ -146,8 +146,22 @@ class MessagesConfig(_Strict):
     rate_limit_per_minute: int = Field(gt=0)
 
 
+class R2Config(_Strict):
+    """Cloudflare R2 bucket for persistent media storage (docs/DEPLOYMENT.md §3b.5).
+
+    Bucket and account_id are non-secret and go in config.yaml.  The API keys come from
+    environment variables named by ``access_key_id_env`` and ``secret_access_key_env``.
+    """
+
+    bucket: str
+    account_id: str
+    access_key_id_env: str = "MUTUAL_R2_ACCESS_KEY_ID"
+    secret_access_key_env: str = "MUTUAL_R2_SECRET_ACCESS_KEY"
+
+
 class MediaConfig(_Strict):
     storage_dir: str
+    r2: R2Config | None = None  # if set, files go to R2; otherwise to storage_dir on local disk
     voice_max_seconds: int = Field(gt=0)
     voice_max_bytes: int = Field(gt=0)
     waveform_points: int = Field(gt=0)

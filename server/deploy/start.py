@@ -30,8 +30,15 @@ def main() -> int:
 
     settings = load_settings()  # fail fast, before touching the database, on a bad config
     os.environ.setdefault("MUTUAL_DATABASE_URL", settings.database_url)
-    media = settings.resolve_path(settings.media.storage_dir)
-    media.mkdir(parents=True, exist_ok=True)
+    has_r2 = settings.media.r2 is not None or bool(
+        os.environ.get("MUTUAL_R2_BUCKET") and os.environ.get("MUTUAL_R2_ACCOUNT_ID")
+    )
+    if not has_r2:
+        try:
+            media = settings.resolve_path(settings.media.storage_dir)
+            media.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
 
     cfg = Config(str(REPO_ROOT / "server" / "alembic.ini"))
     cfg.set_main_option("script_location", str(REPO_ROOT / "server" / "migrations"))

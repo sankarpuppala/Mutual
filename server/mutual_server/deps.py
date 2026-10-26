@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from pathlib import Path
 
 from fastapi import Depends, Request
 from sqlalchemy.orm import Session
@@ -17,6 +16,7 @@ from mutual_server.models import SessionRow, User
 from mutual_server.security import session_hash
 from mutual_server.services.email import EmailSender
 from mutual_server.services.matching import sync_matches
+from mutual_server.services.media import MediaStore
 from mutual_server.services.rate_limit import RateLimiter
 
 
@@ -27,10 +27,7 @@ class AppContext:
     ids: IdFactory
     email: EmailSender
     rate_limiter: RateLimiter
-
-    @property
-    def media_dir(self) -> Path:
-        return self.settings.resolve_path(self.settings.media.storage_dir)
+    media_store: MediaStore
 
     @property
     def pepper(self) -> bytes:

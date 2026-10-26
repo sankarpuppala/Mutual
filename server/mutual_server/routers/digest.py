@@ -8,7 +8,7 @@ or not the id exists (no account-existence oracle).
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from mutual_protocol.encoding import b64url_encode
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -59,10 +59,15 @@ def get_media(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
     ctx: AppContext = Depends(get_ctx),
-) -> FileResponse:
+) -> Response:
     _, entries = visible_peers(db, ctx.clock, ctx.settings, user)
     allowed = {e["peer_id"] for e in entries}
     media = db.get(Media, media_id)
     if media is None or media.kind != "voice" or media.user_id not in allowed:
         raise ApiError(404, "not_found", "Not found.")
-    return FileResponse(ctx.media_dir / media.path, media_type="audio/mp4", filename=media.path)
+    data = ctx.media_store.read(media.path)
+    return Response(
+        content=data,
+        media_type="audio/mp4",
+        headers={"Content-Disposition": f'attachment; filename="{media.path}"'},
+    )

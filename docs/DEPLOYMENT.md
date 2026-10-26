@@ -254,9 +254,9 @@ New Web Service → connect this repository → **Runtime: Python 3**.
 
 - **Build Command:**
   ```bash
-  pip install -e packages/protocol_py -e "server[postgres]" && alembic -c server/alembic.ini upgrade head
+  pip install -e packages/protocol_py -e "server[postgres,r2]" && alembic -c server/alembic.ini upgrade head
   ```
-  (the `postgres` extra pulls in the Postgres driver; plain `-e server` does not)
+  (the `postgres` and `r2` extras pull in the Postgres driver and boto3 for Cloudflare R2; plain `-e server` does not)
 - **Start Command:**
   ```bash
   MUTUAL_PORT=$PORT python server/deploy/start.py
@@ -267,6 +267,7 @@ New Web Service → connect this repository → **Runtime: Python 3**.
 
   | Key | Value |
   |---|---|
+  | `PYTHON_VERSION` | `3.11.10` |
   | `MUTUAL_ENV` | `prod` |
   | `MUTUAL_CONFIG` | the secret file's mounted path from §3b.2 |
   | `MUTUAL_DATABASE_URL` | the Neon connection string from §3b.1, exactly this name |
@@ -286,22 +287,65 @@ per-IP rate limits is the same reasoning `docker-compose.yml` already uses to tr
 Caddy, and `docker-compose.selfhost.yml` uses to trust a loopback-only tunnel. It is
 **not** safe to set this on a host anyone else could also reach directly.
 
-### 3b.5 The catch: uploaded photos and voice notes
+### 3b.5 Persistent media: Cloudflare R2 (free tier, no card)
 
 Render's free Web Services have **no persistent disk** — anything written to
 `media.storage_dir` is gone the next time the service restarts or redeploys, which
 happens often on the free tier (every ~15 minutes of inactivity, or any new deploy).
 Profiles, messages, matches and reports are safe (they're in Neon's Postgres); media is
-not. For a pilot that depends on revealed photos, that's a real gap, not a cosmetic one
-— **tell your partner college**, same as the uptime caveat in option C.
+not. For a pilot that depends on revealed photos, fix this with Cloudflare R2 (free tier:
+10 GB storage, 1 million operations per month, no card needed).
 
-Two honest ways forward, your call:
-- Accept it for now — fine for a text-first pilot, or for testing the matching flow
-  before photos matter.
-- Ask Claude to wire up free object storage (e.g. Cloudflare R2's free tier) for
-  `media.storage_dir` instead of local disk. That's real, separate work — it touches
-  `services/media.py` and needs its own tests — not something to paper over in this
-  guide.
+#### Step 1: create the R2 bucket
+
+1. Sign up at [cloudflare.com](https://cloudflare.com) (email only, no card for R2's free
+   tier).
+2. In the Cloudflare dashboard → **R2 Object Storage** → **Create bucket**, name it
+   `mutual-media` (or anything you like).
+3. Note your **Account ID** from the dashboard's right sidebar — a 32-character hex string.
+4. Under **R2 → Manage R2 API tokens** → **Create API token**, give it
+   **Object Read & Write** on your bucket. Copy the **Access Key ID** and
+   **Secret Access Key** — they are shown once.
+
+#### Step 2: configure R2 in Render
+
+You can configure R2 in either of two ways:
+
+**Option A (Recommended — purely via Environment Variables):**
+In Render's **Environment** tab, add:
+
+| Key | Value |
+|---|---|
+| `MUTUAL_R2_BUCKET` | `mutual-media` (your bucket name) |
+| `MUTUAL_R2_ACCOUNT_ID` | your Cloudflare account ID |
+| `MUTUAL_R2_ACCESS_KEY_ID` | your R2 Access Key ID |
+| `MUTUAL_R2_SECRET_ACCESS_KEY` | your R2 Secret Access Key |
+| `MUTUAL_R2_ENDPOINT` | *(optional)* `https://<account_id>.r2.cloudflarestorage.com` |
+
+**Option B (via Secret File):**
+Add the `r2` block to your `/etc/secrets/config.yaml` secret file:
+```yaml
+media:
+  storage_dir: /data/media   # ignored when r2 is present
+  r2:
+    bucket: mutual-media
+    account_id: <your 32-char account id>
+    access_key_id_env: MUTUAL_R2_ACCESS_KEY_ID
+    secret_access_key_env: MUTUAL_R2_SECRET_ACCESS_KEY
+```
+And add `MUTUAL_R2_ACCESS_KEY_ID` and `MUTUAL_R2_SECRET_ACCESS_KEY` to Render's Environment variables.
+
+#### Step 4: add the R2 extra to the build command
+
+Edit the **Build Command** to include `[postgres,r2]`:
+
+```bash
+pip install -e packages/protocol_py -e "server[postgres,r2]" && alembic -c server/alembic.ini upgrade head
+```
+
+Redeploy. Photos and voice notes are now written to R2 and survive every restart and
+redeploy. The database (Neon) and media (R2) are both durable; nothing user-visible is
+stored on Render's ephemeral disk.
 
 ### 3b.6 Keeping it warm
 
