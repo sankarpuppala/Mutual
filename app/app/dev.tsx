@@ -18,7 +18,7 @@ import { useCallback, useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { baseUrl, isDev, overrideServerUrl } from '@/api/client';
-import { dev, getConfig } from '@/api/endpoints';
+import { dev, getConfig, type DemoAccount } from '@/api/endpoints';
 import { runProtocolSelfTest, type SelfTestResult } from '@/dev/protocolSelfTest';
 import { Icon } from '@/design/icons';
 import {
@@ -72,6 +72,12 @@ export default function DevScreen(): ReactNode {
     queryKey: ['planned-upload-minute'],
     queryFn: () => plannedUploadMinute(),
     enabled: isDev(),
+  });
+  const demo = useQuery({
+    queryKey: ['demo-accounts'],
+    queryFn: () => dev.demoAccounts(),
+    enabled: isDev(),
+    retry: false,
   });
   const [offsetHours, setOffsetHours] = useState('24');
   const [serverUrl, setServerUrl] = useState(() => (isDev() ? baseUrl() : ''));
@@ -162,6 +168,13 @@ export default function DevScreen(): ReactNode {
       setServerUrl(baseUrl());
       await config.refetch();
       say(`Back to the compiled-in address, ${baseUrl()}.`);
+    loginAs: async (account: DemoAccount) => {
+      await actions.become(
+        account.user_id,
+        account.session_token,
+        account.identity_sk,
+        account.identity_pk,
+      );
     },
     loginAsSeeded: async () => {
       const userId = seedUserId.trim();
@@ -172,6 +185,9 @@ export default function DevScreen(): ReactNode {
         say('Fill in all four fields from one user in demo_accounts.json.');
         return;
       }
+      await actions.become(userId, sessionToken, sk, pk);
+    },
+    become: async (userId: string, sessionToken: string, sk: string, pk: string) => {
       // The same three writes onboarding's code/basics screens make on success -- this
       // panel is a shortcut to the end of onboarding, not a different path through it.
       await setSessionToken(sessionToken);
@@ -320,6 +336,30 @@ export default function DevScreen(): ReactNode {
         </Stack>
       </Card>
 
+      <SectionHeading>Demo accounts</SectionHeading>
+      <Card>
+        <AppText variant="small" tone="muted">
+          {demo.data && demo.data.users.length > 0
+            ? `Synthetic students at ${demo.data.campus}. Tap one to become them on this device.`
+            : 'No demo accounts on this server yet. Run python -m mutual_server.demo_seed, then come back.'}
+        </AppText>
+        {demo.data && demo.data.users.length > 0 ? (
+          <View style={styles.demoGrid}>
+            {demo.data.users.map((account) => (
+              <Button
+                key={account.user_id}
+                label={account.first_name}
+                kind="ghost"
+                small
+                onPress={() => void actions.loginAs(account)}
+              />
+            ))}
+          </View>
+        ) : (
+          <Button label="Check again" kind="ghost" onPress={() => void demo.refetch()} />
+        )}
+      </Card>
+
       <SectionHeading>Log in as a seeded account</SectionHeading>
       <Card>
         <AppText variant="small" tone="muted">
@@ -384,4 +424,5 @@ const styles = StyleSheet.create({
   list: { gap: space.xs + 2 },
   caseRow: { flexDirection: 'row', gap: space.sm, alignItems: 'flex-start' },
   flex: { flex: 1 },
+  demoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
 });

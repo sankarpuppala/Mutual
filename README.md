@@ -21,3 +21,22 @@ pre-commit run --all-files
 ```
 
 Every other command is listed in `CLAUDE.md` §4.
+
+## Trying it
+
+```powershell
+$env:MUTUAL_ENV="dev"; uvicorn mutual_server.main:create_app --factory --no-access-log --app-dir server
+python -m mutual_server.demo_seed      # second terminal: synthetic students + a demo operator
+```
+
+- **Test accounts:** in a dev build of the app (`EXPO_PUBLIC_MUTUAL_ENV=dev`), tap
+  *Try a demo account* on the Welcome screen, then a name. Every account is synthetic.
+- **Admin:** open `http://127.0.0.1:8000/admin` and sign in as `admin` with the password
+  `demo_seed` printed, or set `MUTUAL_ADMIN_USERNAME` / `MUTUAL_ADMIN_PASSWORD` before
+  starting the server to create a central admin. It reads every college's reports and
+  the feedback students send from the app's You tab. Owners open colleges, review applications, handle reports,
+  suspend accounts and add operators. Campus moderators see only their own college.
+- **Colleges:** officials apply at `/colleges`. How to win a college over in real life:
+  `docs/COLLEGE_ONBOARDING.md`.
+- **Deploying a pilot for free:** `docs/DEPLOYMENT.md`.
+

@@ -14,10 +14,12 @@ from sqlalchemy.orm import Session
 from mutual_server.clock import Clock, add_days, local_day
 from mutual_server.config import Settings
 from mutual_server.models import (
+    CollegeApplication,
     Crossing,
     DigestSnapshot,
     Encounter,
     Match,
+    OperatorSession,
     OtpCode,
     PresenceUpload,
     SessionRow,
@@ -48,5 +50,25 @@ def run_retention(db: Session, clock: Clock, settings: Settings) -> None:
     # this is only the fallback for a party who never came back.
     ended_cutoff = now - timedelta(days=settings.reveal.ended_match_retention_days)
     db.execute(delete(Match).where(Match.ended_at.is_not(None), Match.ended_at <= ended_cutoff))
+
+    # Operator sessions, and college applications with their contact address (SPEC §4.2):
+    # never verified -> gone after a day (the address was never proven to be the
+    # applicant's own); decided -> kept, unless decided_retention_days is set above 0.
+    db.execute(delete(OperatorSession).where(OperatorSession.expires_at <= now))
+    unverified_cutoff = now - timedelta(hours=settings.colleges.unverified_retention_hours)
+    db.execute(
+        delete(CollegeApplication).where(
+            CollegeApplication.status == "unverified",
+            CollegeApplication.created_at <= unverified_cutoff,
+        )
+    )
+    if settings.colleges.decided_retention_days > 0:
+        decided_cutoff = now - timedelta(days=settings.colleges.decided_retention_days)
+        db.execute(
+            delete(CollegeApplication).where(
+                CollegeApplication.decided_at.is_not(None),
+                CollegeApplication.decided_at <= decided_cutoff,
+            )
+        )
 
     db.commit()

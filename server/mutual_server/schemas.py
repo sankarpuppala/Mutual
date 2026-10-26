@@ -224,6 +224,11 @@ ReportReason = Literal[
 ]
 
 
+class FeedbackIn(_In):
+    category: Literal["idea", "problem", "other"]
+    body: str = Field(min_length=1, max_length=10000)
+
+
 class ReportIn(_In):
     peer_id: str
     reason: ReportReason
@@ -232,6 +237,14 @@ class ReportIn(_In):
 
 class DevSeededUser(_Out):
     user_id: str
+    first_name: str
     session_token: str
     identity_sk: str
     identity_pk: str
+
+
+class DevDemoAccounts(_Out):
+    """What ``python -m mutual_server.demo_seed`` last wrote (dev only, synthetic only)."""
+
+    campus: str
+    users: list[DevSeededUser]

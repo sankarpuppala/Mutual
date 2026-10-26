@@ -18,7 +18,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _HHMM = re.compile(r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
-_DOMAIN = re.compile(r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+DOMAIN_PATTERN = re.compile(r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+_DOMAIN = DOMAIN_PATTERN
 
 
 class ConfigError(ValueError):
@@ -145,8 +146,22 @@ class MessagesConfig(_Strict):
     rate_limit_per_minute: int = Field(gt=0)
 
 
+class R2Config(_Strict):
+    """Cloudflare R2 bucket for persistent media storage (docs/DEPLOYMENT.md §3b.5).
+
+    Bucket and account_id are non-secret and go in config.yaml.  The API keys come from
+    environment variables named by ``access_key_id_env`` and ``secret_access_key_env``.
+    """
+
+    bucket: str
+    account_id: str
+    access_key_id_env: str = "MUTUAL_R2_ACCESS_KEY_ID"
+    secret_access_key_env: str = "MUTUAL_R2_SECRET_ACCESS_KEY"
+
+
 class MediaConfig(_Strict):
     storage_dir: str
+    r2: R2Config | None = None  # if set, files go to R2; otherwise to storage_dir on local disk
     voice_max_seconds: int = Field(gt=0)
     voice_max_bytes: int = Field(gt=0)
     waveform_points: int = Field(gt=0)
@@ -165,6 +180,35 @@ class BleConfig(_Strict):
     scan_period_seconds: int = Field(gt=0)
     rssi_threshold_dbm: int = Field(lt=0)
     advertise_tx_power: Literal["ultra_low", "low", "medium", "high"]
+
+
+class AdminConfig(_Strict):
+    """The operator web console at /admin (SPEC.md §11.3)."""
+
+    session_ttl_hours: int = Field(default=12, gt=0)
+    login_ip_limit_per_hour: int = Field(default=10, gt=0)
+    password_min_length: int = Field(default=12, ge=10)
+
+
+class CollegesConfig(_Strict):
+    """College applications at /colleges (SPEC.md §4.2)."""
+
+    apply_ip_limit_per_hour: int = Field(default=5, gt=0)
+    verify_ip_limit_per_hour: int = Field(default=20, gt=0)
+    code_ttl_seconds: int = Field(default=1800, gt=0)
+    code_max_attempts: int = Field(default=5, gt=0)
+    unverified_retention_hours: int = Field(default=24, gt=0)
+    # 0 keeps decided applications for the deployment's lifetime (the default, the
+    # human's choice, DECISIONS_LOG 35); a positive number deletes them that many days
+    # after the decision.
+    decided_retention_days: int = Field(default=0, ge=0)
+
+
+class FeedbackConfig(_Strict):
+    """Student feedback to the team (SPEC.md §11.4)."""
+
+    max_length: int = Field(default=2000, gt=0)
+    per_user_per_day: int = Field(default=5, gt=0)
 
 
 class StudyConfig(_Strict):
@@ -193,6 +237,10 @@ class Settings(_Strict):
     ranking: RankingConfig
     ble: BleConfig
     study: StudyConfig
+    # Defaulted so a config.yaml written before these sections existed still loads.
+    admin: AdminConfig = Field(default_factory=AdminConfig)
+    colleges: CollegesConfig = Field(default_factory=CollegesConfig)
+    feedback: FeedbackConfig = Field(default_factory=FeedbackConfig)
 
     @field_validator("timezone")
     @classmethod
@@ -241,6 +289,13 @@ class Settings(_Strict):
 
     @property
     def database_url(self) -> str:
+        """``MUTUAL_DATABASE_URL`` overrides ``database.url`` (12-factor hosts such as
+        Render set the connection string as an environment variable, not a file).
+        ``server/migrations/env.py`` already honoured this for Alembic; without it here
+        too, a server set to migrate against one database could *serve* another."""
+        override = os.environ.get("MUTUAL_DATABASE_URL")
+        if override:
+            return override
         url = self.database.url
         prefix = "sqlite:///"
         if url.startswith(prefix) and not url.startswith(prefix + "/") and url != "sqlite://":

@@ -70,6 +70,8 @@ mutual/
 │   ├── protocol_py/             # Python reference implementation (package: mutual_protocol)
 │   └── protocol-ts/             # TypeScript implementation used by the app (@mutual/protocol)
 ├── server/                      # FastAPI + SQLAlchemy (package: mutual_server)
+│   ├── mutual_server/web/       # HTML: operator console /admin, college applications /colleges
+│   └── deploy/                  # Dockerfile, compose + Caddy, prod config (docs/DEPLOYMENT.md)
 ├── sim/                         # agent-based simulation (package: mutual_sim)
 ├── app/                         # Expo React Native app (Android dev build)
 │   └── modules/mutual-ble/      # local Expo native module (Kotlin): BLE + foreground service
@@ -115,9 +117,18 @@ $env:MUTUAL_ENV="dev"; uvicorn mutual_server.main:create_app --factory --reload 
 # Database migrations (URL from MUTUAL_DATABASE_URL, else server/config.yaml)
 alembic -c server/alembic.ini upgrade head
 
-# Operator CLI (colleges, suspensions; reports in Phase 5)
+# Operator CLI (colleges, suspensions, reports, operators)
 python -m mutual_server.admin campuses list
 python -m mutual_server.admin campuses approve <key> --name "<College name>"
+python -m mutual_server.admin operators add <username>    # then sign in at /admin
+# Operator console: http://127.0.0.1:8000/admin   College applications: /colleges
+
+# Demo data (dev server running, synthetic accounts only): 12 students, crossings, two
+# mutuals, a demo /admin owner. In a dev build: Welcome -> "Try a demo account".
+python -m mutual_server.demo_seed
+
+# Production image and pilot deployment: docs/DEPLOYMENT.md
+docker build -f server/deploy/Dockerfile -t mutual-server .
 
 # Simulation
 python -m mutual_sim.run --config sim/config.yaml --seeds 30

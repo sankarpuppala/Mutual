@@ -32,6 +32,8 @@ What it does, against an already-running dev server (``MUTUAL_ENV=dev``):
     **always restores the clock offset to zero before exiting**, including on
     a failure, so the live server is back on real time afterwards.
  5. Posts a short exchange of messages in one of the two matches.
+ 6. Creates a demo owner operator ``admin`` for the console at ``/admin``, with a random
+    password printed once (``--no-operator`` skips it).
 
 Idempotent in the sense that matters: running it again approves the same
 campus (a no-op) and adds another round of synthetic students on top, rather
@@ -44,7 +46,6 @@ import argparse
 import json
 import sys
 from datetime import UTC, date, datetime, timedelta
-from pathlib import Path
 
 import httpx
 from mutual_protocol.encoding import b64url_decode, b64url_encode
@@ -55,7 +56,10 @@ from mutual_server.clock import SystemClock
 from mutual_server.config import load_settings
 from mutual_server.db import make_engine, make_session_factory
 from mutual_server.ids import UuidIds
+from mutual_server.models import Operator
+from mutual_server.routers.dev import DEMO_ACCOUNTS_FILE
 from mutual_server.services import campus as campus_service
+from mutual_server.services import operators as operators_service
 
 CAMPUS_KEY = "example.ac.in"
 CAMPUS_NAME = "Example College"
@@ -65,7 +69,7 @@ CAMPUS_NAME = "Example College"
 # seeded account" field that takes one object from this file's "users" list, pasted in --
 # that is how a device gets to *be* one of these students instead of just crossing paths
 # with them, since onboarding a real device account is a separate, slower path.
-ACCOUNTS_FILE = Path(__file__).resolve().parents[1] / "demo_accounts.json"
+ACCOUNTS_FILE = DEMO_ACCOUNTS_FILE
 
 # A few made-up two-person exchanges, so the chat tab has something real-looking
 # in it. Nobody's business but two synthetic accounts talking to each other.
@@ -85,6 +89,35 @@ def _approve_campus() -> None:
     with session_factory() as db:
         campus_service.approve(db, CAMPUS_KEY, CAMPUS_NAME, ids, clock)
     print(f"campus: {CAMPUS_KEY} ({CAMPUS_NAME}) open")
+
+
+DEMO_OPERATOR = "admin"
+
+
+def _ensure_operator() -> None:
+    """A demo owner for /admin on this throwaway dev database, with a fresh random
+    password printed once. Skipped if an operator by that name already exists."""
+    import secrets
+
+    from sqlalchemy import select
+
+    settings = load_settings()
+    session_factory = make_session_factory(make_engine(settings.database_url))
+    with session_factory() as db:
+        if db.scalar(select(Operator).where(Operator.username == DEMO_OPERATOR)):
+            print(f"operator: {DEMO_OPERATOR} already exists (password unchanged)")
+            return
+        password = secrets.token_urlsafe(12)
+        operators_service.create(
+            db,
+            settings,
+            UuidIds(),
+            SystemClock(),
+            username=DEMO_OPERATOR,
+            password=password,
+            campus_key=None,
+        )
+    print(f"operator: sign in at /admin as {DEMO_OPERATOR} / {password}  (shown once)")
 
 
 def _seed_students(client: httpx.Client, count: int) -> list[dict]:
@@ -218,9 +251,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default="http://127.0.0.1:8000/v1")
     parser.add_argument("--count", type=int, default=12, help="synthetic students to seed")
+    parser.add_argument(
+        "--no-operator", action="store_true", help="do not create the demo /admin operator"
+    )
     args = parser.parse_args(argv)
 
     _approve_campus()
+    if not args.no_operator:
+        _ensure_operator()
 
     with httpx.Client(base_url=args.base_url, timeout=10.0) as client:
         try:
@@ -262,8 +300,8 @@ def main(argv: list[str] | None = None) -> int:
             client.post("/dev/clock", json={"offset_seconds": 0})
             print("server clock restored to real time")
 
-    print("\ndone. open the app against this server; sign in is not needed to look --")
-    print(f"the campus is {CAMPUS_NAME} ({CAMPUS_KEY}), every account above is synthetic.")
+    print("\ndone. In a dev build of the app: Welcome -> 'Try a demo account', then tap a")
+    print(f"name. The campus is {CAMPUS_NAME} ({CAMPUS_KEY}); every account is synthetic.")
     return 0
 
 

@@ -7,6 +7,7 @@
  * that is a spec change, not a copy edit.
  */
 
+import { SIGNAL_SET_SIZE } from '@mutual/protocol';
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -20,9 +21,10 @@ import { hitSize, radius, space } from '@/design/tokens';
 const CAN_SEE = [
   'Your first name, your year, and the answers, voice notes and photos you add.',
   'Which day you crossed paths with someone. Only the day, and only for 7 days.',
-  'That your phone sent its nightly set of 20 signals. Every set looks the same.',
+  `That your phone sent its nightly set of ${SIGNAL_SET_SIZE} signals. Every set looks the same.`,
   'Your mutuals, and the messages inside them.',
   'Blocks and reports you choose to make.',
+  'Feedback you choose to send the Mutual team.',
 ];
 
 const CAN_NEVER_SEE = [

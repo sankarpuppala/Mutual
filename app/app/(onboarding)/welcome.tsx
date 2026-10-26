@@ -12,6 +12,7 @@ import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { isDev } from '@/api/client';
 import { Logo } from '@/design/icons';
 import { AppText, Button, LinkButton } from '@/design/primitives';
 import { useTheme } from '@/design/theme';
@@ -62,6 +63,11 @@ export default function WelcomeScreen(): ReactNode {
           center
           onPress={() => router.push('/privacy')}
         />
+        {/* Dev builds only (invariant 11): the way in to the seeded demo accounts. A
+            production build never renders this, so the approved design is unchanged. */}
+        {isDev() ? (
+          <LinkButton label="Try a demo account" center onPress={() => router.push('/dev')} />
+        ) : null}
       </View>
     </View>
   );

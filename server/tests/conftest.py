@@ -40,6 +40,9 @@ class CapturingEmail:
     def send_login_code(self, to: str, code: str) -> None:
         self.sent.append((to, code))
 
+    def send_college_code(self, to: str, code: str) -> None:
+        self.sent.append((to, code))
+
     def last_code(self) -> str:
         return self.sent[-1][1]
 

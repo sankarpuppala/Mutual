@@ -15,20 +15,21 @@ import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
 
-import { ApiError, NetworkError } from '@/api/client';
+import { ApiError, NetworkError, baseUrl } from '@/api/client';
 import { requestOtp } from '@/api/endpoints';
 import { AppText, BarButton, Button, LockNote, Screen, ScreenHeader, Stack, TextField } from '@/design/primitives';
 import { space } from '@/design/tokens';
 import { useOnboarding, validateEmail } from '@/onboarding/store';
 
 /** Server error codes this screen can explain better than the server's generic message. */
-const MESSAGES: Record<string, string> = {
-  not_a_college_email:
+const MESSAGES: Record<string, () => string> = {
+  not_a_college_email: () =>
     'That has to be a college address. Mutual only works inside a campus, which is how it ' +
     'knows you are a student.',
-  campus_not_open:
-    'Your college is not open yet. We have noted the domain, and it opens once someone ' +
-    'from your campus is set up as its operator.',
+  campus_not_open: () =>
+    'Your college is not open yet. We have noted that a student asked. It opens once ' +
+    'someone at the college — a dean, or the student council — applies at ' +
+    `${baseUrl()}/colleges and we have spoken to them.`,
 };
 
 export default function EmailScreen(): ReactNode {
@@ -50,7 +51,7 @@ export default function EmailScreen(): ReactNode {
       setEmail(value);
       router.push('/(onboarding)/code');
     } catch (e) {
-      if (e instanceof ApiError) setError(MESSAGES[e.code] ?? e.message);
+      if (e instanceof ApiError) setError(MESSAGES[e.code]?.() ?? e.message);
       else if (e instanceof NetworkError) setError('Could not reach Mutual. Check your connection.');
       else setError('Something went wrong. Try again.');
     } finally {

@@ -59,3 +59,48 @@ def new_session_token() -> tuple[str, str]:
 
 def session_hash(token: str) -> str:
     return hashlib.sha256(token.encode("ascii", errors="replace")).hexdigest()
+
+
+# Operator passwords (SPEC.md §11.3). stdlib scrypt (OpenSSL), never a home-made KDF
+# (CLAUDE.md invariant 7). N=2^14, r=8, p=1 is the RFC 7914 interactive-login setting:
+# ~16 MiB and tens of milliseconds per check.
+_SCRYPT_N, _SCRYPT_R, _SCRYPT_P = 2**14, 8, 1
+_SCRYPT_SALT_BYTES, _SCRYPT_DKLEN = 16, 32
+
+
+def hash_password(password: str) -> str:
+    """``scrypt$N$r$p$<salt hex>$<hash hex>``."""
+    salt = secrets.token_bytes(_SCRYPT_SALT_BYTES)
+    digest = hashlib.scrypt(
+        password.encode("utf-8"),
+        salt=salt,
+        n=_SCRYPT_N,
+        r=_SCRYPT_R,
+        p=_SCRYPT_P,
+        dklen=_SCRYPT_DKLEN,
+    )
+    return f"scrypt${_SCRYPT_N}${_SCRYPT_R}${_SCRYPT_P}${salt.hex()}${digest.hex()}"
+
+
+def check_password(password: str, stored: str) -> bool:
+    """Constant-time check of ``password`` against a ``hash_password`` string."""
+    try:
+        scheme, n, r, p, salt_hex, digest_hex = stored.split("$")
+        if scheme != "scrypt":
+            return False
+        digest = hashlib.scrypt(
+            password.encode("utf-8"),
+            salt=bytes.fromhex(salt_hex),
+            n=int(n),
+            r=int(r),
+            p=int(p),
+            dklen=len(digest_hex) // 2,
+        )
+    except ValueError:
+        return False
+    return hmac.compare_digest(digest.hex(), digest_hex)
+
+
+# A fixed hash to check against when the username does not exist, so a login attempt
+# takes the same time whether or not the operator is real.
+DUMMY_PASSWORD_HASH = hash_password(secrets.token_urlsafe(16))

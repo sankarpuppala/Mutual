@@ -77,6 +77,7 @@ function Navigator(): ReactNode {
         <Stack.Screen name="match/[id]" />
         <Stack.Screen name="reveal/[id]" options={{ presentation: 'fullScreenModal' }} />
         <Stack.Screen name="privacy" options={{ presentation: 'card' }} />
+        <Stack.Screen name="feedback" options={{ presentation: 'card' }} />
         <Stack.Screen name="dev" />
       </Stack>
     </>

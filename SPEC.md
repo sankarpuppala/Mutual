@@ -1,6 +1,13 @@
 # SPEC.md — Mutual
 
-Status: **v1.4 — the contract.** (v1.4, 2026-10-05: many colleges, each a
+Status: **v1.8 — the contract.** (v1.8, 2026-10-26: `MUTUAL_DATABASE_URL` overrides
+`database.url` for the live server too, not only Alembic, §18; a Render + Neon Postgres
+deployment path, §17/§20, D28. v1.7, 2026-10-23: a no-credit-card self-hosted
+deployment path, §17/§20, D27. v1.6, 2026-10-23: student feedback §11.4, a central
+admin created from the environment §11.3, college applications kept §4.2/§9; D26.
+v1.5, 2026-10-23: official college applications §4.2,
+the operator console §11.3, operators and audit tables §12, the deployment kit §17 and
+§20; D25. v1.4, 2026-10-05: many colleges, each a
 closed campus, §4.1 and D24; Q1 and Q2 resolved. v1.3, 2026-10-05: second protocol
 review. EIDs are one-time X25519 public keys and encounter tokens are keyed
 by a shared secret, §6.8 and §6.13; per-token release, verification and
@@ -93,8 +100,9 @@ gap is a finding (RQ4), not a defect.
 encrypted chat (decision D10); images, links or voice in chat; web client;
 real-time location of any kind; recommendation trained on interest data
 (impossible by design); federation across several servers; key
-backup/recovery; malicious-server security (§7.2); production hosting and
-app-store release.
+backup/recovery; malicious-server security (§7.2); app-store release;
+hosting at scale. (A single-server pilot deployment kit exists, `docs/DEPLOYMENT.md`,
+v1.5; it does not make the prototype production-ready.)
 
 Mutual is **standalone**. It does not depend on any other project (including
 Bazaar). Identity is verified by college email OTP.
@@ -123,6 +131,37 @@ campus.
   one campus.
 - **Account moves.** A user's campus is fixed at account creation. Moving to
   another college means a new account with the new email.
+- **Opening** happens in the operator console (§11.3) or the CLI, for any of the three
+  routes in §4.2. An open campus may list several domains; no domain may belong to two
+  open campuses.
+
+### 4.2 Official college applications (decided 2026-10-23, D25)
+A college official can ask for their college to be opened at `GET /colleges`, a public,
+script-free HTML form outside `/v1`.
+- **Proof of affiliation.** The form takes the college name, its email domain, the
+  official's name, role and email. The email must be at that domain or a subdomain of
+  it. A 6-digit code (CSPRNG) is mailed to it; only its HMAC under the server pepper,
+  bound to the application id, is stored. `colleges.code_max_attempts` wrong tries or
+  `colleges.code_ttl_seconds` end the attempt.
+- **Nothing opens automatically.** A verified application waits for an owner. Approving
+  it opens the campus (key = the academic key of the domain if it has one, else the
+  domain itself, so non-academic college domains are possible on this route only), adds
+  the verified domain, and sets `campuses.partner_verified_at`.
+- **The contact email is stored in plaintext.** It is an institutional work address
+  volunteered for a partnership so the operator can reply, not a student's identity.
+  Invariant 5 still holds for students. Retention (v1.6, D26): verified and decided
+  applications are **kept** as the record of who asked for which college
+  (`colleges.decided_retention_days: 0`; a positive value deletes them that many days
+  after the decision). Unverified applications are still deleted after
+  `colleges.unverified_retention_hours`, because their address was never proven to be the
+  applicant's own (§9).
+- **Abuse limits.** Per-IP hourly limits on applying and verifying (the IP is counted in
+  memory only, as in §9). An already-open domain is refused. A failed email send deletes
+  the application.
+- **Campus moderators.** A partner college's safety officer can be given an operator
+  account scoped to that campus (§11.3).
+- The real-world procedure (who to ask, what to agree, how to launch) is in
+  `docs/COLLEGE_ONBOARDING.md`.
 
 ---
 
@@ -567,6 +606,11 @@ rounded up to a multiple of 256; silence is not a size.
 | Matches | Server | Until unmatch, block or account deletion; then kept as `ended` for the other party until fetched or 30 days (§6.9) |
 | Messages | Server | Deleted on unmatch/block/deletion (report excerpts retained) |
 | Reports | Server | Until resolved + 90 days |
+| College applications, including the official's contact email (§4.2) | Server | Unverified: `colleges.unverified_retention_hours` (24 h). Verified and decided: kept (v1.6, D26) |
+| Student feedback (§11.4) | Server | Kept. On account deletion `user_id` becomes NULL |
+| Operator passwords | scrypt hash (§11.3) | Until the operator is removed |
+| Operator sessions | SHA-256 hash | `admin.session_ttl_hours` (12 h) |
+| Operator audit log | Username, action, target, time; never an IP | Deployment lifetime |
 | Signals, peer keys, sightings, encounter → time-block map, own daily keys | Device, in the app-private `expo-sqlite` database (§9.1) | Signals: TTL; sightings: until that day's encounter set is uploaded; encounter map: 7 days; daily keys: deleted after that day's upload |
 | Session token, identity private key, user id | Device, `expo-secure-store` (Android Keystore) | Until logout or account deletion |
 
@@ -701,10 +745,53 @@ unhandled error, never echoing the underlying write.
 | `POST /blocks` | `{peer_id}` (allowed pre-match; explicit user disclosure). Acts only on ids in the caller's current digest window or notified matches; any other id gets the same 204 with no effect. The request only records the block; its effect on pending tokens is applied at release (§6.9) |
 | `POST /reports` | `{peer_id, reason, message_ids?}`. Same id rule and uniform 204 as blocks |
 | `POST /discovery/pause`, `POST /discovery/resume` | S6 |
+| `POST /feedback` | `{category: idea\|problem\|other, body}` → 204. A message to the team (§11.4); no peer id; `feedback.per_user_per_day` |
 | `GET /config` | `{campus:{id, name}?, server_time, epoch, protocol_version, reveal_policy, next_policy_change?, signal_upload_window, presence_upload_window, match_batch_time, digest_release_time, interest_ttl_days, ble:{...}, study_enabled}` |
 | `POST /dev/clock` | `{offset_seconds}` — **dev only** |
 | `POST /dev/crossing` | `{user_a, user_b, day}` — **dev only**, creates a confirmed crossing |
 | `POST /dev/seed` | Creates N synthetic users with profiles — **dev only** |
+| `GET /dev/demo-accounts` | The accounts the last `demo_seed` run wrote to `server/demo_accounts.json` that still exist, for one-tap login in the dev panel — **dev only**, synthetic only |
+
+### 11.3 Operator console (`/admin`, HTML, outside `/v1`) — v1.5, D25
+For the people who run a deployment (§19, Q8). Never used by the app.
+- **Operators** are created with `python -m mutual_server.admin operators add <name>`,
+  by an owner in the console, or (v1.6) as the **central admin**: an owner made at the
+  first start from `MUTUAL_ADMIN_USERNAME` / `MUTUAL_ADMIN_PASSWORD`. It is never touched
+  again once it exists, so a password changed in the console sticks. Passwords are stored as stdlib scrypt hashes
+  (N=2^14, r=8, p=1) and are at least `admin.password_min_length` long. Two roles:
+  **owner** (`campus_id` NULL, every campus) and **campus moderator** (one campus:
+  its reports, its users, its counts, nothing else; invariant 13).
+- **Sessions:** a random 32-byte token in an `HttpOnly`, `SameSite=Strict` cookie scoped
+  to `/admin` (`Secure` in prod), stored only as a SHA-256 hash, valid
+  `admin.session_ttl_hours`. Every POST carries a per-session CSRF token. Sign-in is
+  limited per IP (`admin.login_ip_limit_per_hour`), and an unknown username costs the
+  same scrypt check as a wrong password.
+- **Pages:** overview (counts per campus only: students, new in 7 days, active mutuals,
+  open reports, new feedback, most-requested unopened colleges); feedback (§11.4); reports (excerpt, resolve, suspend
+  the reported user); users (lookup by id only, with no list of all students; suspend and
+  lift); colleges (open, decline, edit domains; owners); applications (owners);
+  operators (add, disable; owners); audit log (owners); own password.
+- **Cannot show:** signals (the server has none in plaintext, §7.3), crossings, digests,
+  or messages outside a report's own excerpt. No route takes a user id in its path
+  (`test_route_audit.py`).
+- **Audit:** every change and every sign-in is written to `admin_audit` (operator
+  username, action, target, time). No IP address and no user agent.
+- Every page sends `Content-Security-Policy: default-src 'none'; style-src
+  'unsafe-inline'; form-action 'self'; frame-ancestors 'none'`, `X-Frame-Options: DENY`,
+  `Referrer-Policy: no-referrer` and `Cache-Control: no-store`.
+
+### 11.4 Student feedback — v1.6, D26
+Students send the team ideas, problems or anything else from the You tab ("Send
+feedback"). `POST /v1/feedback` stores the text with the author's id and campus.
+- **Not about a person.** The request has no peer field, and the screen points to Report
+  for that. It is sent only when the student presses Send, so it is never
+  attention-dependent (invariant 1).
+- **Limits:** `feedback.max_length` characters, `feedback.per_user_per_day` messages.
+- **Read in `/admin` → Feedback**, scoped by campus like reports. The central owner sees
+  every college; a moderator sees only their own. Marking one read is audited.
+- **Retention:** kept for the deployment's lifetime (D26). Deleting the account keeps the
+  feedback but sets `user_id` to NULL, so it no longer points at the person. The screen and
+  the privacy page say so.
 
 ### 11.1 Digest ranking
 `ranking.method: reciprocal_content` (Tier 2) or `random` (Tier 1 default).
@@ -735,7 +822,7 @@ All ids are UUIDv4 strings. All timestamps UTC; "day" and "epoch" are local
 date strings.
 
 - `campuses(id, key UNIQUE, name, domains JSON, status[open|pending|rejected],
-  attempts, created_at)`
+  attempts, created_at, partner_verified_at NULL)` (v1.5, §4.2)
 - `users(id, email_hmac UNIQUE, campus_id, first_name, year_of_study,
   identity_pk, identity_key_changed_at, age_verified_at, discovery_paused,
   suspended_at, created_at, consent_version)`; `identity_pk` is unique.
@@ -775,6 +862,16 @@ date strings.
 - `blocks(blocker_id, blocked_id, created_at)`
 - `reports(id, reporter_id, reported_id, reason, excerpt JSON, status,
   created_at, resolved_at)`
+- `operators(id, username UNIQUE, password_hash, campus_id NULL, created_at,
+  disabled_at NULL)` (v1.5, §11.3); `operator_sessions(token_hash PK, operator_id,
+  csrf, expires_at, created_at)`; `admin_audit(id, operator, action, target,
+  created_at)`
+- `college_applications(id, college_name, domain, contact_name, contact_role,
+  contact_email, note, status[unverified|verified|approved|rejected], code_hash NULL,
+  code_expires_at NULL, code_attempts, created_at, verified_at NULL, decided_at NULL,
+  decided_by NULL)` (v1.5, §4.2)
+- `feedback(id, user_id NULL ON DELETE SET NULL, campus_id, category[idea|problem|other],
+  body, status[new|read], created_at, read_at NULL, read_by NULL)` (v1.6, §11.4)
 
 ---
 
@@ -802,7 +899,9 @@ app/app/
   match/[id].tsx        # chat
   reveal/[id].tsx       # the Reveal moment (modal)
   privacy.tsx           # "What Mutual can and can never see"
-  dev.tsx               # dev panel, only when MUTUAL_ENV=dev
+  feedback.tsx          # "Send feedback", from the You tab (§11.4, v1.6)
+  dev.tsx               # dev panel, only when MUTUAL_ENV=dev; reached from Welcome
+                        # ("Try a demo account") and You, in dev builds only (v1.5)
 ```
 
 ### 13.3 Design concept: "a morning letter, not a slot machine"
@@ -1144,6 +1243,17 @@ salt; no crossing pairs exported.
 - `pre-commit` framework for git hooks (cross-platform).
 - Everything free. Versions pinned in `pyproject.toml` / `package.json`
   lockfiles; pins recorded in the Progress log when first chosen.
+- Pilot deployment (v1.5): Docker, Caddy (free Let's Encrypt certificates), any free SMTP
+  account, EAS Build free tier or a local Gradle release build. `docs/DEPLOYMENT.md`.
+- No-credit-card deployment (v1.7): the same Docker image, published on loopback only and
+  reached through a free ngrok static domain instead of Caddy
+  (`server/deploy/docker-compose.selfhost.yml`). `docs/DEPLOYMENT.md` §3a.
+- Hosted-without-a-machine deployment (v1.8): Render's free Web Service tier plus Neon's
+  free Postgres, run without the Docker image, `MUTUAL_DATABASE_URL` naming the connection
+  string directly. `docs/DEPLOYMENT.md` §3b. Media (photos, voice notes) does not survive
+  a restart on Render's free tier (no persistent disk) — stated as a known gap, not
+  silently accepted; §9's media retention rules describe local-disk storage and do not
+  yet cover an object-store backend.
 
 ---
 
@@ -1211,6 +1321,20 @@ study:
   enabled: false
   approval_reference: ""
   campuses: []                # study mode applies only to these campus keys
+admin:                        # v1.5, §11.3; defaulted if absent
+  session_ttl_hours: 12
+  login_ip_limit_per_hour: 10
+  password_min_length: 12
+colleges:                     # v1.5, §4.2; defaulted if absent
+  apply_ip_limit_per_hour: 5
+  verify_ip_limit_per_hour: 20
+  code_ttl_seconds: 1800
+  code_max_attempts: 5
+  unverified_retention_hours: 24
+  decided_retention_days: 0   # 0 = keep (v1.6, D26)
+feedback:                     # v1.6, §11.4; defaulted if absent
+  max_length: 2000
+  per_user_per_day: 5
 ```
 
 ### `sim/config.yaml`
@@ -1389,16 +1513,20 @@ packages/protocol-ts/src/{index,constants,encoding,keys,tokens,eid,encounter,ran
 packages/protocol-ts/test/{vectors,properties}.test.ts
 server/{pyproject.toml,config.example.yaml,alembic.ini}
 server/migrations/{env.py,script.py.mako,versions/}     (Alembic)
-server/mutual_server/{__init__,main,config,clock,ids,db,models,security,errors,deps,schemas,admin}.py
+server/mutual_server/{__init__,main,config,clock,ids,db,models,security,errors,deps,schemas,admin,demo_seed}.py
+server/mutual_server/web/{__init__,html,admin,colleges}.py      (operator console §11.3, college applications §4.2)
+server/deploy/{Dockerfile,start.py,docker-compose.yml,docker-compose.selfhost.yml,Caddyfile,config.prod.example.yaml,env.example}   (docs/DEPLOYMENT.md)
+pyproject.toml optional-dependency `postgres` (`psycopg2-binary`, server/pyproject.toml, v1.8)
+.dockerignore
 server/mutual_server/data/prompts.json
-server/mutual_server/routers/{auth,account,profile,presence,digest,signals,matches,messages,safety,config_route,dev}.py
-server/mutual_server/services/{campus,resolution,matching,ranking,digest,arms,cards,retention,email,media}.py
-server/tests/{conftest,test_app,test_auth,test_account,test_profile,test_presence,test_digest,test_signals,test_matches,test_reveal,test_messages,test_safety,test_retention,test_leak_two_worlds,test_route_audit,test_study_gate,test_costs}.py
+server/mutual_server/routers/{auth,account,profile,presence,digest,signals,matches,messages,safety,config_route,dev,feedback}.py
+server/mutual_server/services/{campus,resolution,matching,ranking,digest,arms,cards,retention,email,media,rate_limit,operators,colleges}.py
+server/tests/{conftest,test_app,test_auth,test_account,test_profile,test_presence,test_digest,test_signals,test_matches,test_reveal,test_messages,test_safety,test_retention,test_leak_two_worlds,test_route_audit,test_study_gate,test_costs,test_rate_limit,test_admin_web,test_colleges,test_email,test_migrations,test_feedback}.py
 sim/{pyproject.toml,config.yaml}
 sim/mutual_sim/{__init__,population,copresence,policies,behaviour,metrics,run,sweep,report}.py
 sim/tests/{test_metrics,test_determinism,test_policies}.py
 sim/results/report.md  sim/results/figures/            (generated)
-app/{package.json,app.json,app.config.ts,tsconfig.json,eslint.config.js,jest.config.js,babel.config.js,metro.config.js}
+app/{package.json,app.json,app.config.ts,eas.json,tsconfig.json,eslint.config.js,jest.config.js,babel.config.js,metro.config.js}
 app/plugins/withBleNeverForLocation.js                   (local Expo config plugin, §14.1)
 app/src/signals/deploymentClock.ts                      (deployment wall clock, §6.3, §6.11)
 app/app/...                                              (routes listed in §13.2)
@@ -1415,7 +1543,7 @@ app/src/storage/{secure,localDb}.ts
 app/modules/mutual-ble/                                  (Expo local module: index.ts, expo-module.config.json, android/…Kotlin)
 app/scripts/{check-privacy-invariants,check-contrast}.ts
 app/__tests__/                                           (jest tests for AC-T2-2)
-docs/{THREAT_MODEL,SECURITY_ARGUMENT,E2E_CHECKLIST,BLE_SPIKE,INTERVIEW_QUESTIONS,RUNNING_LOCALLY}.md
+docs/{THREAT_MODEL,SECURITY_ARGUMENT,E2E_CHECKLIST,BLE_SPIKE,INTERVIEW_QUESTIONS,RUNNING_LOCALLY,DEPLOYMENT,COLLEGE_ONBOARDING}.md
 docs/design/prototype.html                               (approved visual reference, §13.9)
 docs/DECISIONS_LOG.md                                    (every question, issue, idea and decision, in plain words)
 docs/design-decisions/                                   (generated walkthrough, Phase 13)
@@ -1449,6 +1577,10 @@ study/analysis/export.py                                 (GATED: written only af
 | D15 | Unmatch deletes the conversation (report excerpts kept) | Gives users a clean exit; preserves evidence when it matters |
 | D16 | One account per verified college email | Sybil resistance without collecting ID documents |
 | D24 | One server, many colleges; each campus is a closed partition; new colleges open after a one-time operator approval (§4.1) | The human's choice (2026-10-05): "make it for all colleges, people see only their college". Approval because `.ac.in` and similar suffixes also cover some schools, and age is self-declared |
+| D25 | Colleges can apply officially at `/colleges`, proving an address at their domain; operators work in a web console at `/admin` with owner and campus-moderator roles and an audit log; a single-server deployment kit (§4.2, §11.3, v1.5) | The human asked on 2026-10-23 for official college access, admin controls, test accounts and deployment, "without looking back". Every opening still needs an operator (D24). Moderators give partner colleges a safety role without seeing other campuses. The applicant's work email is stored in plaintext so they can be answered, deleted on a schedule |
+| D26 | Students can send feedback to the team; one central admin (an owner) reads every college's reports and feedback; college applications and feedback are kept (§4.2, §9, §11.3, §11.4, v1.6) | The human's answers on 2026-10-23: "an admin account who checks all the colleges for any feedbacks and reports", "store everything in a database for our safety of data", and no campus-closing action needed. Students' emails are still never stored (invariant 5). Unverified applications are still deleted, since their address was never proven |
+| D27 | A deployment path that needs no credit card anywhere: the server runs on a computer the human already owns, published to `127.0.0.1` only and reached through a free ngrok static domain, trusted the same way Caddy is trusted in the cloud option (§17, v1.7) | The human asked for a different method after Oracle Cloud's sign-up required a card. ngrok's free static domain gives a stable `https://` address without owning a domain or forwarding a router port. The honest trade-off (uptime depends on the human's own machine, not a data centre) is stated in `docs/DEPLOYMENT.md` and `docs/COLLEGE_ONBOARDING.md` rather than hidden |
+| D28 | `MUTUAL_DATABASE_URL` overrides the config file's `database.url` for the live server, not only for Alembic migrations; Render (free Web Service) + Neon (free Postgres) added as a fourth deployment option, with its media-persistence gap stated rather than papered over (§17, §18, §20, v1.8) | The human already had a Render account and asked whether a drafted Render+Neon plan would work. Two corrections to that draft were load-bearing, not stylistic: `MUTUAL_ENV` must stay `prod` (the draft said `dev`, which would print login codes to the logs and expose the clock-travel routes publicly), and the override variable must be named `MUTUAL_DATABASE_URL`, exactly what the server already reads — not `DATABASE_URL`, which it would silently ignore. Before this change the live server itself had no such override at all (only `server/migrations/env.py` did, for Alembic), which was already a latent risk: a deployment could migrate one database and serve another. Verified against a real Postgres container: all six migrations applied, then signup, OTP, a JSON profile write and a feedback write all round-tripped |
 | D17 | BLE company id 0xFFFF (SIG test id) | Free and acceptable for a prototype; must change before any public release |
 | D18 | Ranking never uses signal, match or attention data | Impossible by design and must stay identical across reveal policies |
 | D19 | The app's interface matches `docs/design/prototype.html` exactly (§13.9) | Interface quality is the human's top priority; approved 2026-10-05 |

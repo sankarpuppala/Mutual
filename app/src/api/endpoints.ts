@@ -70,6 +70,14 @@ export async function replaceIdentityKey(identityPk: string): Promise<void> {
   await api.put<void>('/account/identity-key', { identity_pk: identityPk });
 }
 
+/** What a piece of feedback is about (SPEC §11.4). Never names or points at a person. */
+export type FeedbackCategory = 'idea' | 'problem' | 'other';
+
+/** POST /feedback: a message to the Mutual team, sent only when the student presses Send. */
+export async function sendFeedback(category: FeedbackCategory, body: string): Promise<void> {
+  await api.post<void>('/feedback', { category, body });
+}
+
 export async function deleteAccount(): Promise<void> {
   await api.delete<void>('/account');
 }
@@ -235,7 +243,20 @@ export async function getConfig(): Promise<ServerConfig> {
 // ------------------------------------------------------------------ dev only
 
 /** Dev server only; absent otherwise (invariant 11). */
+/** One synthetic account from `python -m mutual_server.demo_seed` (dev only). */
+export interface DemoAccount {
+  user_id: string;
+  first_name: string;
+  session_token: string;
+  identity_sk: string;
+  identity_pk: string;
+}
+
 export const dev = {
+  /** The last demo_seed run's accounts, for one-tap login in the dev panel. */
+  async demoAccounts(): Promise<{ campus: string; users: DemoAccount[] }> {
+    return api.get<{ campus: string; users: DemoAccount[] }>('/dev/demo-accounts');
+  },
   async setClockOffset(offsetSeconds: number): Promise<void> {
     await api.post<void>('/dev/clock', { offset_seconds: offsetSeconds });
   },

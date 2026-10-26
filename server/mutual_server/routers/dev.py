@@ -5,8 +5,10 @@ Synthetic users only (CLAUDE.md invariant 9).
 
 from __future__ import annotations
 
+import json
 import secrets
 from datetime import timedelta
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, Response
 from mutual_protocol.encoding import b64url_encode
@@ -18,9 +20,20 @@ from mutual_server import security
 from mutual_server.deps import AppContext, get_ctx, get_db
 from mutual_server.errors import ApiError
 from mutual_server.models import Campus, Crossing, Profile, SessionRow, User
-from mutual_server.schemas import DevClockIn, DevCrossingIn, DevSeededUser, DevSeedIn
+from mutual_server.schemas import (
+    DevClockIn,
+    DevCrossingIn,
+    DevDemoAccounts,
+    DevSeededUser,
+    DevSeedIn,
+)
 
 router = APIRouter(prefix="/dev", tags=["dev"])
+
+# Where `python -m mutual_server.demo_seed` writes the synthetic accounts it seeded
+# (gitignored). GET /dev/demo-accounts serves it so the app's dev panel can offer one-tap
+# "log in as Meera" instead of pasting four fields by hand.
+DEMO_ACCOUNTS_FILE = Path(__file__).resolve().parents[2] / "demo_accounts.json"
 
 _NAMES = ["Meera", "Arjun", "Zoya", "Kabir", "Ishaan", "Tara", "Nila", "Sana", "Vikram", "Dev"]
 
@@ -138,6 +151,7 @@ def seed(
         out.append(
             DevSeededUser(
                 user_id=user_id,
+                first_name=_NAMES[n % len(_NAMES)],
                 session_token=token,
                 identity_sk=b64url_encode(sk),
                 identity_pk=b64url_encode(pk),
@@ -167,3 +181,18 @@ def dev_crossing(
         row.token = token
     db.commit()
     return Response(status_code=201)
+
+
+@router.get("/demo-accounts", response_model=DevDemoAccounts)
+def demo_accounts(db: Session = Depends(get_db)) -> DevDemoAccounts:
+    """The last demo_seed run's synthetic accounts that still exist, for one-tap login."""
+    if not DEMO_ACCOUNTS_FILE.is_file():
+        raise ApiError(404, "not_found", "Run python -m mutual_server.demo_seed first.")
+    data = json.loads(DEMO_ACCOUNTS_FILE.read_text(encoding="utf-8"))
+    users = []
+    for u in data.get("users", []):
+        row = db.get(User, u.get("user_id", ""))
+        if row is None:  # deleted since, or the database was reset
+            continue
+        users.append(DevSeededUser(**{**u, "first_name": row.first_name}))
+    return DevDemoAccounts(campus=data.get("campus", ""), users=users)

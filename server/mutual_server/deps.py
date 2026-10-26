@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from pathlib import Path
 
 from fastapi import Depends, Request
 from sqlalchemy.orm import Session
@@ -17,6 +16,7 @@ from mutual_server.models import SessionRow, User
 from mutual_server.security import session_hash
 from mutual_server.services.email import EmailSender
 from mutual_server.services.matching import sync_matches
+from mutual_server.services.media import MediaStore
 from mutual_server.services.rate_limit import RateLimiter
 
 
@@ -27,10 +27,7 @@ class AppContext:
     ids: IdFactory
     email: EmailSender
     rate_limiter: RateLimiter
-
-    @property
-    def media_dir(self) -> Path:
-        return self.settings.resolve_path(self.settings.media.storage_dir)
+    media_store: MediaStore
 
     @property
     def pepper(self) -> bytes:
@@ -95,6 +92,13 @@ def check_ip_rate_limit(request: Request, ctx: AppContext, bucket: str, limit: i
     this exists and what it deliberately never stores). Called from a route body, the same
     way `messages.py` checks `ctx.settings.messages.rate_limit_per_minute`, so the limit is
     read from settings at request time rather than captured into a dependency at import time."""
-    ip = request.client.host if request.client is not None else "unknown"
-    if not ctx.rate_limiter.hit(bucket, ip, limit):
+    if not within_ip_rate_limit(request, ctx, bucket, limit):
         raise ApiError(429, "rate_limited", "Too many requests. Try again in a while.")
+
+
+def within_ip_rate_limit(request: Request, ctx: AppContext, bucket: str, limit: int) -> bool:
+    """The same hourly per-IP counter, returning False instead of raising -- for the HTML
+    pages (/admin, /colleges), which answer with a page rather than a JSON error. The one
+    place outside clock.py that reads the client address (test_no_client_address_is_read)."""
+    ip = request.client.host if request.client is not None else "unknown"
+    return ctx.rate_limiter.hit(bucket, ip, limit)

@@ -39,6 +39,10 @@ class Campus(Base):
     status: Mapped[str] = mapped_column(String(10))  # open | pending | rejected
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    # Set when an official of the college verified an address at its domain and the
+    # operator approved their application (SPEC.md §4.2). NULL for a campus opened on
+    # student demand alone, which is still allowed (§4.1).
+    partner_verified_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
 
 class User(Base):
@@ -270,3 +274,90 @@ class Report(Base):
     status: Mapped[str] = mapped_column(String(12))  # open | resolved
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)
     resolved_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+
+
+class Operator(Base):
+    """A person who runs a deployment (SPEC.md §19 Q8), never a participant account.
+
+    ``campus_id`` NULL means an owner who sees every campus; otherwise the operator is a
+    campus moderator (a partner college's safety officer, SPEC.md §4.2) confined to that
+    campus's reports and users. The password is stored only as a scrypt hash.
+    """
+
+    __tablename__ = "operators"
+    id: Mapped[str] = mapped_column(ID, primary_key=True)
+    username: Mapped[str] = mapped_column(String(40), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(200))
+    campus_id: Mapped[str | None] = mapped_column(ForeignKey("campuses.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    disabled_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+
+
+class OperatorSession(Base):
+    __tablename__ = "operator_sessions"
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    operator_id: Mapped[str] = mapped_column(ForeignKey("operators.id", ondelete="CASCADE"))
+    csrf: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
+class AdminAudit(Base):
+    """Every operator action, by username (kept even if the operator is later removed).
+    No IP address, no user agent (CLAUDE.md invariant 5)."""
+
+    __tablename__ = "admin_audit"
+    id: Mapped[str] = mapped_column(ID, primary_key=True)
+    operator: Mapped[str] = mapped_column(String(40))
+    action: Mapped[str] = mapped_column(String(40))
+    target: Mapped[str] = mapped_column(String(253))
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    __table_args__ = (Index("ix_admin_audit_created", "created_at"),)
+
+
+class CollegeApplication(Base):
+    """A college official asking for their campus to be opened (SPEC.md §4.2).
+
+    The contact email is an institutional work address volunteered for a partnership,
+    not a student's identity, so it is stored in plaintext so the operator can reply; it
+    is deleted with the row (unverified after a day, decided after
+    ``colleges.decided_retention_days``). Students' emails are never stored (invariant 5).
+    """
+
+    __tablename__ = "college_applications"
+    id: Mapped[str] = mapped_column(ID, primary_key=True)
+    college_name: Mapped[str] = mapped_column(String(120))
+    domain: Mapped[str] = mapped_column(String(253))
+    contact_name: Mapped[str] = mapped_column(String(80))
+    contact_role: Mapped[str] = mapped_column(String(80))
+    contact_email: Mapped[str] = mapped_column(String(254))
+    note: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(10))  # unverified | verified | approved | rejected
+    code_hash: Mapped[str | None] = mapped_column(String(64))
+    code_expires_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    code_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    verified_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    decided_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    decided_by: Mapped[str | None] = mapped_column(String(40))
+
+
+class Feedback(Base):
+    """A student's message to the Mutual team (SPEC.md §11.4): ideas, problems, anything.
+
+    Kept for the deployment's lifetime (the human's choice, DECISIONS_LOG 35). If the
+    author deletes their account the row stays, with ``user_id`` set to NULL, so the
+    feedback survives but no longer points at a person (S11).
+    """
+
+    __tablename__ = "feedback"
+    id: Mapped[str] = mapped_column(ID, primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    campus_id: Mapped[str] = mapped_column(ForeignKey("campuses.id", ondelete="CASCADE"))
+    category: Mapped[str] = mapped_column(String(10))  # idea | problem | other
+    body: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(6))  # new | read
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    read_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    read_by: Mapped[str | None] = mapped_column(String(40))
+    __table_args__ = (Index("ix_feedback_campus_created", "campus_id", "created_at"),)

@@ -18,11 +18,14 @@ the reason), **Parked** (good idea, not now), **Open** (waiting for an answer).
 |---|---|---|
 | Q3 | Do you have two Android 12+ phones for the Bluetooth test? | Phase 9 — **answered 2026-10-07: yes, but it is the last thing to be done** |
 | Q4 | Which ethics body approves research with students at your institution, and what is its timeline? **Only you can answer this**: it names a real committee, and invariant 9 turns on `study/APPROVAL.md` recording its actual reference. Nothing in this repository may stand in for it. | Phase 12 |
-| Q6 | Where will the server run for a demo with more than one phone? | Phase 11 |
+| Q6 | Where will the server run for a demo with more than one phone? **Answered 2026-10-23:** the human has no credit card, so Oracle's Always Free VM (which asks for one to verify identity) is out. `docs/DEPLOYMENT.md` option C: a computer the human owns, running the real server, reached through a free ngrok static domain. Still only the human can create that ngrok account and keep the machine on. | Before a multi-phone pilot |
 
 ### Resolved since 2026-10-07
 | # | Question | How it was settled |
 |---|---|---|
+| Q13 | Who reads reports, and should the report sheet say a college officer might? | **One central admin reads every college's reports and feedback** (the human, 2026-10-23). The sheet's "A moderator reads every report" stays true and unchanged. Campus moderators stay possible but optional. Entry 35. |
+| Q14 | How should an open campus be closed? | **Not needed** (the human, 2026-10-23). The gap note was removed from `COLLEGE_ONBOARDING.md`. Entry 35. |
+| — | Store a college applicant's work email in plaintext? | **Yes, and keep the records** ("store everything in a database for our safety of data"). Verified and decided applications are now kept. Students' emails are still never stored (invariant 5). Entry 35. |
 | Q8 | Who holds operator access in a pilot? | The student and the supervisor, and **neither holds a participant account on that deployment**. A rule, not a fix — §7.2 says why no technical fix exists. In SPEC §19 and `study/ETHICS_APPLICATION_DRAFT.md` §6. |
 | Q9 | Does declining consent mean not using Mutual at all? | **No, and that is now enforced.** `POST /account` creates the account either way; the consent screen offers "Use Mutual without taking part". Consent that is the price of using a campus social app is not freely given. SPEC §16. |
 | Q10 | How to fix the legacy BLE split advertisement? | **Withdrawn, not fixed** (user's call, 2026-10-07: "most people use latest phones"). BLE 5 extended advertising is the only supported layout; a device without it is told so plainly. SPEC §14.2, D23. |
@@ -1785,3 +1788,205 @@ release build has no equivalent of. `mutual://dev` from the phone's browser
 works, because the scheme is in the release manifest. Adding a visible entry
 point would change a screen, and every screen is supposed to match
 `docs/design/prototype.html` (CLAUDE.md §6), so it is left as a proposal.
+
+### 36. "Fix everything, add college access, admin controls, test accounts, deploy it" — Adopted (SPEC v1.5, D25)
+
+- **What came up (2026-10-23):** the human asked Claude to go through the whole project,
+  fix what was wrong, make it deployable, add official college access ("think how to
+  implement it in real life"), admin controls and test accounts, improve where useful
+  without making anything worse, and finish "without looking back". That is standing
+  approval for this scope in one session, outside the usual one-phase-per-session rule
+  (CLAUDE.md §8 rule 2). The privacy invariants were kept as they are: none of the work
+  needed to bend one.
+- **State found:** every suite green (282 Python, 214 app, 29 protocol-ts). One cold first
+  run of `npm run verify` showed 2 app failures that 8 further runs, including one with
+  the Jest cache cleared, did not reproduce. Recorded rather than "fixed".
+- **College access, in the software (SPEC §4.2):** officials apply at `/colleges` and
+  prove an address at the college's domain with an emailed code. Owners review and open
+  the campus as a **partner** from the console. Nothing opens automatically (D24 kept).
+  This route also lets a college with a non-academic domain join.
+  *Decision for the human to know about:* the applicant's **work email is stored in
+  plaintext** so the operator can reply. Invariant 5 is about students' identity, which is
+  untouched. Applications are deleted after 24 h if never verified, and 180 days after a
+  decision.
+- **College access, in real life:** `docs/COLLEGE_ONBOARDING.md`: who to ask (the Dean of
+  Student Affairs, with the supervisor), what to agree (a safety contact, sender
+  allow-listing), the DPDP Act question for the institution's legal or ethics office,
+  launching densely because of cold start, and an email template.
+- **Admin controls (SPEC §11.3):** a web console at `/admin`. Owners: overview counts,
+  colleges, applications, reports, user suspension and lifting, operators, audit log.
+  **Campus moderators** see only their own college. Security: scrypt passwords, a
+  `SameSite=Strict` `HttpOnly` cookie, CSRF tokens, a per-IP sign-in limit, CSP. No IP is
+  stored. No path takes a user id, so `test_route_audit.py` still passes unchanged in
+  substance.
+  - *Found by an existing test:* the first draft read the client IP in the web modules.
+    `test_no_client_address_is_read` caught it, and the read now goes through
+    `deps.within_ip_rate_limit`, so `deps.py` stays the only place.
+  - *Two new privacy-relevant facts, both raised as Board questions rather than decided:*
+    a moderator is college staff reading report excerpts (**Q13**), and no campus can be
+    closed yet (**Q14**).
+- **Test accounts:** `demo_seed` already made synthetic students, but using one meant
+  pasting four fields. New dev-only route `GET /v1/dev/demo-accounts` (added to the
+  route-audit absence check) and one-tap name buttons in the dev panel. Dev builds get a
+  *Try a demo account* link on Welcome and a *Dev panel* row in You. Production builds
+  render neither, so the approved design is unchanged there. `demo_seed` also creates an
+  `admin` owner and prints its password once.
+- **Deployment:** `server/deploy/` (Dockerfile, a cross-platform Python `start.py`, Compose
+  with Caddy for free HTTPS, a production config, an env template), `app/eas.json`
+  (release profiles must be `prod` and `https`, enforced by a test), and
+  `docs/DEPLOYMENT.md`. The image was built and run in prod mode: migrations applied,
+  `/healthz` ok, `/v1/dev/*` 404, no request lines in the log, operator CLI works in the
+  container. **Not done, and only the human can do it:** create the hosting, DNS and SMTP
+  accounts. The real deployment is therefore not live.
+  - *Found while building:* FastAPI's pinned version depends on `opentelemetry-api`. It is
+    a no-op facade, and no SDK or exporter is installed. New
+    `test_no_telemetry_sdk_installed`, and `OTEL_SDK_DISABLED=true` in the image
+    (invariant 6).
+- **Fixes:** the login email always said "expires in 10 minutes" whatever
+  `otp_ttl_seconds` said. The app's "college not open" message claimed a college opens
+  "once someone is set up as its operator", which was never true; it now names the
+  `/colleges` route. A failed SMTP send on `/colleges/apply` now shows a message instead
+  of a 500, and leaves no row behind. New `test_migrations.py` checks
+  `alembic upgrade head` equals `models.py`.
+- **Not changed on purpose:** approved screen copy and visuals (Q13 instead), the
+  protocol (no byte changed, `protocol_version` stays 2), the study gate, and
+  `sim/config.yaml`.
+- **Numbers:** 315 Python (was 282), 217 app (was 214), 29 protocol-ts. Ruff, ESLint,
+  `tsc`, `check:privacy` and `check:contrast` all clean.
+
+### 37. The human's answers to entry 34: a central admin, feedback, keep the records — Adopted (SPEC v1.6, D26)
+
+- **What came up (2026-10-23):** five one-line answers to the five questions at the end of
+  entry 34.
+  1. *"What do you recommend, step by step?"* (host, Q6): Claude recommends an Oracle
+     Cloud Always Free VM, a DuckDNS name, Caddy and Brevo SMTP, all free. The steps are
+     `docs/DEPLOYMENT.md` §2, repeated in the reply. Q6 stays open until the human creates
+     the accounts. Nobody else can.
+  2. *"Give an admin account who checks all the colleges for any feedbacks and reports"*
+     (Q13): read as "one central admin reads everything".
+     - **Central admin:** the server now creates an owner from `MUTUAL_ADMIN_USERNAME` /
+       `MUTUAL_ADMIN_PASSWORD` on its first start, and never touches it again, so a
+       password changed in the console sticks. Credentials were generated for the human in
+       the reply, **not** written anywhere in the repository.
+     - **Feedback did not exist.** Students could only *report a person*. New: a "Send
+       feedback" row in the You tab, a screen built from existing primitives, `POST
+       /v1/feedback` (no peer id, rate-limited), and an `/admin` Feedback page scoped by
+       campus. The privacy page and the approved prototype both gain the line "Feedback you
+       choose to send the Mutual team." The new screen's copy says feedback is kept after
+       account deletion, no longer linked to the student.
+     - The report sheet's copy was left as it is: with a central admin it is accurate.
+  3. *"No need to close campus"* (Q14): closed. The gap section was removed from
+     `COLLEGE_ONBOARDING.md`.
+  4. *"Store everything in a database for our safety of data"*: applied to what the
+     question was about, the college applications. Verified and decided applications are
+     now kept (`decided_retention_days: 0`), and feedback is kept. **Not** applied to
+     students' emails, codes or tokens, which invariant 5 forbids storing. Changing that
+     would break the product's central promise and is a spec change Claude would not make
+     on a one-line answer. Unverified applications are still deleted after 24 h: their
+     address was typed by a stranger and never proven to be theirs.
+     - The old test `test_decided_applications_expire` encoded the overruled rule. It was
+       rewritten as two tests (kept by default; deleted when configured), not deleted.
+  5. *"ok"*: the ethics gate (Q4) stays as it is.
+- **Found on the way:** the app's privacy screen still said "nightly set of **20**
+  signals". Entry 31 lowered the cap to 7 and updated the prototype, but missed this
+  screen. It now reads the number from `SIGNAL_SET_SIZE`, so it cannot drift again.
+- **Corrected from entry 34:** the earlier commit reformatted seven app files with Prettier's
+  defaults (double quotes, 80 columns). There is no Prettier config, and the codebase is
+  hand-formatted. Those files were restored and only the real edits re-applied, so the diff
+  is the change and nothing else.
+- **Numbers:** 325 Python (+10), 220 app (+3), 29 protocol-ts. All checks clean. Migration
+  `0006_feedback`.
+
+### 38. "I don't have a credit card" — a self-hosted path with no card anywhere — Adopted (SPEC v1.7, D27)
+
+- **What came up (2026-10-23):** the human tried Oracle Cloud's Always Free VM (entry 34's
+  recommendation) and could not sign up without a credit card, and asked for a different
+  method.
+- **Why the other free options don't actually solve this.** Checked before answering,
+  because the honest answer matters more than a quick one: Render, Railway and Fly.io all
+  now require a card on their free tiers too (introduced to stop crypto-mining abuse).
+  PythonAnywhere's free tier needs none, but blocks outbound SMTP on free accounts, which
+  would break login codes. Hugging Face Spaces' free storage is wiped on every restart,
+  which would silently delete every account. None of these were recommended.
+- **The path that actually works: self-host + a free ngrok static domain.** A computer the
+  human already owns runs the real production server (Docker, real SMTP, real students) on
+  `127.0.0.1` only; ngrok's free plan gives one *static* `https://` domain — unlike a
+  Cloudflare quick tunnel, it doesn't change on restart — with its own certificate, and
+  needs only an email address to sign up. New `server/deploy/docker-compose.selfhost.yml`
+  (no Caddy; the port is loopback-only, so trusting the one process that can reach it is
+  the same reasoning the existing Caddy-only network already relies on, not a weaker rule).
+  `docs/DEPLOYMENT.md` §3a. Verified by building the image, running it with this compose
+  file and a prod config, and confirming `/healthz`, `/colleges`, a 404 on `/v1/dev/*`, and
+  a sign-in as the environment-created central admin all worked exactly as documented.
+- **A real bug found and fixed on the way:** a markdown fence in §2.4 had swallowed the
+  start of the next paragraph (`` ``` Add the supervisor as a second owner... ``, run
+  together on one line) — a leftover from an earlier edit. Fixed; unrelated to this entry's
+  topic but caught while reading the file.
+- **Not changed:** nothing about the protocol, the server's API, or any privacy invariant.
+  This is a second way to reach the same Docker image, documented as what it honestly is:
+  less reliable than a data centre, and said so to students and to a partner college
+  (`docs/COLLEGE_ONBOARDING.md` §2).
+- **Numbers:** no test suite covers deployment docs or compose files (nothing to assert
+  against); verified by hand as described above. 325 Python, 220 app, 29 protocol-ts
+  unchanged from entry 35.
+
+### 39. "I already have a Render account" — Render + Neon as a fourth path, two corrections to a drafted plan — Adopted (SPEC v1.8, D28)
+
+- **What came up (2026-10-26):** the human had independently drafted a Render (free Web
+  Service) + Neon (free Postgres) plan — likely from another assistant — and asked
+  whether it would work, given they already have a Render account.
+- **Two corrections that mattered, not nitpicks:**
+  1. The draft set `MUTUAL_ENV=dev`. In dev mode the server prints every student's login
+     code to the logs in plain text and mounts `/v1/dev/*` (clock travel, a route that
+     fabricates crossings) on the open internet — invariants 5 and 11. Corrected to `prod`.
+  2. The draft named the environment variable `DATABASE_URL`. The server only ever reads
+     `MUTUAL_DATABASE_URL`; the wrong name would have been silently ignored, leaving the
+     app on local SQLite — which Render's free tier wipes on every restart, taking every
+     account with it.
+- **A real gap this surfaced:** before this change, `MUTUAL_DATABASE_URL` only overrode
+  the database for Alembic (`server/migrations/env.py`), never for the running server
+  itself (`mutual_server/config.py` read only `database.url` from the config file). That
+  is a latent risk on its own — a deployment could migrate one database while serving
+  another — independent of Render. Fixed by adding the same override to
+  `Settings.database_url`, with two new tests.
+- **Verified against a real Postgres, not assumed.** Ran all six migrations against a
+  Postgres container, then a full request cycle against it: OTP request, account
+  creation, a profile `PUT` (a JSON column), and a feedback `POST` — all round-tripped.
+  `psycopg2-binary` added as an optional `postgres` extra (`server/pyproject.toml`), so
+  the default SQLite install needs nothing new.
+- **The honest catch, written into the guide rather than left for the human to
+  discover:** Render's free Web Services have no persistent disk. Profiles, messages and
+  reports are safe (they're in Neon's Postgres), but uploaded photos and voice notes are
+  wiped on every restart or redeploy. Presented as a real choice — accept it for a
+  text-first pilot, or ask for object-storage support as separate, scoped work — not
+  silently shipped as if it worked.
+- **Not implemented:** object storage for media (Cloudflare R2 or similar). Parked;
+  revisit only if the human wants photos to survive on Render specifically.
+- **Numbers:** 182 Python (+2: the database-url override tests), 220 app, 29 protocol-ts
+  unchanged. `docker-compose.yml`/`.selfhost.yml` untouched — option D doesn't use Docker.
+
+### 40. Cloudflare R2 media storage — Adopted (2026-10-26)
+
+- **What came up:** the human asked to wire up Cloudflare R2 for `media.storage_dir` so
+  that uploaded photos and voice notes survive Render's ephemeral disk.
+- **Design:** a `MediaStore` Protocol in `services/media.py` with two implementations —
+  `DiskStore` (existing behaviour) and `R2Store` (boto3 S3-compatible client pointed at
+  `https://{account_id}.r2.cloudflarestorage.com`). `make_store(settings)` returns the
+  right backend based on the optional `media.r2` config block; startup fails fast if the
+  block is present but the env vars are missing.
+- **`AppContext.media_dir` removed.** All 7 call sites in `profile.py`, `account.py`,
+  `digest.py`, and `matches.py` switched to `ctx.media_store.store/remove/read`.
+  `FileResponse` removed from both digest and matches routers; replaced with `Response`
+  carrying the bytes read from the store — identical for disk, works for R2 without a
+  redirect.
+- **Optional dep:** `boto3==1.38.28` behind the `r2` extra in `server/pyproject.toml`.
+  The import is guarded — a server without boto3 installed starts and runs normally as
+  long as `media.r2` is not set in the config.
+- **Config:** `R2Config` added to `config.py`; `media.r2` is optional in `MediaConfig`.
+  Both example config files get a commented-out `r2` block.
+- **`DEPLOYMENT.md` §3b.5 rewritten** from a placeholder ("ask Claude") to a full
+  step-by-step R2 setup guide (bucket, API token, secret file, env vars, build command).
+- **Tests:** `server/tests/test_media_store.py` — 12 tests covering both backends and
+  `make_store`. R2 tests mock the boto3 module via `sys.modules` so they pass when boto3
+  is not installed. 194 Python tests pass.
+- **Numbers:** 194 Python (+12 new), 220 app, 29 protocol-ts unchanged.

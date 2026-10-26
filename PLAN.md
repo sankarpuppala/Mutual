@@ -2012,7 +2012,6 @@ Tests: 214 app. Lint, typecheck, check:privacy all clean.
         freshly-sent live messages chronologically before the seeded ones
         until real wall-clock time catches up (or you nudge the clock
         forward again via the dev panel / `POST /v1/dev/clock`).
-
 ### 2026-10-10 — a real app icon, a cleartext gate, and a release build blocked by machine policy
 
 From trying the installed app on a real phone. Full reasoning in
@@ -2095,4 +2094,117 @@ under jest) but worth watching.
   - [ ] The `C:\m` worktree (and its own `node_modules`) is still on disk and
         currently serves the APK. `git worktree remove C:\m` when done.
   - [ ] The APK still ships a stale compiled-in address; set the real one in
-        the dev panel on first run.
+### 2026-10-23 — college access, an operator console, one-tap test accounts, a deployment kit
+
+The human asked for the whole project to be finished in one pass: fix what is wrong, add
+official college access and how to do it in real life, admin controls, test accounts,
+and deployment. Full reasoning in `docs/DECISIONS_LOG.md` 34. SPEC is now **v1.5** (§4.2,
+§11.3, §12, §9, §17, §18, §20, D25). No protocol byte changed.
+
+**New:** `/colleges` (official applications, domain-proven by emailed code, operator
+approval opens a *partner* campus); `/admin` (owners and campus moderators: overview,
+reports, users, colleges, applications, operators, audit log); migration `0005`;
+`operators` CLI commands; `GET /v1/dev/demo-accounts` and one-tap demo login in the dev
+panel, reachable from Welcome and You in dev builds only; `server/deploy/` (Dockerfile,
+`start.py`, Compose + Caddy, prod config); `app/eas.json`; `docs/DEPLOYMENT.md`,
+`docs/COLLEGE_ONBOARDING.md`; THREAT_MODEL §3.7a and residual risk 7.
+
+**Verified:** the production image built and ran in prod mode (migrations, `/healthz`,
+dev routes 404, no request log, operator CLI). Every console page was screenshotted in
+Chromium in light, dark and at 390 px, with no horizontal scroll.
+
+**Tests:** 315 Python (+33: `test_admin_web`, `test_colleges`, `test_email`,
+`test_migrations`, plus app and route-audit additions), 217 app (+3), 29 protocol-ts. All
+lint, type and privacy checks are clean. `test_route_audit.py` gained one assertion (the new
+dev route is absent outside dev). Nothing in it was loosened.
+
+- Human review checklist (this entry):
+  - [ ] **Q13**: should the report sheet say a college safety officer may read reports?
+  - [ ] **Q14**: what closing a campus should mean.
+  - [ ] **Q6**: pick a host, then create the DuckDNS/Oracle (or tunnel) and SMTP accounts.
+        Only you can. Then follow `docs/DEPLOYMENT.md` §2.
+  - [ ] Confirm storing a college applicant's work email in plaintext (SPEC §4.2) is
+        acceptable.
+  - [ ] Look at `/admin` and `/colleges` yourself. They are new surfaces with no
+        prototype to match. They reuse the app's tokens, Fraunces-style headings and cards.
+
+### 2026-10-23 (later) — the human's answers: a central admin, student feedback, keep the records
+
+Entry 35 in `docs/DECISIONS_LOG.md`. SPEC **v1.6** (§4.2, §9, §11.3, §11.4, §12, §13.2,
+§18, §20, D26).
+
+**New:** a central admin created at first start from `MUTUAL_ADMIN_USERNAME` /
+`MUTUAL_ADMIN_PASSWORD`; student feedback (`POST /v1/feedback`, `app/app/feedback.tsx`,
+the You tab row, `/admin` → Feedback, migration `0006`); decided college applications
+kept. **Fixed:** the privacy screen's stale "20 signals". **Reverted:** the accidental
+Prettier reformat of seven app files from the previous entry.
+
+**Verified:** the server printed `created owner 'central' from the environment` and
+the Feedback page was screenshotted at 1280 px light and 390 px dark.
+
+**Tests:** 325 Python, 220 app, 29 protocol-ts. All checks clean.
+
+- Human review checklist (this entry):
+  - [ ] Put the admin credentials from the chat into `server/deploy/.env`, then change the
+        password after the first sign-in.
+  - [ ] Look at the new "Send feedback" screen on the emulator. It has no prototype
+        screen of its own and is built from existing primitives.
+  - [ ] Q6: create the Oracle, DuckDNS and Brevo accounts and follow
+        `docs/DEPLOYMENT.md` §2.
+
+
+### 2026-10-23 (later still) — a credit-card-free deployment path
+
+Entry 36 in `docs/DECISIONS_LOG.md`. SPEC **v1.7** (§17, §20, D27). Supersedes the
+previous entry's checklist item about creating Oracle Cloud accounts: the human doesn't
+have a credit card, and Oracle's sign-up requires one even though the VM itself is free.
+
+**New:** `server/deploy/docker-compose.selfhost.yml` (the server alone, published on
+loopback only, no Caddy) and `docs/DEPLOYMENT.md` §3a: a computer the human already owns,
+reached through a free ngrok static domain instead of a cloud VM. Checked and rejected
+first: Render, Railway and Fly.io now require a card on their free tiers too;
+PythonAnywhere's free tier blocks outbound SMTP; Hugging Face Spaces wipes storage on
+restart. None of those were recommended.
+
+**Fixed on the way:** a markdown fence in §2.4 of `docs/DEPLOYMENT.md` had swallowed the
+next paragraph onto one line (an artifact of an earlier edit), unrelated to this entry.
+
+**Verified:** built the production image, ran it with the new compose file and a prod
+config, confirmed `/healthz`, `/colleges`, a 404 on `/v1/dev/*`, and a sign-in as the
+environment-created central admin, then removed the test container and image.
+
+**Tests:** unchanged (325 Python, 220 app, 29 protocol-ts) — nothing here is covered by a
+test suite; the deployment docs and compose files were checked by hand as above.
+
+- Human review checklist (this entry):
+  - [ ] Follow `docs/DEPLOYMENT.md` §3a yourself: create the free ngrok account, claim a
+        static domain, and keep the machine on. Only you can.
+  - [ ] Read the new "where it runs" bullet in `docs/COLLEGE_ONBOARDING.md` §2 before
+        asking a college to say yes, if you go this route.
+
+### 2026-10-26 — a fourth deployment path: Render + Neon, with two corrections to a drafted plan
+
+Entry 37 in `docs/DECISIONS_LOG.md`. SPEC **v1.8** (§17, §18, §20, D28).
+
+**New:** `Settings.database_url` now honours `MUTUAL_DATABASE_URL`, matching what
+`server/migrations/env.py` already did for Alembic — closing a latent gap where a
+deployment could migrate one database and serve another. `server[postgres]` optional
+dependency (`psycopg2-binary`). `docs/DEPLOYMENT.md` §3b: Render's free Web Service tier
+plus Neon's free Postgres, with the media-persistence gap (no disk on Render's free
+tier) stated plainly rather than hidden.
+
+**Corrected in the human's own drafted plan before adopting it:** `MUTUAL_ENV=dev` would
+have leaked login codes and exposed the clock-travel routes; `DATABASE_URL` is not a name
+the server reads (it's `MUTUAL_DATABASE_URL`) and would have silently kept it on local
+SQLite, wiped on every Render restart.
+
+**Verified against a real Postgres container** (not assumed): all six migrations, then a
+full signup + OTP + profile + feedback round trip.
+
+**Tests:** 182 Python (+2), 220 app, 29 protocol-ts. All checks clean.
+
+- Human review checklist (this entry):
+  - [ ] Follow `docs/DEPLOYMENT.md` §3b yourself: Neon project, Render secret file,
+        environment variables exactly as named there. Only you can create those accounts.
+  - [ ] Decide on the media gap: accept it for now, or ask for object-storage support as
+        separate work, before you rely on photo reveal in a Render-hosted pilot.

@@ -17,6 +17,7 @@ import { router } from 'expo-router';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { isDev } from '@/api/client';
 import { deleteAccount, getMe, pauseDiscovery, resumeDiscovery } from '@/api/endpoints';
 import { GenerativeAvatar } from '@/components/GenerativeAvatar';
 import { Icon } from '@/design/icons';
@@ -201,6 +202,22 @@ export default function YouScreen(): ReactNode {
         </Pressable>
         <Hairline />
 
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Send feedback"
+          onPress={() => router.push('/feedback')}
+          style={styles.row}
+        >
+          <View style={styles.rowMain}>
+            <AppText variant="listTitle">Send feedback</AppText>
+            <AppText variant="small" tone="muted">
+              Ideas, problems, anything · read by the Mutual team
+            </AppText>
+          </View>
+          <Icon name="right" size={20} color={theme.colors.inkMuted} />
+        </Pressable>
+        <Hairline />
+
         <View style={styles.row}>
           <View style={styles.rowMain}>
             <AppText variant="listTitle">Notifications</AppText>
@@ -210,6 +227,27 @@ export default function YouScreen(): ReactNode {
           </View>
         </View>
         <Hairline />
+
+        {/* Dev builds only (invariant 11); never rendered in a production build. */}
+        {isDev() ? (
+          <>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Dev panel"
+              onPress={() => router.push('/dev')}
+              style={styles.row}
+            >
+              <View style={styles.rowMain}>
+                <AppText variant="listTitle">Dev panel</AppText>
+                <AppText variant="small" tone="muted">
+                  Demo accounts, clock travel · dev builds only
+                </AppText>
+              </View>
+              <Icon name="right" size={20} color={theme.colors.inkMuted} />
+            </Pressable>
+            <Hairline />
+          </>
+        ) : null}
 
         {confirmDelete ? (
           <Stack gap={space.md} style={styles.confirm}>

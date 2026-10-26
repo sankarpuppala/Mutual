@@ -14,6 +14,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
+from fastapi.responses import RedirectResponse
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -30,6 +31,7 @@ from mutual_server.routers import (
     config_route,
     dev,
     digest,
+    feedback,
     matches,
     messages,
     presence,
@@ -40,8 +42,12 @@ from mutual_server.routers import (
 from mutual_server.services.campus import seed_config_campuses
 from mutual_server.services.email import EmailSender, make_sender
 from mutual_server.services.matching import sync_matches
+from mutual_server.services.media import MediaStore, make_store
+from mutual_server.services.operators import ensure_bootstrap_owner
 from mutual_server.services.rate_limit import RateLimiter
 from mutual_server.services.retention import run_retention
+from mutual_server.web import admin as admin_web
+from mutual_server.web import colleges as colleges_web
 
 _RETENTION_INTERVAL_SECONDS = 3600  # CLAUDE.md §6 / SPEC.md §9: "runs at startup and every hour"
 
@@ -76,6 +82,7 @@ def create_app(
     ids: IdFactory | None = None,
     email: EmailSender | None = None,
     engine: Engine | None = None,
+    media_store: MediaStore | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
     resolved_clock = clock or SystemClock()
@@ -83,8 +90,9 @@ def create_app(
         settings=settings,
         clock=resolved_clock,
         ids=ids or UuidIds(),
-        email=email or make_sender(settings.email),
+        email=email or make_sender(settings),
         rate_limiter=RateLimiter(clock=resolved_clock),
+        media_store=media_store or make_store(settings),
     )
     engine = engine or make_engine(settings.database_url)
     session_factory: sessionmaker[Session] = make_session_factory(engine)
@@ -93,6 +101,7 @@ def create_app(
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         with session_factory() as db:
             seed_config_campuses(db, settings, ctx.ids, ctx.clock)
+            ensure_bootstrap_owner(db, settings, ctx.ids, ctx.clock)
             _check_study_campuses(db, settings)
             sync_matches(db, ctx.clock, settings, ctx.ids)
             run_retention(db, ctx.clock, settings)
@@ -122,9 +131,24 @@ def create_app(
         matches,
         messages,
         safety,
+        feedback,
     ):
         v1.include_router(module.router)
     if settings.env == "dev":
         v1.include_router(dev.router)  # never mounted outside dev (invariant 11)
     app.include_router(v1)
+
+    # Server-rendered pages, outside /v1: the public college application form (SPEC §4.2)
+    # and the operator console (SPEC §11.3). Neither is used by the app.
+    app.include_router(colleges_web.router)
+    admin_web.install(app)
+
+    @app.get("/", include_in_schema=False)
+    def _root() -> RedirectResponse:
+        return RedirectResponse("/colleges", status_code=307)
+
+    @app.get("/healthz", include_in_schema=False)
+    def _health() -> dict[str, str]:
+        return {"status": "ok"}
+
     return app

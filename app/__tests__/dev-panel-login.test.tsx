@@ -49,6 +49,18 @@ const FULL_CONFIG = {
 jest.mock('@/api/endpoints', () => ({
   getConfig: jest.fn(async () => FULL_CONFIG),
   dev: {
+    demoAccounts: jest.fn(async () => ({
+      campus: 'example.ac.in',
+      users: [
+        {
+          user_id: 'u-meera',
+          first_name: 'Meera',
+          session_token: 'sess-meera',
+          identity_sk: 'c2stbWVlcmEtdGhpcnR5LXR3by1ieXRlcy1sb25n',
+          identity_pk: 'cGstbWVlcmEtdGhpcnR5LXR3by1ieXRlcy1sb25n',
+        },
+      ],
+    })),
     setClockOffset: jest.fn(),
     makeCrossing: jest.fn(),
     seed: jest.fn(),
@@ -140,5 +152,23 @@ describe('logging in as a seeded demo account', () => {
 
     expect(setSessionToken).not.toHaveBeenCalled();
     expect(router.replace).not.toHaveBeenCalled();
+  });
+});
+
+describe('one-tap demo accounts', () => {
+  it('lists the seeded students and logs in as one with a single tap', async () => {
+    await mount();
+    const meera = await screen.findByRole('button', { name: 'Meera' });
+    await act(async () => {
+      fireEvent.press(meera);
+    });
+
+    expect(setSessionToken).toHaveBeenCalledWith('sess-meera');
+    expect(setIdentity).toHaveBeenCalledWith({
+      sk: ACCOUNT.identity_sk,
+      pk: ACCOUNT.identity_pk,
+    });
+    expect(setUserId).toHaveBeenCalledWith('u-meera');
+    expect(router.replace).toHaveBeenCalledWith('/(tabs)/today');
   });
 });

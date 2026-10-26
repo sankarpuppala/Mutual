@@ -164,6 +164,28 @@ for unknown academic domains and operator approval before a new college opens
 (§4.1). This stops casual mass-account creation; it does not stop a determined
 attacker with access to many real student addresses.
 
+### 3.7a The operator console and campus moderators (SPEC §4.2, §11.3, v1.5)
+
+The web console at `/admin` adds a way in that the CLI did not have: it is reachable
+from the internet.
+
+- **What a stolen operator password yields:** report excerpts, the ability to suspend
+  accounts and open colleges, and per-campus counts. It does **not** yield signals (the
+  server holds none in plaintext), crossings, digests or chats. The console has no page
+  for them, though the database underneath still holds crossings and chats (§3.1).
+  Mitigations: scrypt-hashed passwords of at least 12 characters; per-IP sign-in limit;
+  `HttpOnly` + `SameSite=Strict` + `Secure` cookie scoped to `/admin`; CSRF token on
+  every POST; strict CSP and no framing; every action in an audit log. There is no
+  second factor. **Residual risk**, see §5.
+- **Campus moderators are college staff.** A partner college's safety officer sees their
+  own campus's report excerpts and can suspend their own students. That is an
+  institution seeing messages a student chose to report: intended, but it must be said
+  to students (Board question Q13). They cannot see another campus (tested in
+  `test_admin_web.py`), and they cannot open colleges or add operators.
+- **College applications** are an unauthenticated public form. It is rate-limited per IP,
+  the contact must prove an address at the domain, and nothing opens without an owner.
+  The worst outcome is spam in the applications list.
+
 ### 3.8 Out of scope, and why each is stated rather than hidden
 
 | Out of scope | What an attacker gains | Why it is out of scope |
@@ -213,6 +235,9 @@ Ranked by how much they would worry a reviewer:
    campus scoping — not secrecy.
 6. **Chat is not end-to-end encrypted** (D10), so the operator reads messages
    inside matches. Stated in the product copy, not buried.
+7. **The operator console is on the internet with password-only sign-in** (§3.7a).
+   A phished owner password exposes report excerpts and suspension powers. Use long,
+   unique passwords, keep the owner list short, and read the audit log.
 7. **The number of matched tokens reveals how many intents a pair shares**
    (D10), though never which ones.
 8. **An encounter set's size, rounded to 256, is a coarse activity signal** —
