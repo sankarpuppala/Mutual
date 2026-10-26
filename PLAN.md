@@ -2100,3 +2100,30 @@ test suite; the deployment docs and compose files were checked by hand as above.
         static domain, and keep the machine on. Only you can.
   - [ ] Read the new "where it runs" bullet in `docs/COLLEGE_ONBOARDING.md` §2 before
         asking a college to say yes, if you go this route.
+
+### 2026-10-26 — a fourth deployment path: Render + Neon, with two corrections to a drafted plan
+
+Entry 37 in `docs/DECISIONS_LOG.md`. SPEC **v1.8** (§17, §18, §20, D28).
+
+**New:** `Settings.database_url` now honours `MUTUAL_DATABASE_URL`, matching what
+`server/migrations/env.py` already did for Alembic — closing a latent gap where a
+deployment could migrate one database and serve another. `server[postgres]` optional
+dependency (`psycopg2-binary`). `docs/DEPLOYMENT.md` §3b: Render's free Web Service tier
+plus Neon's free Postgres, with the media-persistence gap (no disk on Render's free
+tier) stated plainly rather than hidden.
+
+**Corrected in the human's own drafted plan before adopting it:** `MUTUAL_ENV=dev` would
+have leaked login codes and exposed the clock-travel routes; `DATABASE_URL` is not a name
+the server reads (it's `MUTUAL_DATABASE_URL`) and would have silently kept it on local
+SQLite, wiped on every Render restart.
+
+**Verified against a real Postgres container** (not assumed): all six migrations, then a
+full signup + OTP + profile + feedback round trip.
+
+**Tests:** 182 Python (+2), 220 app, 29 protocol-ts. All checks clean.
+
+- Human review checklist (this entry):
+  - [ ] Follow `docs/DEPLOYMENT.md` §3b yourself: Neon project, Render secret file,
+        environment variables exactly as named there. Only you can create those accounts.
+  - [ ] Decide on the media gap: accept it for now, or ask for object-storage support as
+        separate work, before you rely on photo reveal in a Render-hosted pilot.

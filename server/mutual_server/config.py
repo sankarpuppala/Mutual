@@ -275,6 +275,13 @@ class Settings(_Strict):
 
     @property
     def database_url(self) -> str:
+        """``MUTUAL_DATABASE_URL`` overrides ``database.url`` (12-factor hosts such as
+        Render set the connection string as an environment variable, not a file).
+        ``server/migrations/env.py`` already honoured this for Alembic; without it here
+        too, a server set to migrate against one database could *serve* another."""
+        override = os.environ.get("MUTUAL_DATABASE_URL")
+        if override:
+            return override
         url = self.database.url
         prefix = "sqlite:///"
         if url.startswith(prefix) and not url.startswith(prefix + "/") and url != "sqlite://":

@@ -1827,3 +1827,38 @@ No spec change. Logged per CLAUDE.md §8 rule 8, same session.
 - **Numbers:** no test suite covers deployment docs or compose files (nothing to assert
   against); verified by hand as described above. 325 Python, 220 app, 29 protocol-ts
   unchanged from entry 35.
+
+### 37. "I already have a Render account" — Render + Neon as a fourth path, two corrections to a drafted plan — Adopted (SPEC v1.8, D28)
+
+- **What came up (2026-10-26):** the human had independently drafted a Render (free Web
+  Service) + Neon (free Postgres) plan — likely from another assistant — and asked
+  whether it would work, given they already have a Render account.
+- **Two corrections that mattered, not nitpicks:**
+  1. The draft set `MUTUAL_ENV=dev`. In dev mode the server prints every student's login
+     code to the logs in plain text and mounts `/v1/dev/*` (clock travel, a route that
+     fabricates crossings) on the open internet — invariants 5 and 11. Corrected to `prod`.
+  2. The draft named the environment variable `DATABASE_URL`. The server only ever reads
+     `MUTUAL_DATABASE_URL`; the wrong name would have been silently ignored, leaving the
+     app on local SQLite — which Render's free tier wipes on every restart, taking every
+     account with it.
+- **A real gap this surfaced:** before this change, `MUTUAL_DATABASE_URL` only overrode
+  the database for Alembic (`server/migrations/env.py`), never for the running server
+  itself (`mutual_server/config.py` read only `database.url` from the config file). That
+  is a latent risk on its own — a deployment could migrate one database while serving
+  another — independent of Render. Fixed by adding the same override to
+  `Settings.database_url`, with two new tests.
+- **Verified against a real Postgres, not assumed.** Ran all six migrations against a
+  Postgres container, then a full request cycle against it: OTP request, account
+  creation, a profile `PUT` (a JSON column), and a feedback `POST` — all round-tripped.
+  `psycopg2-binary` added as an optional `postgres` extra (`server/pyproject.toml`), so
+  the default SQLite install needs nothing new.
+- **The honest catch, written into the guide rather than left for the human to
+  discover:** Render's free Web Services have no persistent disk. Profiles, messages and
+  reports are safe (they're in Neon's Postgres), but uploaded photos and voice notes are
+  wiped on every restart or redeploy. Presented as a real choice — accept it for a
+  text-first pilot, or ask for object-storage support as separate, scoped work — not
+  silently shipped as if it worked.
+- **Not implemented:** object storage for media (Cloudflare R2 or similar). Parked;
+  revisit only if the human wants photos to survive on Render specifically.
+- **Numbers:** 182 Python (+2: the database-url override tests), 220 app, 29 protocol-ts
+  unchanged. `docker-compose.yml`/`.selfhost.yml` untouched — option D doesn't use Docker.

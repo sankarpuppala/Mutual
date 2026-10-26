@@ -186,3 +186,45 @@ def test_no_telemetry_sdk_installed() -> None:
         except ModuleNotFoundError:
             found = False
         assert not found, module
+
+
+def test_mutual_database_url_overrides_the_config_file(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The live server must honour the same override server/migrations/env.py already
+    used for Alembic -- otherwise a deployment could migrate one database and serve
+    another (docs/DEPLOYMENT.md option D: Render sets this as an environment variable,
+    not a file)."""
+    import yaml
+    from conftest import EXAMPLE_CONFIG
+
+    data = yaml.safe_load(EXAMPLE_CONFIG.read_text(encoding="utf-8"))
+    data["env"] = "test"
+    data["database"]["url"] = "sqlite:///should-not-be-used.db"
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.dump(data), encoding="utf-8")
+
+    override = "postgresql+psycopg2://user:pw@example.invalid/mutual"
+    monkeypatch.setenv("MUTUAL_DATABASE_URL", override)
+    from mutual_server.config import load_settings
+
+    settings = load_settings(path)
+    assert settings.database_url == override
+
+
+def test_database_url_without_the_override_still_resolves_sqlite_paths(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("MUTUAL_DATABASE_URL", raising=False)
+    import yaml
+    from conftest import EXAMPLE_CONFIG
+
+    data = yaml.safe_load(EXAMPLE_CONFIG.read_text(encoding="utf-8"))
+    data["env"] = "test"
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.dump(data), encoding="utf-8")
+    from mutual_server.config import load_settings
+
+    settings = load_settings(path)
+    assert settings.database_url.startswith("sqlite:///")
+    assert "should-not-be-used" not in settings.database_url

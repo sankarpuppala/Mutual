@@ -33,9 +33,10 @@ Everything below is in `server/deploy/`:
 | **A. Oracle Cloud "Always Free" VM** + a free **DuckDNS** hostname | 0 | **Yes**, to verify identity (never charged) | A pilot that stays up for weeks, on a machine built for it | Choose the Always Free shape and region carefully, or the VM is not actually free |
 | **B. Your laptop** + `cloudflared` quick tunnel | 0 | No | A demo for an afternoon | The `*.trycloudflare.com` URL changes every time the tunnel restarts, and the server is down whenever the laptop sleeps |
 | **C. Your own computer** + a free **ngrok** static domain | 0 | No | A real pilot, if the machine can stay on | Uptime depends on your own power and internet, not a data centre; see §3a |
+| **D. Render free Web Service** + free **Neon** Postgres | 0 | Sometimes — Render's anti-fraud system occasionally asks for one even on the free tier, unpredictably | A real pilot hosted in an actual data centre, no machine of your own to keep on | **Uploaded photos and voice notes do not survive a restart** on Render's free tier (ephemeral disk) — see §3b |
 
 Any other Linux machine with a public IP and Docker works the same way as option A. **No
-credit card at all:** skip straight to option C.
+credit card at all:** try option D first; fall back to option C if Render asks for one.
 
 ## 2. Option A: a server that stays up
 
@@ -208,11 +209,114 @@ Both the server and the tunnel need to survive a reboot and stay running unatten
 Updating and backups work exactly as in §2.5–§2.6, with
 `-f docker-compose.selfhost.yml` added to every `docker compose` command.
 
+## 3b. Option D: Render (free Web Service) + Neon (free Postgres)
+
+No machine of your own needed — the server runs in Render's data centre. Render's free
+Web Services have no persistent disk of their own, so the database has to live
+somewhere else: Neon's free Postgres (forever-free tier, no card) takes that job.
+`docker-compose.yml`/`.selfhost.yml` are not used here — Render runs the code directly,
+not the Docker image.
+
+**Two mistakes worth naming up front, because they're easy to copy from an AI's answer
+and easy not to notice went wrong:**
+
+- **`MUTUAL_ENV` must be `prod`, never `dev`.** Dev mode prints every student's login
+  code to the logs in plain text and exposes `/v1/dev/*` (clock travel, a route that
+  fabricates crossings) to anyone on the internet — that's invariant 5 and invariant 11,
+  not a style choice.
+- **The environment variable must be named exactly `MUTUAL_DATABASE_URL`.** The server
+  only ever reads that name (`server/mutual_server/config.py`). A variable called
+  `DATABASE_URL` — the name Render's own Postgres add-on would use, and an easy guess —
+  is silently ignored, and the app falls back to local SQLite, which Render then wipes on
+  the next restart along with every account created in the meantime.
+
+### 3b.1 The database
+
+1. Create a free project at [neon.tech](https://neon.tech) (email only, no card) and
+   copy its connection string from the dashboard.
+2. Rewrite its scheme from `postgresql://` to `postgresql+psycopg2://` — SQLAlchemy
+   needs the driver named explicitly — and keep `?sslmode=require` at the end. You'll
+   paste this as `MUTUAL_DATABASE_URL` in step 3b.3.
+
+### 3b.2 The config file
+
+Render has no shell to `cp`/`nano` a gitignored file onto, so use its **Secret Files**
+feature instead: in the Render dashboard, add a secret file, paste in the contents of
+`server/deploy/config.prod.example.yaml` (filling in `email.smtp_host` and
+`email.from_address` as in §2.2), and note the path Render mounts it at (shown in the
+dashboard, typically under `/etc/secrets/`). `database.url` in that file is never read —
+`MUTUAL_DATABASE_URL` always wins (`config.py`'s `database_url` property) — so leave it
+as the placeholder.
+
+### 3b.3 The web service
+
+New Web Service → connect this repository → **Runtime: Python 3**.
+
+- **Build Command:**
+  ```bash
+  pip install -e packages/protocol_py -e "server[postgres]" && alembic -c server/alembic.ini upgrade head
+  ```
+  (the `postgres` extra pulls in the Postgres driver; plain `-e server` does not)
+- **Start Command:**
+  ```bash
+  MUTUAL_PORT=$PORT python server/deploy/start.py
+  ```
+  (`start.py` re-runs the migration as a safety net, then serves with the access log
+  off and proxy headers trusted — see §3b.4 for why `"*"` is correct here)
+- **Environment variables:**
+
+  | Key | Value |
+  |---|---|
+  | `MUTUAL_ENV` | `prod` |
+  | `MUTUAL_CONFIG` | the secret file's mounted path from §3b.2 |
+  | `MUTUAL_DATABASE_URL` | the Neon connection string from §3b.1, exactly this name |
+  | `MUTUAL_EMAIL_PEPPER` | `python3 -c "import secrets; print(secrets.token_urlsafe(48))"` — back it up, same as §2.3 |
+  | `MUTUAL_FORWARDED_ALLOW_IPS` | `*` (§3b.4) |
+  | `MUTUAL_ADMIN_USERNAME`, `MUTUAL_ADMIN_PASSWORD` | your central admin, as in §2.4 |
+  | `MUTUAL_SMTP_USER`, `MUTUAL_SMTP_PASSWORD` | your SMTP account, as in §2.2 |
+
+Deploy, then check Render's logs for `Application startup complete`, and
+`https://your-app.onrender.com/healthz` returns `{"status":"ok"}`.
+
+### 3b.4 Why `MUTUAL_FORWARDED_ALLOW_IPS=*` is correct here
+
+Render's own router is the only thing that can reach your service — there is no public
+port of yours to protect — so trusting whatever it says about the client's IP for the
+per-IP rate limits is the same reasoning `docker-compose.yml` already uses to trust
+Caddy, and `docker-compose.selfhost.yml` uses to trust a loopback-only tunnel. It is
+**not** safe to set this on a host anyone else could also reach directly.
+
+### 3b.5 The catch: uploaded photos and voice notes
+
+Render's free Web Services have **no persistent disk** — anything written to
+`media.storage_dir` is gone the next time the service restarts or redeploys, which
+happens often on the free tier (every ~15 minutes of inactivity, or any new deploy).
+Profiles, messages, matches and reports are safe (they're in Neon's Postgres); media is
+not. For a pilot that depends on revealed photos, that's a real gap, not a cosmetic one
+— **tell your partner college**, same as the uptime caveat in option C.
+
+Two honest ways forward, your call:
+- Accept it for now — fine for a text-first pilot, or for testing the matching flow
+  before photos matter.
+- Ask Claude to wire up free object storage (e.g. Cloudflare R2's free tier) for
+  `media.storage_dir` instead of local disk. That's real, separate work — it touches
+  `services/media.py` and needs its own tests — not something to paper over in this
+  guide.
+
+### 3b.6 Keeping it warm
+
+Render's free tier sleeps a service after about 15 minutes of no requests, and Neon
+similarly suspends an idle database; waking either back up costs a few seconds on the
+next request. [cron-job.org](https://cron-job.org) (free, no card) can ping
+`https://your-app.onrender.com/healthz` every 10–14 minutes to keep both warm — this
+trades a little bit of relentless traffic for avoiding that delay, and does not
+conflict with anything above.
+
 ## 4. Building the app for real phones
 
 The app reads two build-time variables (`app/app.config.ts`):
 `EXPO_PUBLIC_MUTUAL_ENV` (`dev` or `prod`, default `prod`) and `EXPO_PUBLIC_SERVER_URL`.
-A release build refuses plain `http://`, so it needs the HTTPS host from §2 or §3a.
+A release build refuses plain `http://`, so it needs the HTTPS host from §2, §3a or §3b.
 
 Edit `app/eas.json`, replacing `https://REPLACE-WITH-YOUR-SERVER` in the `preview` and
 `production` profiles. `__tests__/release-profiles.test.ts` fails if a release profile is

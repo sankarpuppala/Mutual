@@ -1,6 +1,8 @@
 # SPEC.md — Mutual
 
-Status: **v1.7 — the contract.** (v1.7, 2026-10-23: a no-credit-card self-hosted
+Status: **v1.8 — the contract.** (v1.8, 2026-10-26: `MUTUAL_DATABASE_URL` overrides
+`database.url` for the live server too, not only Alembic, §18; a Render + Neon Postgres
+deployment path, §17/§20, D28. v1.7, 2026-10-23: a no-credit-card self-hosted
 deployment path, §17/§20, D27. v1.6, 2026-10-23: student feedback §11.4, a central
 admin created from the environment §11.3, college applications kept §4.2/§9; D26.
 v1.5, 2026-10-23: official college applications §4.2,
@@ -1246,6 +1248,12 @@ salt; no crossing pairs exported.
 - No-credit-card deployment (v1.7): the same Docker image, published on loopback only and
   reached through a free ngrok static domain instead of Caddy
   (`server/deploy/docker-compose.selfhost.yml`). `docs/DEPLOYMENT.md` §3a.
+- Hosted-without-a-machine deployment (v1.8): Render's free Web Service tier plus Neon's
+  free Postgres, run without the Docker image, `MUTUAL_DATABASE_URL` naming the connection
+  string directly. `docs/DEPLOYMENT.md` §3b. Media (photos, voice notes) does not survive
+  a restart on Render's free tier (no persistent disk) — stated as a known gap, not
+  silently accepted; §9's media retention rules describe local-disk storage and do not
+  yet cover an object-store backend.
 
 ---
 
@@ -1508,6 +1516,7 @@ server/migrations/{env.py,script.py.mako,versions/}     (Alembic)
 server/mutual_server/{__init__,main,config,clock,ids,db,models,security,errors,deps,schemas,admin,demo_seed}.py
 server/mutual_server/web/{__init__,html,admin,colleges}.py      (operator console §11.3, college applications §4.2)
 server/deploy/{Dockerfile,start.py,docker-compose.yml,docker-compose.selfhost.yml,Caddyfile,config.prod.example.yaml,env.example}   (docs/DEPLOYMENT.md)
+pyproject.toml optional-dependency `postgres` (`psycopg2-binary`, server/pyproject.toml, v1.8)
 .dockerignore
 server/mutual_server/data/prompts.json
 server/mutual_server/routers/{auth,account,profile,presence,digest,signals,matches,messages,safety,config_route,dev,feedback}.py
@@ -1571,6 +1580,7 @@ study/analysis/export.py                                 (GATED: written only af
 | D25 | Colleges can apply officially at `/colleges`, proving an address at their domain; operators work in a web console at `/admin` with owner and campus-moderator roles and an audit log; a single-server deployment kit (§4.2, §11.3, v1.5) | The human asked on 2026-10-23 for official college access, admin controls, test accounts and deployment, "without looking back". Every opening still needs an operator (D24). Moderators give partner colleges a safety role without seeing other campuses. The applicant's work email is stored in plaintext so they can be answered, deleted on a schedule |
 | D26 | Students can send feedback to the team; one central admin (an owner) reads every college's reports and feedback; college applications and feedback are kept (§4.2, §9, §11.3, §11.4, v1.6) | The human's answers on 2026-10-23: "an admin account who checks all the colleges for any feedbacks and reports", "store everything in a database for our safety of data", and no campus-closing action needed. Students' emails are still never stored (invariant 5). Unverified applications are still deleted, since their address was never proven |
 | D27 | A deployment path that needs no credit card anywhere: the server runs on a computer the human already owns, published to `127.0.0.1` only and reached through a free ngrok static domain, trusted the same way Caddy is trusted in the cloud option (§17, v1.7) | The human asked for a different method after Oracle Cloud's sign-up required a card. ngrok's free static domain gives a stable `https://` address without owning a domain or forwarding a router port. The honest trade-off (uptime depends on the human's own machine, not a data centre) is stated in `docs/DEPLOYMENT.md` and `docs/COLLEGE_ONBOARDING.md` rather than hidden |
+| D28 | `MUTUAL_DATABASE_URL` overrides the config file's `database.url` for the live server, not only for Alembic migrations; Render (free Web Service) + Neon (free Postgres) added as a fourth deployment option, with its media-persistence gap stated rather than papered over (§17, §18, §20, v1.8) | The human already had a Render account and asked whether a drafted Render+Neon plan would work. Two corrections to that draft were load-bearing, not stylistic: `MUTUAL_ENV` must stay `prod` (the draft said `dev`, which would print login codes to the logs and expose the clock-travel routes publicly), and the override variable must be named `MUTUAL_DATABASE_URL`, exactly what the server already reads — not `DATABASE_URL`, which it would silently ignore. Before this change the live server itself had no such override at all (only `server/migrations/env.py` did, for Alembic), which was already a latent risk: a deployment could migrate one database and serve another. Verified against a real Postgres container: all six migrations applied, then signup, OTP, a JSON profile write and a feedback write all round-tripped |
 | D17 | BLE company id 0xFFFF (SIG test id) | Free and acceptable for a prototype; must change before any public release |
 | D18 | Ranking never uses signal, match or attention data | Impossible by design and must stay identical across reveal policies |
 | D19 | The app's interface matches `docs/design/prototype.html` exactly (§13.9) | Interface quality is the human's top priority; approved 2026-10-05 |
