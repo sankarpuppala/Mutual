@@ -16,6 +16,8 @@ import hashlib
 import io
 import os
 import struct
+import sys
+import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Protocol
@@ -177,6 +179,7 @@ class R2Store:
         access_key_id: str,
         secret_access_key: str,
         endpoint_url: str | None = None,
+        fallback_dir: Path | None = None,
     ) -> None:
         try:
             import boto3
@@ -186,6 +189,9 @@ class R2Store:
 
             raise ConfigError("R2 storage requires boto3: pip install 'mutual-server[r2]'") from exc
         self._bucket = bucket
+        fallback_path = fallback_dir or Path(tempfile.gettempdir()) / "mutual_media"
+        fallback_path.mkdir(parents=True, exist_ok=True)
+        self._fallback_disk = DiskStore(fallback_path)
         endpoint = (
             endpoint_url
             or os.environ.get("MUTUAL_R2_ENDPOINT")
@@ -198,20 +204,35 @@ class R2Store:
             aws_access_key_id=access_key_id,
             aws_secret_access_key=secret_access_key,
             region_name="auto",
-            config=Config(signature_version="s3v4"),
+            config=Config(signature_version="s3v4", connect_timeout=5, read_timeout=5),
         )
 
     def store(self, name: str, data: bytes) -> tuple[int, str]:
-        self._client.put_object(Bucket=self._bucket, Key=name, Body=data)
-        return len(data), hashlib.sha256(data).hexdigest()
+        try:
+            self._client.put_object(Bucket=self._bucket, Key=name, Body=data)
+            return len(data), hashlib.sha256(data).hexdigest()
+        except Exception as exc:
+            print(
+                f"[media] WARNING: Cloudflare R2 upload to {self._bucket}/{name} failed: {exc!r}. "
+                "Saving to local storage.",
+                file=sys.stderr,
+            )
+            return self._fallback_disk.store(name, data)
 
     def remove(self, name: str) -> None:
-        # R2's delete_object is idempotent — no error if the key does not exist.
-        self._client.delete_object(Bucket=self._bucket, Key=name)
+        try:
+            # R2's delete_object is idempotent — no error if the key does not exist.
+            self._client.delete_object(Bucket=self._bucket, Key=name)
+        except Exception:
+            pass
+        self._fallback_disk.remove(name)
 
     def read(self, name: str) -> bytes:
-        resp = self._client.get_object(Bucket=self._bucket, Key=name)
-        return resp["Body"].read()  # type: ignore[no-any-return]
+        try:
+            resp = self._client.get_object(Bucket=self._bucket, Key=name)
+            return resp["Body"].read()  # type: ignore[no-any-return]
+        except Exception:
+            return self._fallback_disk.read(name)
 
 
 def make_store(settings: Settings) -> MediaStore:
@@ -241,5 +262,6 @@ def make_store(settings: Settings) -> MediaStore:
             account_id=r2.account_id,
             access_key_id=access_key_id,
             secret_access_key=secret_access_key,
+            fallback_dir=settings.resolve_path(settings.media.storage_dir),
         )
     return DiskStore(settings.resolve_path(settings.media.storage_dir))
