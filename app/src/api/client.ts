@@ -160,7 +160,8 @@ export async function request<T>(
   if (body !== undefined) headers['Content-Type'] = 'application/json';
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timeoutMs = form ? MEDIA_TIMEOUT_MS : TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   if (signal) signal.addEventListener('abort', () => controller.abort(), { once: true });
 
   let response: Response;
