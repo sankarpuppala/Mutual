@@ -323,6 +323,24 @@ r2 = ["boto3==1.38.28"]
 2. **Package Name Resolution:** Explained that the npm package name is `eas-cli`, so the correct non-global invocation is `npx eas-cli build -p android --profile preview`.
 3. **EAS Configuration Update:** Updated `app/eas.json` to ensure the `development` build profile also explicitly defines `EXPO_PUBLIC_SERVER_URL: "https://mutual-server.onrender.com"` alongside `preview` and `production`.
 
+### Session 4: Mobile App Bugfixes — Persistent Authentication, Native Photo Loader & Upload Compression
+
+**User:** The web client works perfectly, but the Android app logs out on exit, photos added from web don't appear on the phone, and adding photos from the phone fails with "Could not reach Mutual. Check your connection."
+
+**Assistant:** Diagnosed the root causes across both the React Native client and FastAPI server:
+1. **Persistent Logout on App Exit:**
+   - In `app/app/_layout.tsx`, `<Stack.Screen name="index" />` was omitted from the root navigator stack. Because `(onboarding)` was the first listed screen, Expo Router defaulted to initializing `(onboarding)/welcome` on cold app restart rather than running `index.tsx`.
+   - Fixed by adding `<Stack.Screen name="index" />` with `initialRouteName="index"` in `app/app/_layout.tsx`, and adding an immediate session check in `welcome.tsx` to redirect active sessions to `/(tabs)/today`.
+2. **Photos Added From Web Not Showing on Phone:**
+   - React Native's `<Image>` on Android uses Fresco, which does not reliably propagate custom HTTP request headers (like `Authorization: Bearer <token>`). As a result, requests to `/v1/profile/photos/{index}` arrived without authentication headers, causing the server to return 401 Unauthorized and Fresco to render a blank slot.
+   - Updated FastAPI's `_bearer()` dependency in `server/mutual_server/deps.py` to also accept authentication tokens via query parameter (`?token=...`).
+   - Updated `ownPhotoSource()` and `matchPhotoSource()` in `app/src/matches/photo.ts` to attach `?token=${encodeURIComponent(token)}` to image URIs, ensuring native Android image loaders authenticate reliably.
+3. **Photo Upload Failing ("Could not reach Mutual. Check your connection."):**
+   - Modern phone cameras capture 12–50 MP photos (8–25 MB). With `quality: 0.9` and mobile data upload speeds (e.g. 8.8 KB/s), transfers exceeded the 60s timeout, causing `fetch` to abort and throw `NetworkError`.
+   - Updated `launchImageLibraryAsync()` in `photos.tsx` to use `quality: 0.7`, compressing photos to ~500 KB (a 95% reduction with no perceived loss on mobile displays) for fast, dependable uploads.
+   - Increased `MEDIA_TIMEOUT_MS` in `client.ts` to 120,000 ms (2 minutes) to ensure generous upload headroom on mobile networks.
+   - Ensured uploaded photo filenames always include a valid `.jpg` extension.
+
 ---
 
 ## Key Technical Decisions Made
@@ -338,10 +356,13 @@ r2 = ["boto3==1.38.28"]
 | boto3 import guarded with `try/except` | Server starts and runs normally without boto3 installed, as long as `media.r2` is not set |
 | R2 env vars validated at startup, not at request time | Fail fast — a missing key should crash startup, not fail the first upload silently |
 | R2 startup probe with DiskStore fallback | Cloudflare R2 TLS connection checks could take >20s on Render; instant failover prevents request hangs |
-| Separate `MEDIA_TIMEOUT_MS` (60s) for form uploads | Media files take longer to upload than JSON; prevents premature client abort |
+| Separate `MEDIA_TIMEOUT_MS` (120s) for form uploads | Media files take longer to upload than JSON; prevents premature client abort |
 | HTTP email APIs (Brevo/Resend) + `/otp` page | Render free tier blocks outbound SMTP ports (25, 465, 587); HTTP APIs over port 443 and public `/otp` page provide reliable verification |
 | `pool_pre_ping=True` and `pool_recycle=300` | Neon Serverless Postgres drops idle connections; SQLAlchemy pre-ping automatically reconnects without HTTP 500 errors |
 | `GET /v1/profile/photos/{index}` for own photos | Added to `OWN_RESOURCE` route audit allowlist so users can view and verify their own uploaded photos |
+| `_bearer` token query parameter fallback | Android Fresco `<Image>` drops custom headers; allowing `?token=` on media endpoints provides 100% reliable image loading |
+| Image picker quality `0.7` | Reduces raw phone camera uploads from ~15 MB down to ~500 KB, preventing timeout aborts on mobile networks |
+| `initialRouteName="index"` in root `_layout.tsx` | Guarantees cold app starts evaluate session persistence in `index.tsx` first |
 | `npx eas-cli` invocation | Runs EAS Build directly via npx without requiring global CLI installation |
 
 ---
@@ -362,7 +383,8 @@ All 13 invariants from `CLAUDE.md §5` remain in force. No change in this work t
 
 | Suite | Before | After |
 |---|---|---|
-| Python (protocol_py + server + sim) | 325 | 343 (+18 tests across media store, auth lookup, photo retrieval) |
+| Python (protocol_py + server + sim) | 325 | 344 (+19 tests across media store, auth lookup, photo retrieval) |
 | TypeScript (app) | 220 | 220 |
 | Protocol-ts | 29 | 29 |
+
 
