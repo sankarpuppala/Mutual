@@ -107,51 +107,64 @@ export function useMorningLetter(): MorningLetter {
   useEffect(() => {
     const data = digest.data;
     if (!data) return;
+
     let cancelled = false;
     void (async () => {
-      const [signals, hidden] = await Promise.all([listSignals(), hiddenPeerIds()]);
-      const hiddenSet = new Set(hidden);
-      const signalsByPeer = new Map<string, Intent[]>();
-      for (const signal of signals) {
-        signalsByPeer.set(signal.peerId, [
-          ...(signalsByPeer.get(signal.peerId) ?? []),
-          signal.intent,
-        ]);
-      }
-
-      const built: LetterEntry[] = [];
-      for (const peer of data.peers) {
-        // Move the TTL anchor forward for anyone already signalled. SPEC §6.10 counts the
-        // seven days from the *most recent* crossing, so that a signal to someone you keep
-        // seeing stays alive and one to someone who has left your routine quietly expires.
-        // Until this call existed the anchor was written once, at signal creation, so every
-        // signal expired seven days after the first crossing no matter how often you
-        // crossed afterwards -- the opposite of the documented behaviour, and silent,
-        // because the only visible effect was that the signal stopped being uploaded.
-        //
-        // This is a local write, triggered by the digest arriving rather than by anything
-        // the user does with a card, so it adds no traffic of any kind (invariant 1).
-        if (signalsByPeer.has(peer.card.peer_id)) {
-          await touchCrossing(peer.card.peer_id, peer.last_day);
+      try {
+        if (data.peers.length === 0) {
+          if (!cancelled) setEntries([]);
+          return;
         }
-        if (hiddenSet.has(peer.card.peer_id)) continue;
-        const stored = await getEncounterTime(peer.encounter);
-        const when = dayLabel(peer.last_day, data.release_day);
-        const timeLabel = stored ? `${when} · ${BLOCK_LABEL[stored.block]}` : when;
-        const firstVoice = peer.card.prompts[0]?.voice_media_id ?? null;
-        built.push({
-          peer,
-          timeLabel,
-          signalled: signalsByPeer.get(peer.card.peer_id) ?? [],
-          voiceUri: firstVoice ? await cachedMediaUri(firstVoice) : null,
-        });
+        const [signals, hidden] = await Promise.all([
+          listSignals().catch((e) => {
+            console.warn('Failed to list signals:', e);
+            return [];
+          }),
+          hiddenPeerIds().catch((e) => {
+            console.warn('Failed to list hidden peers:', e);
+            return [];
+          }),
+        ]);
+        const hiddenSet = new Set(hidden);
+        const signalsByPeer = new Map<string, Intent[]>();
+        for (const signal of signals) {
+          signalsByPeer.set(signal.peerId, [
+            ...(signalsByPeer.get(signal.peerId) ?? []),
+            signal.intent,
+          ]);
+        }
+
+        const built: LetterEntry[] = [];
+        for (const peer of data.peers) {
+          if (signalsByPeer.has(peer.card.peer_id)) {
+            await touchCrossing(peer.card.peer_id, peer.last_day).catch(() => undefined);
+          }
+          if (hiddenSet.has(peer.card.peer_id)) continue;
+          const stored = await getEncounterTime(peer.encounter).catch(() => null);
+          const when = dayLabel(peer.last_day, data.release_day);
+          const timeLabel = stored ? `${when} · ${BLOCK_LABEL[stored.block]}` : when;
+          const firstVoice = peer.card.prompts[0]?.voice_media_id ?? null;
+          let voiceUri: string | null = null;
+          if (firstVoice) {
+            voiceUri = await cachedMediaUri(firstVoice).catch(() => null);
+          }
+          built.push({
+            peer,
+            timeLabel,
+            signalled: signalsByPeer.get(peer.card.peer_id) ?? [],
+            voiceUri,
+          });
+        }
+        if (!cancelled) setEntries(built);
+      } catch (err) {
+        console.error('Error assembling morning letter:', err);
+        if (!cancelled) setEntries([]);
       }
-      if (!cancelled) setEntries(built);
     })();
     return () => {
       cancelled = true;
     };
-  }, [digest.data, prefetched, localRevision]);
+  }, [digest.data, prefetched, localRevision, digest.isError]);
 
   const questionFor = useMemo(() => {
     const byId = new Map((library.data?.prompts ?? []).map((p) => [p.id, p.text]));
@@ -166,7 +179,7 @@ export function useMorningLetter(): MorningLetter {
     releaseDay,
     today: mostRecent,
     earlier: all.filter((e) => !mostRecent.includes(e)),
-    loading: digest.isLoading || entries === null,
+    loading: digest.isLoading || (digest.isSuccess && entries === null),
     error: digest.error,
     questionFor,
     refresh: () => {

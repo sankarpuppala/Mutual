@@ -144,6 +144,12 @@ export default function TodayScreen(): ReactNode {
         <AppText variant="body" tone="muted">
           Opening your letter&hellip;
         </AppText>
+      ) : letter.error && !hasLetter ? (
+        <EmptyState
+          icon="today"
+          title="Couldn’t open your letter."
+          body="Check your connection and try again."
+        />
       ) : !hasLetter ? (
         letter.releaseDay ? (
           <EmptyState

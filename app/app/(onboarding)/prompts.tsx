@@ -9,13 +9,13 @@
  * recording cannot be skimmed, cannot be read on a bus, and is not accessible to everyone.
  */
 
-import { useQuery } from '@tanstack/react-query';
-import { router } from 'expo-router';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ApiError, NetworkError } from '@/api/client';
-import { getPromptLibrary, putProfile, uploadVoice } from '@/api/endpoints';
+import { getMe, getPromptLibrary, putProfile, uploadVoice } from '@/api/endpoints';
 import { VoiceRecorder } from '@/components/VoiceRecorder';
 import { Icon } from '@/design/icons';
 import {
@@ -41,12 +41,45 @@ const REQUIRED_COUNT = 3;
 
 export default function PromptsScreen(): ReactNode {
   const theme = useTheme();
+  const queryClient = useQueryClient();
+  const { from } = useLocalSearchParams<{ from?: string }>();
+  const isFromYou = from === 'you';
+
   const { firstName, yearOfStudy, prompts, setPrompts } = useOnboarding();
   const [drafts, setDrafts] = useState<PromptDraft[]>(prompts);
+  const [initialized, setInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const library = useQuery({ queryKey: ['prompts'], queryFn: getPromptLibrary });
+  const me = useQuery({
+    queryKey: ['me'],
+    queryFn: getMe,
+    enabled: isFromYou || (!firstName && drafts.length === 0),
+  });
+
+  // Prepopulate saved answers when editing from You or when onboarding drafts are empty
+  useEffect(() => {
+    let cancelled = false;
+    if (!initialized && me.data?.profile?.prompts && me.data.profile.prompts.length > 0) {
+      if (isFromYou || drafts.length === 0) {
+        const saved = me.data.profile.prompts.map((p) => ({
+          prompt_id: p.prompt_id,
+          text: p.text,
+        }));
+        void Promise.resolve().then(() => {
+          if (!cancelled) {
+            setDrafts(saved);
+            setInitialized(true);
+          }
+        });
+      }
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [me.data, initialized, isFromYou, drafts.length]);
+
   const requiredId = library.data?.looking_for ?? 'looking_for';
 
   // The required prompt is always first in the picker, and cannot be removed.
@@ -90,9 +123,14 @@ export default function PromptsScreen(): ReactNode {
     setError(null);
     setBusy(true);
     try {
+      const effectiveFirstName = firstName.trim() || me.data?.first_name || '';
+      const effectiveYearOfStudy = yearOfStudy.trim()
+        ? Number(yearOfStudy)
+        : me.data?.year_of_study;
+
       await putProfile({
-        first_name: firstName,
-        ...(yearOfStudy.trim() ? { year_of_study: Number(yearOfStudy) } : {}),
+        first_name: effectiveFirstName,
+        ...(effectiveYearOfStudy ? { year_of_study: effectiveYearOfStudy } : {}),
         prompts: drafts.map((d) => ({ prompt_id: d.prompt_id, text: d.text.trim() })),
       });
       // Voice notes go up after the prompts exist: the server attaches each one to its
@@ -106,7 +144,12 @@ export default function PromptsScreen(): ReactNode {
         );
       }
       setPrompts(drafts);
-      router.push('/(onboarding)/photos');
+      if (isFromYou) {
+        await queryClient.invalidateQueries({ queryKey: ['me'] });
+        router.back();
+      } else {
+        router.push('/(onboarding)/photos');
+      }
     } catch (e) {
       if (e instanceof ApiError) setError(e.message);
       else if (e instanceof NetworkError) setError('Could not reach Mutual. Check your connection.');
@@ -201,7 +244,7 @@ export default function PromptsScreen(): ReactNode {
       ) : null}
 
       <Button
-        label={busy ? 'Saving…' : 'Continue'}
+        label={busy ? 'Saving…' : isFromYou ? 'Save answers' : 'Continue'}
         kind="ink"
         wide
         disabled={busy}

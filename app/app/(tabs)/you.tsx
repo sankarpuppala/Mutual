@@ -139,7 +139,7 @@ export default function YouScreen(): ReactNode {
         <Button
           label={lookingFor ? 'Edit answers' : 'Write your answers'}
           kind="ghost"
-          onPress={() => router.push('/(onboarding)/prompts')}
+          onPress={() => router.push('/(onboarding)/prompts?from=you')}
         />
       </Card>
 

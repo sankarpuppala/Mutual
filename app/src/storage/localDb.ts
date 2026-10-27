@@ -25,18 +25,32 @@ const DATABASE_NAME = 'mutual.db';
 const SCHEMA_VERSION = 2;
 
 let handle: SQLite.SQLiteDatabase | null = null;
+let initializing: Promise<SQLite.SQLiteDatabase> | null = null;
 
 /** The open database, migrating it on first use. */
 export async function db(): Promise<SQLite.SQLiteDatabase> {
   if (handle) return handle;
-  handle = await SQLite.openDatabaseAsync(DATABASE_NAME);
-  await migrate(handle);
-  return handle;
+  if (initializing) return initializing;
+  initializing = (async () => {
+    try {
+      const database = await SQLite.openDatabaseAsync(DATABASE_NAME);
+      await migrate(database);
+      handle = database;
+      return database;
+    } catch (err) {
+      handle = null;
+      throw err;
+    } finally {
+      initializing = null;
+    }
+  })();
+  return initializing;
 }
 
 /** For tests: forget the handle so the next `db()` reopens (and re-migrates). */
 export function resetDatabaseHandle(): void {
   handle = null;
+  initializing = null;
 }
 
 async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {

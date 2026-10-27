@@ -49,13 +49,11 @@ export default function PhotosScreen(): ReactNode {
   const { photos, setPhotos } = useOnboarding();
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [serverPhotos, setServerPhotos] = useState<ServerPhotoItem[]>([]);
-  const [loadingServer, setLoadingServer] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const loadServerPhotos = useCallback(async (): Promise<void> => {
     try {
-      setLoadingServer(true);
       const list = await getPhotos();
       const items: ServerPhotoItem[] = [];
       for (const p of list) {
@@ -65,8 +63,6 @@ export default function PhotosScreen(): ReactNode {
       setServerPhotos(items);
     } catch {
       // Non-fatal if offline or not yet initialized
-    } finally {
-      setLoadingServer(false);
     }
   }, []);
 
