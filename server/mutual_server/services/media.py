@@ -259,6 +259,11 @@ class R2Store:
 
 def make_store(settings: Settings) -> MediaStore:
     """Return the configured storage backend, validated eagerly so startup fails fast."""
+    disk = DiskStore(settings.resolve_path(settings.media.storage_dir))
+    if os.environ.get("MUTUAL_DISABLE_R2") == "1" or os.environ.get("MUTUAL_MEDIA_STORE") == "disk":
+        print("[media] R2 disabled by environment flag; using DiskStore.", file=sys.stderr)
+        return disk
+
     r2 = settings.media.r2
     if r2 is None:
         # Check environment variable overrides (12-factor cloud deployment, e.g. Render)
@@ -279,11 +284,24 @@ def make_store(settings: Settings) -> MediaStore:
                 f"R2 storage requires environment variables "
                 f"{r2.access_key_id_env} and {r2.secret_access_key_env}"
             )
-        return R2Store(
-            bucket=r2.bucket,
-            account_id=r2.account_id,
-            access_key_id=access_key_id,
-            secret_access_key=secret_access_key,
-            fallback_dir=settings.resolve_path(settings.media.storage_dir),
-        )
-    return DiskStore(settings.resolve_path(settings.media.storage_dir))
+        try:
+            store = R2Store(
+                bucket=r2.bucket,
+                account_id=r2.account_id,
+                access_key_id=access_key_id,
+                secret_access_key=secret_access_key,
+                fallback_dir=settings.resolve_path(settings.media.storage_dir),
+            )
+            # Probe R2 connectivity once at startup:
+            # If account ID or credentials fail (e.g. SSLV3 alert handshake failure),
+            # fall back immediately to DiskStore so image uploads don't stall or fail!
+            store._client.head_bucket(Bucket=r2.bucket)
+            return store
+        except Exception as exc:
+            print(
+                f"[media] Cloudflare R2 connection probe failed ({exc!r}). "
+                "Falling back to local disk storage directly.",
+                file=sys.stderr,
+            )
+            return disk
+    return disk

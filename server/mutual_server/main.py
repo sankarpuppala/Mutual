@@ -153,7 +153,7 @@ def create_app(
     def _health() -> dict[str, str]:
         return {
             "status": "ok",
-            "version": "0.1.0",
+            "version": "0.1.2",
             "media_backend": type(ctx.media_store).__name__,
         }
 
