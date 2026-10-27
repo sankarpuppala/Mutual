@@ -344,6 +344,9 @@ r2 = ["boto3==1.38.28"]
    - React Native's Android `FormData` implementation relies on `ContentResolver.openInputStream(fileUri)` in OkHttp's `RequestBodyUtil.kt`. On Android 11+ with Scoped Storage, `ContentResolver` cannot reliably stream file URIs created by photo pickers, throwing an `IOException` that manifests as a generic `TypeError: Network request failed`.
    - Updated `server/mutual_server/routers/profile.py` so `POST /v1/profile/photos` accepts both standard multipart uploads and base64 JSON payloads (`{"data": "<base64>"}`).
    - Enabled `base64: true` in `ImagePicker.launchImageLibraryAsync()` and updated `uploadPhoto()` to send the base64 payload directly via `api.post()`. This bypasses Android `FormData`/ContentResolver entirely, ensuring 100% reliable uploads on Android devices.
+5. **Onboarding vs Profile Management Differentiation & 'Skip for now':**
+   - In `photos.tsx`, the presence of a session token from `basics.tsx` had conflated onboarding with profile management, causing the button to display "Done" and hiding "Skip for now".
+   - Introduced a route parameter `from='you'` for navigation from the `You` tab. During onboarding, the screen now displays "Continue" / "Add photos later" with a permanent, visible "Skip for now" link that forwards to `/(onboarding)/permissions`. In profile management mode, it displays "Done" and returns to profile.
 
 ---
 
