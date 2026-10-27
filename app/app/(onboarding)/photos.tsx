@@ -101,6 +101,7 @@ export default function PhotosScreen(): ReactNode {
       allowsMultipleSelection: true,
       selectionLimit: remaining,
       quality: 0.7,
+      base64: true,
     });
     if (result.canceled || result.assets.length === 0) return;
 
@@ -112,6 +113,7 @@ export default function PhotosScreen(): ReactNode {
             uri: asset.uri,
             name: asset.fileName ?? 'photo.jpg',
             mimeType: asset.mimeType ?? 'image/jpeg',
+            base64: asset.base64,
           });
         }
         await loadServerPhotos();
@@ -130,6 +132,7 @@ export default function PhotosScreen(): ReactNode {
           uri: asset.uri,
           name: asset.fileName ?? `photo-${photos.length + i + 1}.jpg`,
           mimeType: asset.mimeType ?? 'image/jpeg',
+          base64: asset.base64,
         })),
       ]);
     }

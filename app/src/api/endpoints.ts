@@ -124,7 +124,14 @@ export async function uploadPhoto(file: {
   uri: string;
   name: string;
   mimeType: string;
+  base64?: string | null;
 }): Promise<{ media_id: string; index: number }> {
+  if (file.base64) {
+    return api.post<{ media_id: string; index: number }>('/profile/photos', {
+      data: file.base64,
+    });
+  }
+
   let normalizedUri = file.uri;
   if (Platform.OS === 'android' && !normalizedUri.startsWith('file://') && !normalizedUri.startsWith('content://')) {
     normalizedUri = `file://${normalizedUri.replace(/^file:\/*/, '')}`;

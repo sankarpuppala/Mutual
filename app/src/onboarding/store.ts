@@ -32,7 +32,7 @@ export interface OnboardingState {
   prompts: PromptDraft[];
   tags: string[];
   /** Local URIs of photos chosen but not yet uploaded. */
-  photos: { uri: string; name: string; mimeType: string }[];
+  photos: { uri: string; name: string; mimeType: string; base64?: string | null }[];
   /** Set when the server is in study mode and the consent screen was accepted. */
   consentVersion: string | null;
 

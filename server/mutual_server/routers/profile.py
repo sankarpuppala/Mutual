@@ -6,11 +6,12 @@ allowlisted in the Phase 5 route audit).
 
 from __future__ import annotations
 
+import base64
 import json
 from functools import lru_cache
 from importlib import resources
 
-from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -179,7 +180,8 @@ def _photos(db: Session, user: User) -> list[Media]:
 
 @router.post("/profile/photos", response_model=PhotoOut, status_code=201)
 async def upload_photo(
-    image: UploadFile = File(...),
+    request: Request,
+    image: UploadFile | None = File(None),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
     ctx: AppContext = Depends(get_ctx),
@@ -189,7 +191,27 @@ async def upload_photo(
         raise ApiError(
             409, "photos_full", f"You can add up to {ctx.settings.media.photos_max} photos."
         )
-    raw = await _read_limited(image, ctx.settings.media.photo_max_bytes)
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        body = await request.json()
+        b64_data = body.get("data") or body.get("image") or ""
+        if "," in b64_data:
+            b64_data = b64_data.split(",", 1)[1]
+        try:
+            raw = base64.b64decode(b64_data)
+        except Exception as exc:
+            raise ApiError(422, "invalid_photo", "Invalid base64 image data.") from exc
+        if len(raw) > ctx.settings.media.photo_max_bytes:
+            raise ApiError(413, "too_large", "That file is too large.")
+    elif image is not None:
+        raw = await _read_limited(image, ctx.settings.media.photo_max_bytes)
+    else:
+        form = await request.form()
+        image_field = form.get("image")
+        if isinstance(image_field, UploadFile):
+            raw = await _read_limited(image_field, ctx.settings.media.photo_max_bytes)
+        else:
+            raise ApiError(422, "invalid_photo", "No image provided.")
     try:
         clean = media_service.clean_photo(raw, ctx.settings.media)
     except media_service.MediaError as exc:

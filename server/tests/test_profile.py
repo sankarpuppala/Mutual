@@ -190,3 +190,25 @@ def test_get_own_photos(h: Harness) -> None:
     assert len(photo_query_res.content) == len(photo_res.content)
 
     assert h.client.get("/v1/profile/photos/1", headers=auth(a.token)).status_code == 404
+
+
+def test_upload_photo_base64_json(h: Harness) -> None:
+    import base64
+    a = signup(h)
+    jpeg_data = _jpeg_with_gps()
+    b64_str = base64.b64encode(jpeg_data).decode("ascii")
+
+    res = h.client.post(
+        "/v1/profile/photos",
+        json={"data": b64_str},
+        headers=auth(a.token),
+    )
+    assert res.status_code == 201
+    assert res.json()["index"] == 0
+    assert "media_id" in res.json()
+
+    # Read back and verify cleaned photo
+    photo_res = h.client.get("/v1/profile/photos/0", headers=auth(a.token))
+    assert photo_res.status_code == 200
+    assert photo_res.headers["content-type"] == "image/jpeg"
+    assert b"secret" not in photo_res.content  # EXIF/XMP stripped
