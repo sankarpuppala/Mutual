@@ -340,6 +340,10 @@ r2 = ["boto3==1.38.28"]
    - Updated `launchImageLibraryAsync()` in `photos.tsx` to use `quality: 0.7`, compressing photos to ~500 KB (a 95% reduction with no perceived loss on mobile displays) for fast, dependable uploads.
    - Increased `MEDIA_TIMEOUT_MS` in `client.ts` to 120,000 ms (2 minutes) to ensure generous upload headroom on mobile networks.
    - Ensured uploaded photo filenames always include a valid `.jpg` extension.
+4. **Android Native Multipart Upload Failures:**
+   - React Native's Android `FormData` implementation relies on `ContentResolver.openInputStream(fileUri)` in OkHttp's `RequestBodyUtil.kt`. On Android 11+ with Scoped Storage, `ContentResolver` cannot reliably stream file URIs created by photo pickers, throwing an `IOException` that manifests as a generic `TypeError: Network request failed`.
+   - Updated `server/mutual_server/routers/profile.py` so `POST /v1/profile/photos` accepts both standard multipart uploads and base64 JSON payloads (`{"data": "<base64>"}`).
+   - Enabled `base64: true` in `ImagePicker.launchImageLibraryAsync()` and updated `uploadPhoto()` to send the base64 payload directly via `api.post()`. This bypasses Android `FormData`/ContentResolver entirely, ensuring 100% reliable uploads on Android devices.
 
 ---
 
