@@ -378,10 +378,15 @@ def load_settings(path: Path | None = None, **overrides: object) -> Settings:
             pass
     if os.environ.get("MUTUAL_FROM_ADDRESS"):
         email_data["from_address"] = os.environ["MUTUAL_FROM_ADDRESS"]
-    elif os.environ.get("MUTUAL_SMTP_USER") and "@" in os.environ["MUTUAL_SMTP_USER"]:
-        # If from_address is absent or contains example.org, derive from SMTP user email
-        if not email_data.get("from_address") or "example.org" in email_data.get("from_address", ""):
-            email_data["from_address"] = f"Mutual <{os.environ['MUTUAL_SMTP_USER']}>"
+    elif (
+        os.environ.get("MUTUAL_SMTP_USER")
+        and "@" in os.environ["MUTUAL_SMTP_USER"]
+        and (
+            not email_data.get("from_address")
+            or "example.org" in email_data.get("from_address", "")
+        )
+    ):
+        email_data["from_address"] = f"Mutual <{os.environ['MUTUAL_SMTP_USER']}>"
 
     try:
         return Settings.model_validate(data)

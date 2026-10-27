@@ -30,6 +30,7 @@ SECURITY_HEADERS = {
     "Cache-Control": "no-store",
 }
 
+
 def logo_svg(size: int = 34) -> str:
     """The authentic Mutual logo mark: two overlapping translucent circles (terracotta & indigo)."""
     h = int(size * 0.66)
@@ -37,8 +38,9 @@ def logo_svg(size: int = 34) -> str:
         f'<svg class="mutual-logo" width="{size}" height="{h}" viewBox="0 0 60 40" aria-hidden="true" style="vertical-align:middle;display:inline-block;flex-shrink:0">'
         '<circle cx="22" cy="20" r="15" fill="var(--signal)" opacity="0.9" />'
         '<circle cx="38" cy="20" r="15" fill="var(--mutual)" opacity="0.8" />'
-        '</svg>'
+        "</svg>"
     )
+
 
 _CSS = """
 :root {
@@ -376,4 +378,3 @@ def flash(message: str | None, *, error: bool = False) -> str:
     if not message:
         return ""
     return f'<div class="flash{" error" if error else ""}" role="status">{e(message)}</div>'
-

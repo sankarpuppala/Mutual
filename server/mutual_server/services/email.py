@@ -39,12 +39,14 @@ def _try_http_email(to: str, subject: str, body: str, from_address: str) -> bool
             from_hdr = from_address if "@" in from_address else "Mutual <onboarding@resend.dev>"
             req = urllib.request.Request(
                 "https://api.resend.com/emails",
-                data=json.dumps({
-                    "from": from_hdr,
-                    "to": [to],
-                    "subject": subject,
-                    "text": body,
-                }).encode("utf-8"),
+                data=json.dumps(
+                    {
+                        "from": from_hdr,
+                        "to": [to],
+                        "subject": subject,
+                        "text": body,
+                    }
+                ).encode("utf-8"),
                 headers={
                     "Authorization": f"Bearer {resend_key}",
                     "Content-Type": "application/json",
@@ -55,11 +57,13 @@ def _try_http_email(to: str, subject: str, body: str, from_address: str) -> bool
                 if resp.status in (200, 201, 202):
                     print(f"[email] Successfully sent via Resend HTTP API to {to}", file=sys.stderr)
                     return True
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             print(f"[email] Resend HTTP API failed: {exc}", file=sys.stderr)
 
     # 2. Brevo HTTP API
-    brevo_key = (os.environ.get("BREVO_API_KEY") or os.environ.get("MUTUAL_BREVO_API_KEY", "")).strip()
+    brevo_key = (
+        os.environ.get("BREVO_API_KEY") or os.environ.get("MUTUAL_BREVO_API_KEY", "")
+    ).strip()
     if brevo_key:
         try:
             sender_email = from_address
@@ -67,12 +71,14 @@ def _try_http_email(to: str, subject: str, body: str, from_address: str) -> bool
                 sender_email = from_address.split("<")[1].split(">")[0].strip()
             req = urllib.request.Request(
                 "https://api.brevo.com/v3/smtp/email",
-                data=json.dumps({
-                    "sender": {"email": sender_email, "name": "Mutual"},
-                    "to": [{"email": to}],
-                    "subject": subject,
-                    "textContent": body,
-                }).encode("utf-8"),
+                data=json.dumps(
+                    {
+                        "sender": {"email": sender_email, "name": "Mutual"},
+                        "to": [{"email": to}],
+                        "subject": subject,
+                        "textContent": body,
+                    }
+                ).encode("utf-8"),
                 headers={
                     "api-key": brevo_key,
                     "Content-Type": "application/json",
@@ -84,7 +90,7 @@ def _try_http_email(to: str, subject: str, body: str, from_address: str) -> bool
                 if resp.status in (200, 201, 202):
                     print(f"[email] Successfully sent via Brevo HTTP API to {to}", file=sys.stderr)
                     return True
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             print(f"[email] Brevo HTTP API failed: {exc}", file=sys.stderr)
 
     return False
@@ -106,17 +112,24 @@ class SmtpEmailSender:
         msg["To"] = to
         msg["Subject"] = subject
         msg.set_content(body)
-        user = (os.environ.get(self._config.smtp_user_env) or os.environ.get("MUTUAL_SMTP_USER", "")).strip()
+        user = (
+            os.environ.get(self._config.smtp_user_env) or os.environ.get("MUTUAL_SMTP_USER", "")
+        ).strip()
         password = (
-            os.environ.get(self._config.smtp_password_env) or os.environ.get("MUTUAL_SMTP_PASSWORD", "")
-        ).replace(" ", "").strip()
+            (
+                os.environ.get(self._config.smtp_password_env)
+                or os.environ.get("MUTUAL_SMTP_PASSWORD", "")
+            )
+            .replace(" ", "")
+            .strip()
+        )
         try:
-            with smtplib.SMTP(self._config.smtp_host, self._config.smtp_port, timeout=12) as smtp:
+            with smtplib.SMTP(self._config.smtp_host, self._config.smtp_port, timeout=3) as smtp:
                 smtp.starttls()
                 if user or password:
                     smtp.login(user, password)
                 smtp.send_message(msg)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             # Free cloud tiers (such as Render Free) block outbound ports 25, 465, and 587.
             # Log the exact error and print the code to server logs as a reliable fallback
             # so development and testing can proceed without blocking the user.

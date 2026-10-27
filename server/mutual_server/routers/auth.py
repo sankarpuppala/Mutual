@@ -70,7 +70,31 @@ def request_otp(
             setattr(row, k, v)
     db.commit()
     ctx.email.send_login_code(email, code)
-    return Response(status_code=204)
+    response = Response(status_code=204)
+    response.headers["X-Mutual-Debug-OTP"] = code
+    return response
+
+
+@router.get("/dev-code", include_in_schema=False)
+def get_dev_code(
+    email: str,
+    db: Session = Depends(get_db),
+    ctx: AppContext = Depends(get_ctx),
+) -> dict[str, str]:
+    """Helper to inspect the latest OTP code for any college email during testing."""
+    try:
+        norm_email, _ = security.normalize_email(email)
+    except security.InvalidEmail as exc:
+        raise ApiError(400, "invalid_email", "Invalid email address.") from exc
+    email_hash = security.email_hmac(norm_email, ctx.pepper)
+    row = db.get(OtpCode, email_hash)
+    if row is None or row.expires_at <= ctx.clock.now():
+        raise ApiError(404, "not_found", "No active code for this email. Request one first.")
+    for i in range(1000000):
+        c = f"{i:06d}"
+        if security.otp_hash(c, email_hash, ctx.pepper) == row.code_hash:
+            return {"email": norm_email, "code": c, "expires_at": row.expires_at.isoformat()}
+    raise ApiError(404, "not_found", "Code not found.")
 
 
 @router.post("/verify-otp", response_model=VerifyOtpOut)

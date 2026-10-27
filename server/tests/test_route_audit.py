@@ -23,6 +23,7 @@ OWN_RESOURCE = {
     ("POST", "/v1/profile/voice/{prompt_id}"),
     ("DELETE", "/v1/profile/voice/{prompt_id}"),
     ("DELETE", "/v1/profile/photos/{index}"),
+    ("GET", "/v1/profile/photos/{index}"),
 }
 
 

@@ -214,6 +214,28 @@ async def upload_photo(
     return PhotoOut(media_id=media_id, index=index)
 
 
+@router.get("/profile/photos", response_model=list[PhotoOut])
+def list_photos(
+    user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> list[PhotoOut]:
+    photos = _photos(db, user)
+    return [PhotoOut(media_id=m.id, index=m.photo_index or i) for i, m in enumerate(photos)]
+
+
+@router.get("/profile/photos/{index}")
+def get_own_photo(
+    index: int,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+    ctx: AppContext = Depends(get_ctx),
+) -> Response:
+    photos = _photos(db, user)
+    if not 0 <= index < len(photos):
+        raise ApiError(404, "not_found", "No photo at this position.")
+    data = ctx.media_store.read(photos[index].path)
+    return Response(content=data, media_type="image/jpeg")
+
+
 @router.delete("/profile/photos/{index}", status_code=204)
 def delete_photo(
     index: int,

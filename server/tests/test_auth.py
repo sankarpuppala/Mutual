@@ -125,3 +125,17 @@ def test_no_plaintext_email_code_or_token_is_stored(h: Harness) -> None:
     assert EMAIL not in dump and "second@example.ac.in" not in dump
     assert acct.token not in dump
     assert f"'{pending_code}'" not in dump
+
+
+def test_dev_code_lookup(h: Harness) -> None:
+    assert _request(h) == 204
+    code = h.email.last_code()
+
+    lookup = h.client.get(f"/v1/auth/dev-code?email={EMAIL}")
+    assert lookup.status_code == 200
+    assert lookup.json()["code"] == code
+
+    # Verify that the code works
+    v = _verify(h, code)
+    assert v.status_code == 200
+    assert "session_token" in v.json()

@@ -165,3 +165,22 @@ def test_changing_prompts_removes_orphaned_voice(h: Harness) -> None:
     vid = _voice(h, a.token, m4a(10)).json()["media_id"]
     _put(h, a.token, prompts=[*PROMPTS[:2], {"prompt_id": "geek_out", "text": "Keyboards."}])
     assert not (Path(h.settings.media.storage_dir) / f"{vid}.m4a").exists()
+
+
+def test_get_own_photos(h: Harness) -> None:
+    a = signup(h)
+    r = _photo(h, a.token, _jpeg_with_gps())
+    assert r.status_code == 201
+    media_id = r.json()["media_id"]
+
+    photos_list = h.client.get("/v1/profile/photos", headers=auth(a.token)).json()
+    assert len(photos_list) == 1
+    assert photos_list[0]["media_id"] == media_id
+    assert photos_list[0]["index"] == 0
+
+    photo_res = h.client.get("/v1/profile/photos/0", headers=auth(a.token))
+    assert photo_res.status_code == 200
+    assert photo_res.headers["content-type"] == "image/jpeg"
+    assert len(photo_res.content) > 0
+
+    assert h.client.get("/v1/profile/photos/1", headers=auth(a.token)).status_code == 404

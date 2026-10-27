@@ -584,6 +584,36 @@ const VIEWS = {
     + '<div class="welcome-actions"><button class="btn btn-ink wide" data-action="go" data-view="auth_email">Sign in with College Email</button>'
     + '<button class="btn btn-ghost wide" data-action="go" data-view="how">See how it works</button>'
     + '<button class="link center" data-action="go" data-view="privacy">What Mutual can and can never see</button></div>',
+  photos: () => {
+    const isLive = !!state.sessionToken;
+    const photos = state.userPhotos || [];
+    return bar('back')
+      + '<div class="auth-wrap" style="max-width:440px">'
+      + '<h1 class="h-title">Your Photos</h1>'
+      + '<p class="lede">Up to four. Nobody sees them while browsing — only after you have both signalled each other for the same thing.</p>'
+      + '<div class="photo-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px">'
+      + [0, 1, 2, 3].map(i => {
+          const p = photos[i];
+          if (p) {
+            const url = isLive ? '/v1/profile/photos/' + p.index : (p.url || '');
+            return '<div style="position:relative;aspect-ratio:3/4;border-radius:14px;overflow:hidden;border:1px solid var(--hair);background:#000">'
+              + '<img src="' + url + '" style="width:100%;height:100%;object-fit:cover" alt="Photo ' + (i+1) + '">'
+              + '<button type="button" data-action="delete-photo" data-idx="' + p.index + '" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.6);color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:14px" title="Delete photo">' + ic('close',14) + '</button>'
+              + '</div>';
+          }
+          return '<div style="aspect-ratio:3/4;border-radius:14px;border:2px dashed var(--hair);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--muted);background:var(--sunk)">'
+            + ic('camera',24)
+            + '<span style="font-size:12px">Slot ' + (i+1) + '</span>'
+            + '</div>';
+        }).join('')
+      + '</div>'
+      + (photos.length < 4
+          ? '<input type="file" id="photoFileInput" accept="image/jpeg,image/png,image/webp" style="display:none">'
+            + '<button type="button" class="btn btn-ink wide" id="btnAddPhoto" data-action="pick-photo">Upload Photo</button>'
+          : '<p class="fine" style="text-align:center">Maximum 4 photos added.</p>')
+      + '<p class="fine" style="margin-top:12px;text-align:center"><a href="/otp" target="_blank" style="color:var(--mutual)">Need login code? Open /otp helper</a></p>'
+      + '</div>';
+  },
   auth_email: () =>
     bar('back')
     + '<div class="auth-wrap">'
@@ -603,19 +633,35 @@ const VIEWS = {
     + '</div></div>'
     + '</div>',
 
-  auth_code: () =>
-    bar('back')
+  auth_code: () => {
+    setTimeout(async () => {
+      try {
+        const res = await fetch('/v1/auth/dev-code?email=' + encodeURIComponent(state.authEmail));
+        if (res.ok) {
+          const d = await res.json();
+          const disp = $('#devCodeBanner');
+          if (disp) {
+            disp.innerHTML = '<div style="background:#E6E6FA;border:1px solid #9A9AF2;border-radius:12px;padding:12px;margin-bottom:14px;text-align:center"><div style="font-size:12px;color:#5F5868">Detected confirmation code for testing:</div><div style="font-family:monospace;font-size:24px;font-weight:700;letter-spacing:4px;color:#4F4FC4;margin:4px 0">' + d.code + '</div><button type="button" class="btn btn-ghost btn-sm" onclick="document.querySelector(\'#authCodeInput\').value=\'' + d.code + '\';toast(\'Code filled!\')">Fill code</button></div>';
+          }
+        }
+      } catch (e) {}
+    }, 200);
+    return bar('back')
     + '<div class="auth-wrap">'
     + '<h1 class="h-title">Enter your code</h1>'
     + '<p class="lede">We sent a 6-digit confirmation code to <strong>' + esc(state.authEmail||'your email') + '</strong>.</p>'
+    + '<div id="devCodeBanner"></div>'
     + '<form class="field" onsubmit="event.preventDefault(); document.querySelector(\'#btnVerifyOtp\').click();">'
     + '<label class="field-label" for="authCodeInput">6-digit code</label>'
     + '<input type="text" id="authCodeInput" class="otp-box" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code" autofocus>'
     + '<button type="button" class="btn btn-ink wide" id="btnVerifyOtp" data-action="submit-code" style="margin-top:10px">Verify & Sign In</button>'
     + '</form>'
     + '<button class="link center" data-action="resend-code">Didn\'t receive a code? Resend</button>'
+    + '<p class="fine" style="text-align:center;margin-top:6px"><a href="/otp" target="_blank" style="color:var(--mutual)">View /otp code lookup page</a></p>'
     + '<button class="link center" data-action="go" data-view="auth_email">Use a different email</button>'
-    + '</div>',
+    + '</div>';
+  },
+
 
   auth_register: () =>
     bar('back')
@@ -736,7 +782,7 @@ const VIEWS = {
       + '<button class="btn btn-ghost" data-action="noop">Edit answers</button></section>'
       + '<ul class="settings">'
       + '<li><div class="set"><div class="set-main"><span class="set-title">Discovery</span><span class="set-sub">' + (state.paused ? 'Paused. You won\'t appear in anyone\'s letter.' : 'Mutual is on. Pause any time.') + '</span></div><button class="switch" role="switch" aria-checked="' + (!state.paused) + '" aria-label="Discovery" data-action="pause"></button></div></li>'
-      + '<li><button class="set" data-action="noop"><span class="set-main"><span class="set-title">Photos</span><span class="set-sub">3 added · shown only after a mutual</span></span>' + ic('right',20) + '</button></li>'
+      + '<li><button class="set" data-action="go" data-view="photos"><span class="set-main"><span class="set-title">Photos</span><span class="set-sub">3 added · shown only after a mutual</span></span>' + ic('right',20) + '</button></li>'
       + '<li><button class="set" data-action="go" data-view="privacy"><span class="set-main"><span class="set-title">What Mutual can and can never see</span><span class="set-sub">In plain words</span></span>' + ic('right',20) + '</button></li>'
       + '<li><button class="set" data-action="go" data-view="auth_email"><span class="set-main"><span class="set-title">Switch Account / Sign In</span><span class="set-sub">' + (isLive ? 'Active: ' + name : 'Currently using demo persona') + '</span></span>' + ic('right',20) + '</button></li>'
       + (isLive ? '<li><button class="set danger" data-action="logout"><span class="set-main"><span class="set-title">Sign Out</span></span></button></li>' : '')
@@ -865,10 +911,25 @@ function setLayout(v){
   document.querySelectorAll('[data-action="layout"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === state.layout)));
 }
 
-async function loadAccount(){
+
+async function loadPhotos(){
   if (!state.sessionToken) return;
   try {
-    const r = await fetch('/account/me', {
+    const r = await fetch('/v1/profile/photos', {
+      headers: {'Authorization': 'Bearer ' + state.sessionToken}
+    });
+    if (r.ok){
+      state.userPhotos = await r.json();
+      if (state.view === 'photos') render(true);
+    }
+  } catch (e) {}
+}
+
+async function loadAccount(){
+  loadPhotos();
+  if (!state.sessionToken) return;
+  try {
+    const r = await fetch('/v1/account/me', {
       headers: {'Authorization': 'Bearer ' + state.sessionToken}
     });
     if (r.ok){
@@ -919,13 +980,65 @@ document.addEventListener('click', e => {
   const a = el.dataset.action, id = el.dataset.id;
   switch (a){
     case 'layout': setLayout(el.dataset.v); break;
+    case 'pick-photo': {
+      const fi = $('#photoFileInput');
+      if (fi) {
+        fi.onchange = async () => {
+          if (!fi.files || !fi.files[0]) return;
+          const file = fi.files[0];
+          toast('Uploading photo...');
+          const fd = new FormData();
+          fd.append('image', file);
+          try {
+            const res = await fetch('/v1/profile/photos', {
+              method: 'POST',
+              headers: {'Authorization': 'Bearer ' + state.sessionToken},
+              body: fd
+            });
+            if (res.status === 201) {
+              toast('Photo uploaded successfully!');
+              await loadPhotos();
+              render(true);
+            } else {
+              const err = await res.json().catch(() => ({}));
+              toast(err.message || 'Upload failed. Check format/size.');
+            }
+          } catch (e) {
+            toast('Network error during upload.');
+          }
+        };
+        fi.click();
+      }
+      break;
+    }
+    case 'delete-photo': {
+      const idx = el.dataset.idx;
+      toast('Deleting photo...');
+      try {
+        const res = await fetch('/v1/profile/photos/' + idx, {
+          method: 'DELETE',
+          headers: {'Authorization': 'Bearer ' + state.sessionToken}
+        });
+        if (res.status === 204) {
+          toast('Photo deleted.');
+          await loadPhotos();
+          render(true);
+        } else {
+          toast('Could not delete photo.');
+        }
+      } catch (e) {
+        toast('Network error deleting photo.');
+      }
+      break;
+    }
+
     case 'submit-email': {
       const inp = $('#authEmailInput');
       const email = (inp ? inp.value : '').trim();
       if (!email || !email.includes('@')){ toast('Enter a valid college email.'); return; }
       state.authEmail = email;
       toast('Sending 6-digit code...');
-      fetch('/auth/request-otp', {
+      fetch('/v1/auth/request-otp', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({email: email})
@@ -948,7 +1061,7 @@ document.addEventListener('click', e => {
       const code = (inp ? inp.value : '').trim();
       if (!code || code.length < 4){ toast('Enter the full 6-digit code.'); return; }
       toast('Verifying code...');
-      fetch('/auth/verify-otp', {
+      fetch('/v1/auth/verify-otp', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({email: state.authEmail, code: code})
@@ -979,7 +1092,7 @@ document.addEventListener('click', e => {
     }
     case 'resend-code': {
       if (!state.authEmail){ go('auth_email'); return; }
-      fetch('/auth/request-otp', {
+      fetch('/v1/auth/request-otp', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({email: state.authEmail})
@@ -1001,7 +1114,7 @@ document.addEventListener('click', e => {
       const pk = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
       
       toast('Creating account...');
-      fetch('/account', {
+      fetch('/v1/account', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1042,7 +1155,7 @@ document.addEventListener('click', e => {
     }
     case 'logout': {
       if (state.sessionToken){
-        fetch('/auth/logout', {
+        fetch('/v1/auth/logout', {
           method: 'POST',
           headers: {'Authorization': 'Bearer ' + state.sessionToken}
         }).catch(() => {});

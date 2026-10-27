@@ -229,7 +229,7 @@ class R2Store:
             try:
                 self._client.put_object(Bucket=self._bucket, Key=name, Body=data)
                 return len(data), hashlib.sha256(data).hexdigest()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 self._r2_disabled = True
                 print(
                     f"[media] WARNING: Cloudflare R2 upload to {self._bucket}/{name} failed: {exc!r}. "
@@ -243,7 +243,7 @@ class R2Store:
             try:
                 # R2's delete_object is idempotent — no error if the key does not exist.
                 self._client.delete_object(Bucket=self._bucket, Key=name)
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
         self._fallback_disk.remove(name)
 
@@ -252,7 +252,7 @@ class R2Store:
             try:
                 resp = self._client.get_object(Bucket=self._bucket, Key=name)
                 return resp["Body"].read()  # type: ignore[no-any-return]
-            except Exception:
+            except Exception:  # noqa: BLE001
                 self._r2_disabled = True
         return self._fallback_disk.read(name)
 
@@ -297,7 +297,7 @@ def make_store(settings: Settings) -> MediaStore:
             # fall back immediately to DiskStore so image uploads don't stall or fail!
             store._client.head_bucket(Bucket=r2.bucket)
             return store
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             print(
                 f"[media] Cloudflare R2 connection probe failed ({exc!r}). "
                 "Falling back to local disk storage directly.",

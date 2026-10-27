@@ -135,7 +135,10 @@ def apply(
     except OSError as exc:  # smtplib errors are OSErrors; user data is not logged
         db.delete(row)
         db.commit()
-        print(f"[colleges] ERROR sending verification email: {type(exc).__name__}: {exc}", file=sys.stderr)
+        print(
+            f"[colleges] ERROR sending verification email: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
         return page(
             "For colleges",
             _ABOUT + _form(values, "We couldn't send the code just now. Try again in a while."),
