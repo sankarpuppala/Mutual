@@ -23,7 +23,7 @@ _SECURITY_HEADERS = {
         "style-src 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src https://fonts.gstatic.com data:; "
         "connect-src 'self' https:; "
-        "img-src 'self' data: https:; "
+        "img-src 'self' data: https: blob:; "
         "media-src 'self' data: blob:; "
         "frame-ancestors 'none'; base-uri 'none'"
     ),
