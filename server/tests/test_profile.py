@@ -183,4 +183,10 @@ def test_get_own_photos(h: Harness) -> None:
     assert photo_res.headers["content-type"] == "image/jpeg"
     assert len(photo_res.content) > 0
 
+    # Native image loaders like Android Fresco pass token in query param
+    photo_query_res = h.client.get(f"/v1/profile/photos/0?token={a.token}")
+    assert photo_query_res.status_code == 200
+    assert photo_query_res.headers["content-type"] == "image/jpeg"
+    assert len(photo_query_res.content) == len(photo_res.content)
+
     assert h.client.get("/v1/profile/photos/1", headers=auth(a.token)).status_code == 404

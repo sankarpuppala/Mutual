@@ -46,7 +46,12 @@ def get_db(request: Request) -> Iterator[Session]:
 def _bearer(request: Request) -> str | None:
     header = request.headers.get("authorization", "")
     scheme, _, token = header.partition(" ")
-    return token.strip() if scheme.lower() == "bearer" and token.strip() else None
+    if scheme.lower() == "bearer" and token.strip():
+        return token.strip()
+    param = request.query_params.get("token")
+    if param and param.strip():
+        return param.strip()
+    return None
 
 
 def optional_session(

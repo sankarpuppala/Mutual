@@ -8,7 +8,7 @@
  */
 
 import { router } from 'expo-router';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -18,10 +18,19 @@ import { AppText, Button, LinkButton } from '@/design/primitives';
 import { useTheme } from '@/design/theme';
 import { space } from '@/design/tokens';
 import { fonts, type } from '@/design/typography';
+import { getSessionToken } from '@/storage/secure';
 
 export default function WelcomeScreen(): ReactNode {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    void getSessionToken().then((token) => {
+      if (token) {
+        router.replace('/(tabs)/today');
+      }
+    });
+  }, []);
 
   return (
     <View

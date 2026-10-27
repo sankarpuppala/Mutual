@@ -65,12 +65,14 @@ function Navigator(): ReactNode {
     <>
       <StatusBar style={theme.isDark ? 'light' : 'dark'} />
       <Stack
+        initialRouteName="index"
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: theme.colors.bg },
           animation: 'fade',
         }}
       >
+        <Stack.Screen name="index" />
         <Stack.Screen name="(onboarding)" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="profile/[id]" />

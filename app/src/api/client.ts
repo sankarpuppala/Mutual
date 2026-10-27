@@ -126,7 +126,7 @@ const TIMEOUT_MS = 20_000;
  * connection a campus has at 8 am, where a JSON response is a few hundred bytes. Long
  * enough to be generous, finite so one stalled socket cannot hold up the whole prefetch.
  */
-const MEDIA_TIMEOUT_MS = 60_000;
+const MEDIA_TIMEOUT_MS = 120_000;
 
 async function parseError(response: Response): Promise<ApiError> {
   let code = 'http_error';

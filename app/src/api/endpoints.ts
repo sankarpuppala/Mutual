@@ -129,7 +129,10 @@ export async function uploadPhoto(file: {
   if (Platform.OS === 'android' && !normalizedUri.startsWith('file://') && !normalizedUri.startsWith('content://')) {
     normalizedUri = `file://${normalizedUri.replace(/^file:\/*/, '')}`;
   }
-  const filename = file.name || normalizedUri.split('/').pop() || 'photo.jpg';
+  let filename = file.name || normalizedUri.split('/').pop() || 'photo.jpg';
+  if (!filename.includes('.')) {
+    filename = `${filename}.jpg`;
+  }
   const type = file.mimeType || 'image/jpeg';
 
   const form = new FormData();

@@ -100,7 +100,7 @@ export default function PhotosScreen(): ReactNode {
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
       selectionLimit: remaining,
-      quality: 0.9,
+      quality: 0.7,
     });
     if (result.canceled || result.assets.length === 0) return;
 
@@ -117,7 +117,8 @@ export default function PhotosScreen(): ReactNode {
         await loadServerPhotos();
       } catch (e) {
         if (e instanceof ApiError) setError(e.message);
-        else if (e instanceof NetworkError) setError('Could not reach Mutual. Check your connection.');
+        else if (e instanceof NetworkError) setError('Network error uploading photo. Check connection.');
+        else if (e instanceof Error) setError(e.message);
         else setError('Something went wrong uploading photo.');
       } finally {
         setBusy(false);
@@ -185,8 +186,13 @@ export default function PhotosScreen(): ReactNode {
         <View style={styles.grid}>
           {isSignedIn ? (
             serverPhotos.map((photo) => (
-              <View key={photo.mediaId} style={styles.slot}>
-                <Image source={photo.source} style={styles.image} accessibilityIgnoresInvertColors />
+              <View key={photo.mediaId} style={[styles.slot, { backgroundColor: theme.colors.surfaceSunk }]}>
+                <Image
+                  source={photo.source}
+                  style={styles.image}
+                  resizeMode="cover"
+                  accessibilityIgnoresInvertColors
+                />
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Remove this photo"

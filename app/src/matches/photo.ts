@@ -32,7 +32,7 @@ export async function matchPhotoSource(
   const token = await getSessionToken();
   if (!token) return null;
   return {
-    uri: `${baseUrl()}/v1${matchPhotoPath(matchId, index)}`,
+    uri: `${baseUrl()}/v1${matchPhotoPath(matchId, index)}?token=${encodeURIComponent(token)}`,
     headers: { Authorization: `Bearer ${token}` },
   };
 }
@@ -42,7 +42,7 @@ export async function ownPhotoSource(index: number): Promise<PhotoSource | null>
   const token = await getSessionToken();
   if (!token) return null;
   return {
-    uri: `${baseUrl()}/v1/profile/photos/${index}`,
+    uri: `${baseUrl()}/v1/profile/photos/${index}?token=${encodeURIComponent(token)}`,
     headers: { Authorization: `Bearer ${token}` },
   };
 }
