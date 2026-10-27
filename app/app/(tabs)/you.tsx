@@ -177,7 +177,7 @@ export default function YouScreen(): ReactNode {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Photos"
-          onPress={() => router.push('/(onboarding)/photos')}
+          onPress={() => router.push('/(onboarding)/photos?from=you')}
           style={styles.row}
         >
           <View style={styles.rowMain}>

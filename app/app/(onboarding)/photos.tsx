@@ -10,7 +10,7 @@
  */
 
 import * as ImagePicker from 'expo-image-picker';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
 
@@ -44,6 +44,8 @@ interface ServerPhotoItem {
 
 export default function PhotosScreen(): ReactNode {
   const theme = useTheme();
+  const { from } = useLocalSearchParams<{ from?: string }>();
+  const isManaging = from === 'you';
   const { photos, setPhotos } = useOnboarding();
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [serverPhotos, setServerPhotos] = useState<ServerPhotoItem[]>([]);
@@ -157,15 +159,17 @@ export default function PhotosScreen(): ReactNode {
   };
 
   const submit = async (): Promise<void> => {
-    if (isSignedIn) {
+    if (isManaging) {
       router.back();
       return;
     }
     setError(null);
     setBusy(true);
     try {
-      for (const photo of photos) {
-        await uploadPhoto(photo);
+      if (!isSignedIn) {
+        for (const photo of photos) {
+          await uploadPhoto(photo);
+        }
       }
       router.push('/(onboarding)/permissions');
     } catch (e) {
@@ -267,9 +271,9 @@ export default function PhotosScreen(): ReactNode {
           label={
             busy
               ? 'Working…'
-              : isSignedIn
+              : isManaging
                 ? 'Done'
-                : photos.length > 0
+                : currentCount > 0
                   ? 'Continue'
                   : 'Add photos later'
           }
@@ -279,7 +283,7 @@ export default function PhotosScreen(): ReactNode {
           onPress={() => void submit()}
         />
 
-        {!isSignedIn && photos.length > 0 ? (
+        {!isManaging ? (
           <LinkButton
             label="Skip for now"
             center
