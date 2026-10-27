@@ -13,6 +13,8 @@
  * Added to SPEC §20's file list in the same change that introduced it (Phase 10).
  */
 
+import { Platform } from 'react-native';
+
 import { api } from './client';
 import type {
   AccountMe,
@@ -123,11 +125,18 @@ export async function uploadPhoto(file: {
   name: string;
   mimeType: string;
 }): Promise<{ media_id: string; index: number }> {
+  let normalizedUri = file.uri;
+  if (Platform.OS === 'android' && !normalizedUri.startsWith('file://') && !normalizedUri.startsWith('content://')) {
+    normalizedUri = `file://${normalizedUri.replace(/^file:\/*/, '')}`;
+  }
+  const filename = file.name || normalizedUri.split('/').pop() || 'photo.jpg';
+  const type = file.mimeType || 'image/jpeg';
+
   const form = new FormData();
   form.append('image', {
-    uri: file.uri,
-    name: file.name,
-    type: file.mimeType,
+    uri: normalizedUri,
+    name: filename,
+    type,
   } as unknown as Blob);
   return api.upload<{ media_id: string; index: number }>('/profile/photos', form);
 }
