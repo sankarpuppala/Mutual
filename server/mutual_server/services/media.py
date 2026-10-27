@@ -1,22 +1,28 @@
-"""Photo cleaning, voice-note checks and media files on disk (SPEC.md §11 Profile).
+"""Photo cleaning, voice-note checks, and media storage backends (SPEC.md §11 Profile).
 
 Photos are decoded, rotated by their EXIF orientation, rebuilt from raw pixels (so no
 EXIF, GPS, XMP or ICC data can survive), downscaled and re-encoded as JPEG.
 Voice notes must be MP4/M4A audio no longer than ``media.voice_max_seconds``; the
 duration is read from the container's ``mvhd`` box.
+
+Storage is abstracted behind ``MediaStore`` (a Protocol).  ``DiskStore`` writes to the
+local filesystem; ``R2Store`` writes to a Cloudflare R2 bucket via the S3-compatible API.
+``make_store(settings)`` returns the right backend based on ``media.r2`` in config.
 """
 
 from __future__ import annotations
 
 import hashlib
 import io
+import os
 import struct
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any, Protocol
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from mutual_server.config import MediaConfig
+from mutual_server.config import MediaConfig, Settings
 
 _MAX_PIXELS = 50_000_000  # decompression-bomb guard (pixels) before decoding
 _CONTAINERS = {b"moov", b"trak", b"mdia", b"minf", b"stbl", b"udta", b"edts"}
@@ -117,3 +123,123 @@ def store(storage_dir: Path, name: str, data: bytes) -> tuple[int, str]:
 
 def remove(storage_dir: Path, name: str) -> None:
     (storage_dir / name).unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Storage-backend abstraction
+# ---------------------------------------------------------------------------
+
+
+class MediaStore(Protocol):
+    """Minimal interface both DiskStore and R2Store implement."""
+
+    def store(self, name: str, data: bytes) -> tuple[int, str]:
+        """Persist ``data`` under ``name``; return ``(size_bytes, sha256_hex)``."""
+        ...
+
+    def remove(self, name: str) -> None:
+        """Delete the object at ``name``.  Idempotent — no error if already absent."""
+        ...
+
+    def read(self, name: str) -> bytes:
+        """Return the full contents of the object at ``name``."""
+        ...
+
+
+class DiskStore:
+    """Stores files under a local directory.  Used in dev/test and on any self-hosted VM."""
+
+    def __init__(self, directory: Path) -> None:
+        self._dir = directory
+
+    def store(self, name: str, data: bytes) -> tuple[int, str]:
+        return store(self._dir, name, data)
+
+    def remove(self, name: str) -> None:
+        remove(self._dir, name)
+
+    def read(self, name: str) -> bytes:
+        return (self._dir / name).read_bytes()
+
+
+class R2Store:
+    """Stores files in a Cloudflare R2 bucket via the S3-compatible API.
+
+    boto3 is an optional dependency (``pip install 'mutual-server[r2]'``).  The constructor
+    raises ``ConfigError`` at startup if the package is missing or if the required
+    environment variables are not set.
+    """
+
+    def __init__(
+        self,
+        bucket: str,
+        account_id: str,
+        access_key_id: str,
+        secret_access_key: str,
+        endpoint_url: str | None = None,
+    ) -> None:
+        try:
+            import boto3
+            from botocore.config import Config
+        except ImportError as exc:
+            from mutual_server.config import ConfigError
+
+            raise ConfigError("R2 storage requires boto3: pip install 'mutual-server[r2]'") from exc
+        self._bucket = bucket
+        endpoint = (
+            endpoint_url
+            or os.environ.get("MUTUAL_R2_ENDPOINT")
+            or f"https://{account_id}.r2.cloudflarestorage.com"
+        )
+        # boto3 is untyped; Any suppresses the resulting noise.
+        self._client: Any = boto3.client(
+            "s3",
+            endpoint_url=endpoint,
+            aws_access_key_id=access_key_id,
+            aws_secret_access_key=secret_access_key,
+            region_name="auto",
+            config=Config(signature_version="s3v4"),
+        )
+
+    def store(self, name: str, data: bytes) -> tuple[int, str]:
+        self._client.put_object(Bucket=self._bucket, Key=name, Body=data)
+        return len(data), hashlib.sha256(data).hexdigest()
+
+    def remove(self, name: str) -> None:
+        # R2's delete_object is idempotent — no error if the key does not exist.
+        self._client.delete_object(Bucket=self._bucket, Key=name)
+
+    def read(self, name: str) -> bytes:
+        resp = self._client.get_object(Bucket=self._bucket, Key=name)
+        return resp["Body"].read()  # type: ignore[no-any-return]
+
+
+def make_store(settings: Settings) -> MediaStore:
+    """Return the configured storage backend, validated eagerly so startup fails fast."""
+    r2 = settings.media.r2
+    if r2 is None:
+        # Check environment variable overrides (12-factor cloud deployment, e.g. Render)
+        env_bucket = os.environ.get("MUTUAL_R2_BUCKET")
+        env_account = os.environ.get("MUTUAL_R2_ACCOUNT_ID")
+        if env_bucket and env_account:
+            from mutual_server.config import R2Config
+
+            r2 = R2Config(bucket=env_bucket, account_id=env_account)
+
+    if r2 is not None:
+        access_key_id = os.environ.get(r2.access_key_id_env, "")
+        secret_access_key = os.environ.get(r2.secret_access_key_env, "")
+        if not access_key_id or not secret_access_key:
+            from mutual_server.config import ConfigError
+
+            raise ConfigError(
+                f"R2 storage requires environment variables "
+                f"{r2.access_key_id_env} and {r2.secret_access_key_env}"
+            )
+        return R2Store(
+            bucket=r2.bucket,
+            account_id=r2.account_id,
+            access_key_id=access_key_id,
+            secret_access_key=secret_access_key,
+        )
+    return DiskStore(settings.resolve_path(settings.media.storage_dir))

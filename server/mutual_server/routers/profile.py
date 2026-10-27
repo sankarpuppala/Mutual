@@ -81,7 +81,7 @@ def put_profile(
     # Voice notes for prompts that are no longer answered are removed.
     for m in db.scalars(select(Media).where(Media.user_id == user.id, Media.kind == "voice")):
         if m.prompt_id not in ids:
-            media_service.remove(ctx.media_dir, m.path)
+            ctx.media_store.remove(m.path)
             db.delete(m)
     db.commit()
     return Response(status_code=204)
@@ -129,11 +129,11 @@ async def upload_voice(
         )
     )
     if old is not None:
-        media_service.remove(ctx.media_dir, old.path)
+        ctx.media_store.remove(old.path)
         db.delete(old)
     media_id = ctx.ids.new()
     name = f"{media_id}.m4a"
-    size, digest = media_service.store(ctx.media_dir, name, raw)
+    size, digest = ctx.media_store.store(name, raw)
     db.add(
         Media(
             id=media_id,
@@ -166,7 +166,7 @@ def delete_voice(
     )
     if row is None:
         raise ApiError(404, "not_found", "No voice note for this prompt.")
-    media_service.remove(ctx.media_dir, row.path)
+    ctx.media_store.remove(row.path)
     db.delete(row)
     db.commit()
     return Response(status_code=204)
@@ -196,7 +196,7 @@ async def upload_photo(
         raise ApiError(422, "invalid_photo", str(exc)) from exc
     media_id = ctx.ids.new()
     name = f"{media_id}.jpg"
-    size, digest = media_service.store(ctx.media_dir, name, clean)
+    size, digest = ctx.media_store.store(name, clean)
     index = len(existing)
     db.add(
         Media(
@@ -225,7 +225,7 @@ def delete_photo(
     if not 0 <= index < len(photos):
         raise ApiError(404, "not_found", "No photo at this position.")
     target = photos[index]
-    media_service.remove(ctx.media_dir, target.path)
+    ctx.media_store.remove(target.path)
     db.delete(target)
     for i, m in enumerate(p for p in photos if p.id != target.id):
         m.photo_index = i

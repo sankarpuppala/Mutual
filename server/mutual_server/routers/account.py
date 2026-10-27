@@ -26,7 +26,6 @@ from mutual_server.schemas import (
     OwnProfileOut,
     PromptAnswer,
 )
-from mutual_server.services import media as media_service
 from mutual_server.services.matching import end_match, sync_matches
 
 router = APIRouter(prefix="/account", tags=["account"])
@@ -194,7 +193,7 @@ def delete_account(
             end_match(db, ctx.clock, match, ended_by=user)
 
     for item in db.scalars(select(Media).where(Media.user_id == user.id)):
-        media_service.remove(ctx.media_dir, item.path)
+        ctx.media_store.remove(item.path)
 
     db.execute(delete(SessionRow).where(SessionRow.user_id == user.id))
     db.delete(user)  # cascades profile/media rows/presence/crossings/blocks; Match FKs SET NULL

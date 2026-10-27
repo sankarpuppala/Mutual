@@ -1862,3 +1862,29 @@ No spec change. Logged per CLAUDE.md §8 rule 8, same session.
   revisit only if the human wants photos to survive on Render specifically.
 - **Numbers:** 182 Python (+2: the database-url override tests), 220 app, 29 protocol-ts
   unchanged. `docker-compose.yml`/`.selfhost.yml` untouched — option D doesn't use Docker.
+
+### 36. Cloudflare R2 media storage — Adopted (2026-10-26)
+
+- **What came up:** the human asked to wire up Cloudflare R2 for `media.storage_dir` so
+  that uploaded photos and voice notes survive Render's ephemeral disk.
+- **Design:** a `MediaStore` Protocol in `services/media.py` with two implementations —
+  `DiskStore` (existing behaviour) and `R2Store` (boto3 S3-compatible client pointed at
+  `https://{account_id}.r2.cloudflarestorage.com`). `make_store(settings)` returns the
+  right backend based on the optional `media.r2` config block; startup fails fast if the
+  block is present but the env vars are missing.
+- **`AppContext.media_dir` removed.** All 7 call sites in `profile.py`, `account.py`,
+  `digest.py`, and `matches.py` switched to `ctx.media_store.store/remove/read`.
+  `FileResponse` removed from both digest and matches routers; replaced with `Response`
+  carrying the bytes read from the store — identical for disk, works for R2 without a
+  redirect.
+- **Optional dep:** `boto3==1.38.28` behind the `r2` extra in `server/pyproject.toml`.
+  The import is guarded — a server without boto3 installed starts and runs normally as
+  long as `media.r2` is not set in the config.
+- **Config:** `R2Config` added to `config.py`; `media.r2` is optional in `MediaConfig`.
+  Both example config files get a commented-out `r2` block.
+- **`DEPLOYMENT.md` §3b.5 rewritten** from a placeholder ("ask Claude") to a full
+  step-by-step R2 setup guide (bucket, API token, secret file, env vars, build command).
+- **Tests:** `server/tests/test_media_store.py` — 12 tests covering both backends and
+  `make_store`. R2 tests mock the boto3 module via `sys.modules` so they pass when boto3
+  is not installed. 194 Python tests pass.
+- **Numbers:** 194 Python (+12 new), 220 app, 29 protocol-ts unchanged.

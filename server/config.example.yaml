@@ -57,6 +57,14 @@ messages:
   rate_limit_per_minute: 30
 media:
   storage_dir: server/media              # relative paths are resolved from the repository root
+  # Uncomment the r2 block to store media in Cloudflare R2 instead of local disk
+  # (required on Render's free tier where the disk is ephemeral -- docs/DEPLOYMENT.md §3b.5).
+  # Also install: pip install 'mutual-server[r2]'
+  # r2:
+  #   bucket: mutual-media               # your R2 bucket name
+  #   account_id: abc123def456           # Cloudflare account ID (dashboard → right sidebar)
+  #   access_key_id_env: MUTUAL_R2_ACCESS_KEY_ID        # env var holding the R2 token key ID
+  #   secret_access_key_env: MUTUAL_R2_SECRET_ACCESS_KEY # env var holding the R2 token secret
   voice_max_seconds: 30
   voice_max_bytes: 1048576
   waveform_points: 48

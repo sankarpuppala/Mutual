@@ -42,6 +42,7 @@ from mutual_server.routers import (
 from mutual_server.services.campus import seed_config_campuses
 from mutual_server.services.email import EmailSender, make_sender
 from mutual_server.services.matching import sync_matches
+from mutual_server.services.media import MediaStore, make_store
 from mutual_server.services.operators import ensure_bootstrap_owner
 from mutual_server.services.rate_limit import RateLimiter
 from mutual_server.services.retention import run_retention
@@ -81,6 +82,7 @@ def create_app(
     ids: IdFactory | None = None,
     email: EmailSender | None = None,
     engine: Engine | None = None,
+    media_store: MediaStore | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
     resolved_clock = clock or SystemClock()
@@ -90,6 +92,7 @@ def create_app(
         ids=ids or UuidIds(),
         email=email or make_sender(settings),
         rate_limiter=RateLimiter(clock=resolved_clock),
+        media_store=media_store or make_store(settings),
     )
     engine = engine or make_engine(settings.database_url)
     session_factory: sessionmaker[Session] = make_session_factory(engine)
