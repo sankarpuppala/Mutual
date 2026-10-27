@@ -145,6 +145,10 @@ export async function deletePhoto(index: number): Promise<void> {
   await api.delete<void>(`/profile/photos/${index}`);
 }
 
+export async function getPhotos(): Promise<Array<{ media_id: string; index: number }>> {
+  return api.get<Array<{ media_id: string; index: number }>>('/profile/photos');
+}
+
 // ------------------------------------------------------- presence and digest
 
 /**

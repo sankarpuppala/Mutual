@@ -13,8 +13,8 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { router } from 'expo-router';
-import { useEffect, useState, type ReactNode } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { isDev } from '@/api/client';
@@ -42,6 +42,12 @@ export default function YouScreen(): ReactNode {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const me = useQuery({ queryKey: ['me'], queryFn: getMe });
+
+  useFocusEffect(
+    useCallback(() => {
+      void me.refetch();
+    }, [me]),
+  );
 
   // The avatar is a hash of the identity public key, so "a preview of how you appear" has
   // to hash the same value every peer hashes. It used to be given `user_id`, which is a

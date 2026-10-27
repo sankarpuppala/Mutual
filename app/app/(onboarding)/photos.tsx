@@ -11,11 +11,13 @@
 
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
-import { useState, type ReactNode } from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
 
 import { ApiError, NetworkError } from '@/api/client';
-import { uploadPhoto } from '@/api/endpoints';
+import { deletePhoto, getPhotos, uploadPhoto } from '@/api/endpoints';
+import { ownPhotoSource, type PhotoSource } from '@/matches/photo';
+import { getSessionToken } from '@/storage/secure';
 import { Icon } from '@/design/icons';
 import {
   AppText,
@@ -34,11 +36,53 @@ import { useOnboarding } from '@/onboarding/store';
 /** The server accepts at most four (SPEC §11). */
 const MAX_PHOTOS = 4;
 
+interface ServerPhotoItem {
+  mediaId: string;
+  index: number;
+  source: PhotoSource;
+}
+
 export default function PhotosScreen(): ReactNode {
   const theme = useTheme();
   const { photos, setPhotos } = useOnboarding();
+  const [isSignedIn, setIsSignedIn] = useState(false);
+  const [serverPhotos, setServerPhotos] = useState<ServerPhotoItem[]>([]);
+  const [loadingServer, setLoadingServer] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const loadServerPhotos = useCallback(async (): Promise<void> => {
+    try {
+      setLoadingServer(true);
+      const list = await getPhotos();
+      const items: ServerPhotoItem[] = [];
+      for (const p of list) {
+        const source = await ownPhotoSource(p.index);
+        if (source) items.push({ mediaId: p.media_id, index: p.index, source });
+      }
+      setServerPhotos(items);
+    } catch {
+      // Non-fatal if offline or not yet initialized
+    } finally {
+      setLoadingServer(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getSessionToken().then((token) => {
+      if (cancelled) return;
+      if (token) {
+        setIsSignedIn(true);
+        void loadServerPhotos();
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadServerPhotos]);
+
+  const currentCount = isSignedIn ? serverPhotos.length : photos.length;
 
   const pick = async (): Promise<void> => {
     setError(null);
@@ -47,29 +91,72 @@ export default function PhotosScreen(): ReactNode {
       setError('Mutual needs permission to read the photo you choose.');
       return;
     }
+    const remaining = MAX_PHOTOS - currentCount;
+    if (remaining <= 0) {
+      setError('You can add up to 4 photos.');
+      return;
+    }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
-      selectionLimit: MAX_PHOTOS - photos.length,
+      selectionLimit: remaining,
       quality: 0.9,
     });
-    if (result.canceled) return;
+    if (result.canceled || result.assets.length === 0) return;
 
-    setPhotos([
-      ...photos,
-      ...result.assets.slice(0, MAX_PHOTOS - photos.length).map((asset, i) => ({
-        uri: asset.uri,
-        name: asset.fileName ?? `photo-${photos.length + i + 1}.jpg`,
-        mimeType: asset.mimeType ?? 'image/jpeg',
-      })),
-    ]);
+    if (isSignedIn) {
+      setBusy(true);
+      try {
+        for (const asset of result.assets) {
+          await uploadPhoto({
+            uri: asset.uri,
+            name: asset.fileName ?? 'photo.jpg',
+            mimeType: asset.mimeType ?? 'image/jpeg',
+          });
+        }
+        await loadServerPhotos();
+      } catch (e) {
+        if (e instanceof ApiError) setError(e.message);
+        else if (e instanceof NetworkError) setError('Could not reach Mutual. Check your connection.');
+        else setError('Something went wrong uploading photo.');
+      } finally {
+        setBusy(false);
+      }
+    } else {
+      setPhotos([
+        ...photos,
+        ...result.assets.slice(0, remaining).map((asset, i) => ({
+          uri: asset.uri,
+          name: asset.fileName ?? `photo-${photos.length + i + 1}.jpg`,
+          mimeType: asset.mimeType ?? 'image/jpeg',
+        })),
+      ]);
+    }
   };
 
-  const remove = (uri: string): void => {
+  const removeServerPhoto = async (index: number): Promise<void> => {
+    setError(null);
+    setBusy(true);
+    try {
+      await deletePhoto(index);
+      await loadServerPhotos();
+    } catch (e) {
+      if (e instanceof ApiError) setError(e.message);
+      else setError('Failed to remove photo.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeLocal = (uri: string): void => {
     setPhotos(photos.filter((p) => p.uri !== uri));
   };
 
   const submit = async (): Promise<void> => {
+    if (isSignedIn) {
+      router.back();
+      return;
+    }
     setError(null);
     setBusy(true);
     try {
@@ -96,33 +183,57 @@ export default function PhotosScreen(): ReactNode {
 
       <Stack gap={space.xl}>
         <View style={styles.grid}>
-          {photos.map((photo) => (
-            <View key={photo.uri} style={styles.slot}>
-              <Image source={{ uri: photo.uri }} style={styles.image} accessibilityIgnoresInvertColors />
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Remove this photo"
-                onPress={() => remove(photo.uri)}
-                style={[styles.removeButton, { backgroundColor: theme.colors.ink }]}
-              >
-                <Icon name="close" size={16} strokeWidth={2.2} color={theme.colors.bg} />
-              </Pressable>
-            </View>
-          ))}
-          {photos.length < MAX_PHOTOS ? (
+          {isSignedIn ? (
+            serverPhotos.map((photo) => (
+              <View key={photo.mediaId} style={styles.slot}>
+                <Image source={photo.source} style={styles.image} accessibilityIgnoresInvertColors />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove this photo"
+                  onPress={() => void removeServerPhoto(photo.index)}
+                  disabled={busy}
+                  style={[styles.removeButton, { backgroundColor: theme.colors.ink }]}
+                >
+                  <Icon name="close" size={16} strokeWidth={2.2} color={theme.colors.bg} />
+                </Pressable>
+              </View>
+            ))
+          ) : (
+            photos.map((photo) => (
+              <View key={photo.uri} style={styles.slot}>
+                <Image source={{ uri: photo.uri }} style={styles.image} accessibilityIgnoresInvertColors />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove this photo"
+                  onPress={() => removeLocal(photo.uri)}
+                  disabled={busy}
+                  style={[styles.removeButton, { backgroundColor: theme.colors.ink }]}
+                >
+                  <Icon name="close" size={16} strokeWidth={2.2} color={theme.colors.bg} />
+                </Pressable>
+              </View>
+            ))
+          )}
+
+          {currentCount < MAX_PHOTOS ? (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Add a photo"
               onPress={() => void pick()}
+              disabled={busy}
               style={[
                 styles.slot,
                 styles.addSlot,
                 { borderColor: theme.colors.hairline, backgroundColor: theme.colors.surface },
               ]}
             >
-              <AppText variant="smallSemiBold" tone="muted">
-                Add
-              </AppText>
+              {busy ? (
+                <ActivityIndicator size="small" color={theme.colors.inkMuted} />
+              ) : (
+                <AppText variant="smallSemiBold" tone="muted">
+                  Add
+                </AppText>
+              )}
             </Pressable>
           ) : null}
         </View>
@@ -144,14 +255,22 @@ export default function PhotosScreen(): ReactNode {
         ) : null}
 
         <Button
-          label={busy ? 'Uploading…' : photos.length > 0 ? 'Continue' : 'Add photos later'}
+          label={
+            busy
+              ? 'Working…'
+              : isSignedIn
+                ? 'Done'
+                : photos.length > 0
+                  ? 'Continue'
+                  : 'Add photos later'
+          }
           kind="ink"
           wide
           disabled={busy}
           onPress={() => void submit()}
         />
 
-        {photos.length > 0 ? (
+        {!isSignedIn && photos.length > 0 ? (
           <LinkButton
             label="Skip for now"
             center

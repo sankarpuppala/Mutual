@@ -22,6 +22,7 @@ import {
   TextField,
 } from '@/design/primitives';
 import { space } from '@/design/tokens';
+import { ensureIdentity } from '@/onboarding/identity';
 import { useOnboarding, validateCode } from '@/onboarding/store';
 import { setSessionToken } from '@/storage/secure';
 
@@ -52,6 +53,7 @@ export default function CodeScreen(): ReactNode {
     try {
       const result = await verifyOtp(email, code.trim());
       await setSessionToken(result.session_token);
+      await ensureIdentity().catch(() => undefined);
       // A returning device has an account already; it only needs its session back. A new
       // one goes through the consent screen, which forwards straight to the age check when
       // this campus is not running a study (SPEC §16, invariant 9).

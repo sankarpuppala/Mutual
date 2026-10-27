@@ -36,3 +36,13 @@ export async function matchPhotoSource(
     headers: { Authorization: `Bearer ${token}` },
   };
 }
+
+/** An `Image` source for one of the user's own photos, with the session token attached. */
+export async function ownPhotoSource(index: number): Promise<PhotoSource | null> {
+  const token = await getSessionToken();
+  if (!token) return null;
+  return {
+    uri: `${baseUrl()}/v1/profile/photos/${index}`,
+    headers: { Authorization: `Bearer ${token}` },
+  };
+}

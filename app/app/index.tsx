@@ -7,15 +7,25 @@
 import { Redirect } from 'expo-router';
 import { useEffect, useState, type ReactNode } from 'react';
 
-import { getIdentity, getSessionToken } from '@/storage/secure';
+import { ensureIdentity } from '@/onboarding/identity';
+import { getSessionToken } from '@/storage/secure';
 
 export default function Index(): ReactNode | null {
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
 
   useEffect(() => {
     void (async () => {
-      const [token, identity] = await Promise.all([getSessionToken(), getIdentity()]);
-      setSignedIn(Boolean(token && identity));
+      const token = await getSessionToken();
+      if (!token) {
+        setSignedIn(false);
+        return;
+      }
+      try {
+        await ensureIdentity();
+      } catch {
+        // If identity generation is deferred, still honor valid session
+      }
+      setSignedIn(true);
     })();
   }, []);
 
