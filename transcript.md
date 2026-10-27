@@ -350,6 +350,44 @@ r2 = ["boto3==1.38.28"]
 
 ---
 
+## Session 3 — 2026-10-27
+
+### Today Screen Loading Hang, Concurrency Lock, and Prompt Answer Editing
+
+**User:** [Screenshots of Today page stuck on "Opening your letter...", Prompts screen unpopulated on Edit answers, and You tab]
+many problems are still there:
+1. today page is not even loading
+2. my friend created account beside me but i couldn't see his details and all and his today page is also not rendering
+3. the answers aren't saving when i click edit answers its showing choose 3 answers but not to edit the previous answers i saved
+but the positive part is photos are saving from both devices so fix all these problems
+
+**Assistant:** Diagnosed and resolved all three issues:
+
+1. **Today Screen Hang ("Opening your letter..."):**
+   - **Root Cause 1 (Concurrency Lock in SQLite):** `app/src/storage/localDb.ts` lacked a singleton promise lock on `db()`. When `useMorningLetter` called `Promise.all([listSignals(), hiddenPeerIds()])`, both functions executed `SQLite.openDatabaseAsync()` and `migrate()` concurrently. In Android native SQLite, running `PRAGMA journal_mode = WAL` and DDL statements simultaneously triggered `SQLITE_BUSY: database is locked`.
+   - **Root Cause 2 (Missing Error Boundary in useDigest):** The rebuild effect in `app/src/digest/useDigest.ts` did not catch promise rejections, leaving `entries` as `null` permanently. Because `loading` checked `digest.isLoading || entries === null`, `TodayScreen` was perpetually stuck on `Opening your letter...`.
+   - **Root Cause 3 (Missing Native Autolink):** `expo-file-system` was omitted from `app/package.json` dependencies, risking native module resolution errors on Android.
+   - **Fix:**
+     - Added an `initializing` singleton promise in `localDb.ts` so concurrent `db()` calls share the same initialization.
+     - Updated `useMorningLetter()` with a fast path for empty digests (`data.peers.length === 0`), wrapped all SQLite/cache calls in `try/catch` and `.catch()` fallbacks, and made `loading: digest.isLoading || (!digest.isError && entries === null)`.
+     - Added an error empty-state in `today.tsx` to handle connection failures gracefully.
+     - Added `"expo-file-system": "~57.0.7"` to `app/package.json`.
+
+2. **Crossing Discovery Model Clarification:**
+   - Mutual is deliberately designed around privacy-preserving, passive Bluetooth Low Energy (BLE) advertisements and encounters (`SPEC.md §6` & `§13`).
+   - Phones exchange rotating ephemeral IDs (EIDs) locally in SQLite throughout the day. At 23:45, encounters are batch-matched on the server, and at 08:00 AM, the morning letter is published.
+   - It is not a real-time radar or live nearby directory (which would violate Invariant 1 and Invariant 3). Accounts created minutes earlier have not yet participated in a daytime BLE sighting window or nightly match batch, correctly showing "No crossings yesterday" until the 8:00 AM release.
+
+3. **Prompt Answers Pre-filling and Editing:**
+   - **Root Cause:** When tapping "Edit answers" on the "You" tab, `you.tsx` navigated to `/(onboarding)/prompts` without context. `PromptsScreen` only read from `useOnboarding()` (an ephemeral in-memory store that starts blank when returning to edit answers), resulting in 0 selected chips and empty inputs. Furthermore, submitting attempted to use an empty `firstName` and always pushed forward to `/(onboarding)/photos`.
+   - **Fix:**
+     - Updated `you.tsx` to navigate with `/(onboarding)/prompts?from=you`.
+     - In `prompts.tsx`, queried `getMe()` and pre-populated `drafts` with `me.data.profile.prompts` (pre-selecting chips and filling text fields).
+     - On submission: preserved existing user name and study year, updated answers via `PUT /v1/profile`, uploaded any new voice notes, invalidated `['me']`, and called `router.back()` to seamlessly return to the "You" tab.
+     - Displayed "Save answers" on the submit button when editing.
+
+---
+
 ## Key Technical Decisions Made
 
 | Decision | Rationale |
