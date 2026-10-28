@@ -89,9 +89,23 @@ def get_or_build_snapshot(
     if existing is not None:
         return existing
     candidates = _candidates(db, viewer, release_day, settings)
-    order = random_order(viewer.id, release_day, [c.peer_id for c in candidates])
+    window_start = add_days(release_day, -settings.digest.lookback_days)
+    prior_snapshots = db.scalars(
+        select(DigestSnapshot).where(
+            DigestSnapshot.user_id == viewer.id,
+            DigestSnapshot.release_day >= window_start,
+            DigestSnapshot.release_day < release_day,
+        )
+    ).all()
+    already_shown: set[str] = {p["peer_id"] for snap in prior_snapshots for p in (snap.peers or [])}
+    unseen_ids = [c.peer_id for c in candidates if c.peer_id not in already_shown]
+    shown_ids = [c.peer_id for c in candidates if c.peer_id in already_shown]
+
+    ordered_unseen = random_order(viewer.id, release_day, unseen_ids)
+    ordered_shown = random_order(viewer.id, release_day, shown_ids)
+    capped = (ordered_unseen + ordered_shown)[: settings.digest.display_cap]
+
     by_id = {c.peer_id: c for c in candidates}
-    capped = order[: settings.digest.display_cap]
     peers = [
         {"peer_id": pid, "last_day": by_id[pid].last_day, "token": by_id[pid].token.hex()}
         for pid in capped

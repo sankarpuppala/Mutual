@@ -144,6 +144,69 @@ def test_display_cap(make_harness) -> None:
     assert len(h.client.get("/v1/digest", headers=auth(a.token)).json()["peers"]) == 2
 
 
+def test_unseen_first_surfaces_new_crossings_before_previously_shown(make_harness) -> None:
+    """Unseen crossings are tiered ahead of crossings already shown in prior snapshots."""
+    h: Harness = make_harness(digest={"display_cap": 2})
+    a = signup(h, email="a@example.ac.in")
+    peers = [signup(h, email=f"p{i}@example.ac.in") for i in range(4)]
+    day1 = _epoch(h)
+    for p in peers:
+        _cross(h, a.user_id, p.user_id, day1)
+
+    # Release Day 2: 2 of the 4 peers are shown
+    day2 = add_days(day1, 1)
+    _goto_release(h, day2)
+    d2 = h.client.get("/v1/digest", headers=auth(a.token)).json()
+    shown_on_day2 = _peer_ids(d2)
+    assert len(shown_on_day2) == 2
+    unseen_after_day2 = {p.user_id for p in peers} - shown_on_day2
+
+    # On Day 2, 'a' crosses a brand new peer 'p_new'
+    p_new = signup(h, email="new@example.ac.in")
+    _cross(h, a.user_id, p_new.user_id, day2)
+
+    # Release Day 3: display cap is 2. Candidates are p_new + 2 unseen + 2 shown.
+    # The 2 slots must be drawn from the 3 unseen candidates (p_new and unseen_after_day2),
+    # never from the 2 already-shown peers.
+    day3 = add_days(day2, 1)
+    _goto_release(h, day3)
+    d3 = h.client.get("/v1/digest", headers=auth(a.token)).json()
+    shown_on_day3 = _peer_ids(d3)
+    assert len(shown_on_day3) == 2
+    assert shown_on_day3.issubset(unseen_after_day2 | {p_new.user_id})
+    assert shown_on_day3.isdisjoint(shown_on_day2)
+
+
+def test_unseen_first_fills_remaining_slots_with_previously_shown(make_harness) -> None:
+    """When unseen count < display_cap, unseen peers come first and remaining slots fill from shown."""
+    h: Harness = make_harness(digest={"display_cap": 3})
+    a = signup(h, email="a@example.ac.in")
+    peers = [signup(h, email=f"p{i}@example.ac.in") for i in range(3)]
+    day1 = _epoch(h)
+    for p in peers:
+        _cross(h, a.user_id, p.user_id, day1)
+
+    day2 = add_days(day1, 1)
+    _goto_release(h, day2)
+    d2 = h.client.get("/v1/digest", headers=auth(a.token)).json()
+    shown_on_day2 = _peer_ids(d2)
+    assert len(shown_on_day2) == 3
+
+    # On Day 2, cross exactly 1 new peer
+    p_new = signup(h, email="new@example.ac.in")
+    _cross(h, a.user_id, p_new.user_id, day2)
+
+    # Release Day 3: 1 unseen (p_new) and 3 shown.
+    # The digest must have length 3: p_new at index 0, and 2 filled from previously shown.
+    day3 = add_days(day2, 1)
+    _goto_release(h, day3)
+    d3 = h.client.get("/v1/digest", headers=auth(a.token)).json()
+    assert len(d3["peers"]) == 3
+    assert d3["peers"][0]["card"]["peer_id"] == p_new.user_id
+    remaining_two = {p["card"]["peer_id"] for p in d3["peers"][1:]}
+    assert remaining_two.issubset(shown_on_day2)
+
+
 def test_peer_card_shape_has_no_photos_counts_or_times(h: Harness) -> None:
     a = signup(h, email="a@example.ac.in")
     b = signup(h, email="b@example.ac.in")

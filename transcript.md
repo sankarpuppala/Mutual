@@ -388,6 +388,36 @@ but the positive part is photos are saving from both devices so fix all these pr
 
 ---
 
+## Session 4 — 2026-10-28
+
+### Tiered "Unseen-First" Ranking for Morning Letter Digest
+
+**User:** [Screenshot from design discussion proposing Tiered "Unseen-First" ranking in morning letter digest]
+
+1. When everyone's already been shown at least once (say you've crossed 60 unique people this week, all previously shown, and 5 new ones today) — unseen-first naturally handles that: new ones surface first, then fill the remaining slots with previously-shown ones (otherwise your digest would shrink awkwardly on a day with no new faces).
+2. Within each group (unseen vs. already-shown), it still needs some order — keep that part exactly as it is now (stable random per viewer+day), just apply "unseen first" as a tier on top of it, not replace it entirely.
+
+Want me to spec this out and build it that way — unseen-first, then the existing random order as the tiebreaker within each group?
+
+**Assistant:** Implemented and thoroughly verified the Tiered "Unseen-First" Ranking:
+
+1. **Ranking Logic (`server/mutual_server/services/digest.py`):**
+   - Queried historical `DigestSnapshot` records for the viewer within the lookback window `[release_day - lookback_days, release_day)`.
+   - Extracted all `already_shown` peer IDs displayed in snapshots over that period.
+   - Partitioned eligible candidate crossings into two tiers:
+     - `unseen_ids`: candidates not yet shown in any snapshot in the window.
+     - `shown_ids`: candidates who have already appeared in a snapshot in the window.
+   - Maintained deterministic pseudorandom ordering within each tier using `random_order(viewer.id, release_day, ...)` seeded with viewer ID and release day.
+   - Combined tiers with unseen first, filling remaining slots up to `display_cap` with already-shown peers: `(ordered_unseen + ordered_shown)[: settings.digest.display_cap]`.
+2. **Invariants Preserved:**
+   - Preserved Invariant 1 (no attention-dependent traffic): ranking is computed non-interactively during snapshot creation and is completely independent of user engagement, clicks, or profile views.
+   - Preserved Invariant 5 & Claim C5 (byte-identical between releases): snapshots remain immutable and deterministic once computed for the day.
+3. **Automated Testing (`server/tests/test_digest.py`):**
+   - `test_unseen_first_surfaces_new_crossings_before_previously_shown`: verified that newly crossed peers are strictly prioritized ahead of candidates already shown on prior days.
+   - `test_unseen_first_fills_remaining_slots_with_previously_shown`: verified that when unseen candidates are fewer than `display_cap`, previously shown peers fill remaining slots so the digest never collapses or shrinks awkwardly.
+
+---
+
 ## Key Technical Decisions Made
 
 | Decision | Rationale |
@@ -409,6 +439,7 @@ but the positive part is photos are saving from both devices so fix all these pr
 | Image picker quality `0.7` | Reduces raw phone camera uploads from ~15 MB down to ~500 KB, preventing timeout aborts on mobile networks |
 | `initialRouteName="index"` in root `_layout.tsx` | Guarantees cold app starts evaluate session persistence in `index.tsx` first |
 | `npx eas-cli` invocation | Runs EAS Build directly via npx without requiring global CLI installation |
+| Unseen-first tiered ranking in digest | Prioritises new crossings while preserving stable deterministic pseudo-random ordering and display cap without attention-tracking |
 
 ---
 
@@ -416,7 +447,7 @@ but the positive part is photos are saving from both devices so fix all these pr
 
 All 13 invariants from `CLAUDE.md §5` remain in force. No change in this work touches any invariant. Specifically:
 
-- **Invariant 1** (no attention-dependent traffic): unaffected — media serving is unchanged in semantics, only in where bytes are read from
+- **Invariant 1** (no attention-dependent traffic): unaffected — digest snapshot ranking is precomputed deterministically during release window; never tracks views, clicks, or read-state
 - **Invariant 3** (no location): unaffected
 - **Invariant 5** (minimal identity storage): unaffected — no plaintext emails or OTPs stored in database tables, R2 keys in env vars
 - **Invariant 9** (no real-user data without approval): unaffected — all testing uses synthetic and test accounts
@@ -428,7 +459,7 @@ All 13 invariants from `CLAUDE.md §5` remain in force. No change in this work t
 
 | Suite | Before | After |
 |---|---|---|
-| Python (protocol_py + server + sim) | 325 | 344 (+19 tests across media store, auth lookup, photo retrieval) |
+| Python (protocol_py + server + sim) | 344 | 346 (+2 tests for unseen-first digest ranking) |
 | TypeScript (app) | 220 | 220 |
 | Protocol-ts | 29 | 29 |
 
