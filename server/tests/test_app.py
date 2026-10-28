@@ -228,3 +228,27 @@ def test_database_url_without_the_override_still_resolves_sqlite_paths(
     settings = load_settings(path)
     assert settings.database_url.startswith("sqlite:///")
     assert "should-not-be-used" not in settings.database_url
+
+
+def test_favicon_and_web_assets(h: Harness) -> None:
+    """Favicon assets and web template brand mark are served correctly."""
+    r_ico = h.client.get("/favicon.ico")
+    assert r_ico.status_code == 200
+    assert "image/x-icon" in r_ico.headers["content-type"]
+    assert len(r_ico.content) > 0
+
+    r_png = h.client.get("/favicon.png")
+    assert r_png.status_code == 200
+    assert "image/png" in r_png.headers["content-type"]
+    assert len(r_png.content) > 0
+
+    r_svg = h.client.get("/favicon.svg")
+    assert r_svg.status_code == 200
+    assert "image/svg+xml" in r_svg.headers["content-type"]
+    assert "<svg" in r_svg.text
+
+    r_app = h.client.get("/app")
+    assert r_app.status_code == 200
+    assert "Mutual · Campus Connection" in r_app.text
+    assert "favicon" in r_app.text
+    assert 'viewBox="0 0 60 40"' in r_app.text

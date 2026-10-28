@@ -362,6 +362,8 @@ def page(
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         '<meta name="robots" content="noindex">'
+        "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 40'%3E%3Ccircle cx='22' cy='20' r='15' fill='%23E26D5C' opacity='0.9'/%3E%3Ccircle cx='38' cy='20' r='15' fill='%238282F6' opacity='0.8'/%3E%3C/svg%3E\">"
+        '<link rel="alternate icon" href="/favicon.ico">'
         '<link rel="preconnect" href="https://fonts.googleapis.com">'
         '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
         '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Inter:wght@400;500;600&display=swap">'

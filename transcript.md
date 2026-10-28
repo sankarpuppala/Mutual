@@ -418,6 +418,27 @@ Want me to spec this out and build it that way — unseen-first, then the existi
 
 ---
 
+## Session 5 — 2026-10-28
+
+### Web Client Brand Identity: Authentic Mutual Logo in Navigation Bar and Tab Favicon
+
+**User:** [Screenshot of browser tab bar displaying default circle/globe next to "Mutual · Campus Connection"]
+can we add mutual logo on the website bar rather than a plain circle
+
+**Assistant:** Replaced the plain circular outlines and default browser globe icons across all web entry points with the authentic Mutual overlapping-circles brand mark:
+
+1. **Favicon Assets & Endpoints:**
+   - Generated static multi-format favicon assets in `server/mutual_server/web/` (`favicon.ico`, `favicon.png`, `favicon.svg`) with the authentic terracotta (`#E26D5C`) and indigo (`#8282F6`) overlapping circles.
+   - Mounted `/favicon.ico`, `/favicon.png`, and `/favicon.svg` endpoints in FastAPI with aggressive caching (`public, max-age=86400`).
+   - Added instant SVG data URI `<link rel="icon" type="image/svg+xml" ...>` and fallback links to `client_template.html`, `docs/design/prototype.html`, `server/mutual_server/web/html.py` (colleges and admin pages), and `/otp`.
+2. **Website Top Navigation Bar:**
+   - Replaced the plain stroked circle outline (`<circle cx="16" cy="16" r="14" stroke="currentColor"...>`) in `.top-nav .brand-group .brand-mark` with the authentic 60x40 vector logo (`logo_svg` specification: terracotta at 0.9 opacity and indigo at 0.8 opacity).
+   - Updated the auth screen badge (`.auth-brand-badge`) and login code lookup header (`/otp`) to also use the authentic overlapping circles.
+3. **Automated Verification:**
+   - Added `test_favicon_and_web_assets` in `server/tests/test_app.py` verifying `/app`, `/favicon.ico`, `/favicon.png`, and `/favicon.svg`.
+
+---
+
 ## Key Technical Decisions Made
 
 | Decision | Rationale |
@@ -440,6 +461,7 @@ Want me to spec this out and build it that way — unseen-first, then the existi
 | `initialRouteName="index"` in root `_layout.tsx` | Guarantees cold app starts evaluate session persistence in `index.tsx` first |
 | `npx eas-cli` invocation | Runs EAS Build directly via npx without requiring global CLI installation |
 | Unseen-first tiered ranking in digest | Prioritises new crossings while preserving stable deterministic pseudo-random ordering and display cap without attention-tracking |
+| Inline SVG data URI favicon + static endpoints | Instantly renders the authentic brand mark in browser tab bars across Chrome/Safari/Edge without network lag or 404s |
 
 ---
 
@@ -459,7 +481,7 @@ All 13 invariants from `CLAUDE.md §5` remain in force. No change in this work t
 
 | Suite | Before | After |
 |---|---|---|
-| Python (protocol_py + server + sim) | 344 | 346 (+2 tests for unseen-first digest ranking) |
+| Python (protocol_py + server + sim) | 346 | 347 (+1 test for favicon & web assets) |
 | TypeScript (app) | 220 | 220 |
 | Protocol-ts | 29 | 29 |
 

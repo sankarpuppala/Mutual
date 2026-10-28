@@ -12,9 +12,10 @@ import contextlib
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import APIRouter, FastAPI
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -145,6 +146,43 @@ def create_app(
     app.include_router(app_client_web.router)
     admin_web.install(app)
 
+    _web_dir = Path(__file__).resolve().parent / "web"
+    _fav_ico = (
+        (_web_dir / "favicon.ico").read_bytes() if (_web_dir / "favicon.ico").is_file() else b""
+    )
+    _fav_png = (
+        (_web_dir / "favicon.png").read_bytes() if (_web_dir / "favicon.png").is_file() else b""
+    )
+    _fav_svg = (
+        (_web_dir / "favicon.svg").read_text(encoding="utf-8")
+        if (_web_dir / "favicon.svg").is_file()
+        else ""
+    )
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    def _favicon_ico() -> Response:
+        return Response(
+            content=_fav_ico,
+            media_type="image/x-icon",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+    @app.get("/favicon.png", include_in_schema=False)
+    def _favicon_png() -> Response:
+        return Response(
+            content=_fav_png,
+            media_type="image/png",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+    @app.get("/favicon.svg", include_in_schema=False)
+    def _favicon_svg() -> Response:
+        return Response(
+            content=_fav_svg,
+            media_type="image/svg+xml",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
     @app.get("/", include_in_schema=False)
     def _root() -> RedirectResponse:
         return RedirectResponse("/colleges", status_code=307)
@@ -165,6 +203,8 @@ def create_app(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mutual · Verification Code</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 40'%3E%3Ccircle cx='22' cy='20' r='15' fill='%23B5523F' opacity='0.9'/%3E%3Ccircle cx='38' cy='20' r='15' fill='%234F4FC4' opacity='0.8'/%3E%3C/svg%3E">
+<link rel="alternate icon" href="/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -192,7 +232,7 @@ button:hover{opacity:.9}
 <body>
 <div class="wrap">
   <div class="brand">
-    <svg width="32" height="32" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" stroke="#1D1A22" stroke-width="2"/><circle cx="12" cy="16" r="4" fill="#B5523F"/><circle cx="20" cy="16" r="4" fill="#4F4FC4"/></svg>
+    <svg width="36" height="24" viewBox="0 0 60 40" aria-hidden="true"><circle cx="22" cy="20" r="15" fill="#B5523F" opacity="0.9"/><circle cx="38" cy="20" r="15" fill="#4F4FC4" opacity="0.8"/></svg>
     <span>Mutual</span>
   </div>
   <div class="card">
